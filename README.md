@@ -4,9 +4,17 @@ Swiss Army knife for Google Workspace - A CLI tool for Gmail, Google Calendar, a
 
 ## Installation
 
+### From npm
+
+```bash
+npm install -g gwork
+```
+
 ### From source
 
 ```bash
+git clone https://github.com/mherod/gwork.git
+cd gwork
 bun install
 bun run build
 bun link

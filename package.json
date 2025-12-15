@@ -1,17 +1,52 @@
 {
   "name": "gwork",
   "version": "0.1.0",
+  "description": "A CLI tool for managing Google Calendar and Gmail from the command line",
   "type": "module",
+  "main": "dist/cli.js",
   "bin": {
     "gwork": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "bun build src/cli.ts --outfile=dist/cli.js --target=node --minify --external better-sqlite3",
     "dev": "bun src/cli.ts",
     "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "gmail",
+    "calendar",
+    "google",
+    "cli",
+    "command-line",
+    "email",
+    "events",
+    "productivity"
+  ],
+  "author": {
+    "name": "Matthew Herod",
+    "email": "matthew.herod@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mherod/gwork.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mherod/gwork/issues"
+  },
+  "homepage": "https://github.com/mherod/gwork#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
+    "@types/lodash-es": "^4.17.12"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -25,10 +60,5 @@
     "lodash-es": "^4.17.21",
     "ora": "^9.0.0",
     "rrule": "^2.8.1"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/bun": "latest",
-    "@types/lodash-es": "^4.17.12"
   }
 }
