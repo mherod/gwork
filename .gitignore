@@ -1,0 +1,52 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Cursor IDE
+.cursor
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# Google OAuth credentials and tokens
+credentials.json
+.calendar_token.json
+.calendar_token.json.old
+.gmail_token.json
+.gmail_token.json.old
+.gwork_tokens.db
+.gwork_tokens.db-shm
+.gwork_tokens.db-wal
+
+# Test databases
+*.db
+*.db-shm
+*.db-wal
