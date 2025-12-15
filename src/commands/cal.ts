@@ -5,15 +5,18 @@ import type { Event } from "../types/google-apis.ts";
 import { CalendarService } from "../services/calendar-service.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 
-// Create singleton instance
-const calendarService = new CalendarService();
+// Module-level service instance (set by handleCalCommand)
+let calendarService: CalendarService;
 
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await calendarService.initialize();
 }
 
-export async function handleCalCommand(subcommand: string, args: string[]) {
+export async function handleCalCommand(subcommand: string, args: string[], account: string = "default") {
+  // Create service instance with the specified account
+  calendarService = new CalendarService(account);
+
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized();
   

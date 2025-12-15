@@ -4,7 +4,8 @@ import { startCase, find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import fs from "node:fs";
 
-const mailService = new MailService();
+// Module-level service instance (set by handleMailCommand)
+let mailService: MailService;
 
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
@@ -49,7 +50,10 @@ Date: ${date}
 ${body}`;
 }
 
-export async function handleMailCommand(subcommand: string, args: string[]) {
+export async function handleMailCommand(subcommand: string, args: string[], account: string = "default") {
+  // Create service instance with the specified account
+  mailService = new MailService(account);
+
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized();
   

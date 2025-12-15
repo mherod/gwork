@@ -1,111 +1,112 @@
----
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
----
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Overview
 
-## APIs
+**gwork** is a comprehensive CLI tool for Google Workspace (Calendar + Gmail). It provides 54 fully implemented commands (24 calendar + 30 Gmail) that expose the Google APIs through a developer-friendly command-line interface.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+The codebase is built with TypeScript using Bun as the primary runtime, with additional Node.js compatibility for CLI distribution via npm.
 
-## Testing
+## Development Commands
 
-Use `bun test` to run tests.
+```bash
+# Install dependencies
+bun install
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+# Run CLI in development mode (direct execution)
+bun src/cli.ts cal list
+bun src/cli.ts mail messages -n 5
+bun src/cli.ts cal list --today
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+# Or use the dev script (equivalent to above)
+bun run dev cal list
+bun run dev mail messages -n 5
+
+# Build for production (bundles for Node.js)
+bun run build
+
+# Test production build
+gwork --help
+gwork cal list
+gwork mail messages -n 5
 ```
 
-## Frontend
+## Architecture
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+### Core Structure
 
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+```
+src/
+├── cli.ts                      # Entry point; routes commands to handlers
+├── commands/
+│   ├── cal.ts                  # Calendar command dispatcher (24 commands)
+│   └── mail.ts                 # Gmail command dispatcher (30 commands)
+├── services/
+│   ├── calendar-service.ts     # Google Calendar API wrapper
+│   ├── mail-service.ts         # Gmail API wrapper
+│   └── token-store.ts          # Multi-account token persistence (SQLite)
+├── utils/
+│   ├── sqlite-wrapper.ts       # Bun/Node.js SQLite abstraction layer
+│   ├── setup-guide.ts          # User onboarding for credentials setup
+│   └── format.ts               # Date/time formatting utilities
+└── types/
+    └── google-apis.ts          # TypeScript types for Google API responses
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+### Data Flow
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
+1. **CLI Entry** (`src/cli.ts`): Routes top-level commands (mail/cal) to handlers
+2. **Command Handlers** (`src/commands/*.ts`): Parse arguments and call service methods
+3. **Services** (`src/services/*.ts`): Google API wrappers; call `initialize()` first (checks credentials, loads/refreshes tokens)
+4. **Token Management** (`src/services/token-store.ts`): Singleton that manages SQLite database at `~/.gwork_tokens.db` with support for multiple accounts per service
+5. **Setup Flow** (`src/utils/setup-guide.ts`): Friendly onboarding if credentials missing
+
+### Token Management & Authentication
+
+- **Credentials**: OAuth2 credentials from Google Cloud Console saved to `~/.credentials.json`
+- **Token Store**: SQLite database at `~/.gwork_tokens.db` stores access/refresh tokens indexed by (service, account)
+- **Multi-account**: Supports separate tokens for different Google accounts (e.g., "default", "work", "personal")
+- **Token Refresh**: Google's local-auth library handles automatic refresh before expiry
+- **Setup Detection**: Both `CalendarService` and `MailService` check for credentials on initialization and display friendly setup guide if missing
+
+### SQLite Abstraction Layer
+
+The `sqlite-wrapper.ts` provides a unified interface that works in both:
+- **Bun runtime** (development, scripts): Uses native `bun:sqlite`
+- **Node.js runtime** (CLI distribution): Uses `better-sqlite3` npm package
+
+This abstraction normalizes parameter syntax (`@param` for both, internally converts to `$param` for Bun) and method names, keeping business logic clean of runtime conditionals.
+
+## Key Design Patterns
+
+1. **Singleton Services**: `CalendarService` and `MailService` are instantiated once per process
+2. **Lazy Initialization**: Services don't authenticate until `.initialize()` is called (happens before each command)
+3. **Abstraction Over Dual-Runtime**: SQLite wrapper hides implementation differences
+4. **Multi-Account Ready**: TokenStore uses composite key (service, account) for future multi-account support
+5. **Fail-Fast with Guidance**: If credentials missing, show friendly setup guide instead of cryptic errors
+
+## Build & Publishing
+
+```bash
+# Build for Node.js distribution
+bun run build
+# Output: dist/cli.js (13.2 MB minified)
+
+# Key build flags:
+# --target=node         : Compile for Node.js runtime
+# --minify              : Reduce bundle size
+# --external better-sqlite3 : Keep native binary external (not bundled)
+
+# Publish to npm
+npm publish
+# Automatically runs build via prepublishOnly script
 ```
 
-With the following `frontend.tsx`:
+## Important Notes
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+- Default to Bun for development; the CLI distributes as a Node.js bundle
+- Don't use better-sqlite3 in Bun scripts (use native `bun:sqlite` via the wrapper)
+- Don't use dotenv; Bun automatically loads `.env` files
+- All sensitive files (`.credentials.json`, `~/.gwork_tokens.db`) are properly ignored in `.gitignore`
+- When adding new Google API operations, follow the existing pattern: Service method → Command handler → CLI interface

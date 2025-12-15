@@ -2,6 +2,7 @@
 
 import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
+import { parseAccount } from "./utils/args.ts";
 
 function printHelp() {
   console.log(`
@@ -15,12 +16,14 @@ Commands:
   cal            Google Calendar operations
 
 Options:
-  -h, --help     Show this help message
-  -v, --version  Show version
+  -h, --help              Show this help message
+  -v, --version           Show version
+  --account <email>       Use a specific Google account (default: "default")
 
 Examples:
   gwork mail --help
   gwork cal --help
+  gwork cal list --account matt@example.com
   gwork --help
 `);
 }
@@ -137,7 +140,10 @@ async function handleMail(args: string[]) {
   }
   const subcommandArgs = args.slice(1);
 
-  await handleMailCommand(subcommand, subcommandArgs);
+  // Extract account from subcommand args
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  await handleMailCommand(subcommand, filteredArgs, account);
 }
 
 async function handleCal(args: string[]) {
@@ -154,7 +160,10 @@ async function handleCal(args: string[]) {
   }
   const subcommandArgs = args.slice(1);
 
-  await handleCalCommand(subcommand, subcommandArgs);
+  // Extract account from subcommand args
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  await handleCalCommand(subcommand, filteredArgs, account);
 }
 
 async function main() {

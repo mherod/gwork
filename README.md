@@ -60,7 +60,7 @@ Examples:
 
 ### Google API Credentials
 
-To use calendar and Gmail features, you need OAuth2 credentials:
+To use calendar and Gmail features, you need OAuth2 credentials from Google Cloud Console:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
@@ -69,9 +69,29 @@ To use calendar and Gmail features, you need OAuth2 credentials:
 5. Download credentials and save as `~/.credentials.json`
 6. Run any `gwork cal` or `gwork mail` command to authenticate
 
-The first time you run a command, you'll be prompted to authenticate via browser. Tokens are saved for future use:
-- Calendar: `~/.calendar_token.json`
-- Gmail: `~/.gmail_token.json`
+**On first run**, the CLI will display a friendly setup guide if credentials are missing, walking you through the process step-by-step.
+
+### Token Management
+
+Tokens are securely stored in a local SQLite database at `~/.gwork_tokens.db`:
+- **Multi-account support**: Store tokens for multiple Google accounts (default, work, personal, etc.)
+- **Automatic refresh**: Tokens are automatically refreshed before expiry
+- **Per-account**: Each account has independent access and refresh tokens
+
+**Using different accounts:**
+```bash
+# Use the default account (implicit)
+gwork cal list
+
+# Use a specific account
+gwork cal list --account work@example.com
+gwork mail messages -n 10 --account personal@example.com
+
+# View all stored tokens
+bun run src/scripts/list-tokens.ts
+```
+
+When you use the `--account` flag, the CLI will authenticate with that account (if not already authenticated) and store the token separately. You can easily switch between accounts.
 
 ## Commands
 
