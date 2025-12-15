@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
-    "gwork": "./dist/cli.js"
+    "gwork": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mherod/gwork.git"
+    "url": "git+https://github.com/mherod/gwork.git"
   },
   "bugs": {
     "url": "https://github.com/mherod/gwork/issues"
