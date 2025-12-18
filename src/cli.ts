@@ -2,6 +2,7 @@
 
 import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
+import { handleContactsCommand } from "./commands/contacts.ts";
 import { parseAccount } from "./utils/args.ts";
 
 function printHelp() {
@@ -14,6 +15,7 @@ Usage:
 Commands:
   mail           Gmail operations
   cal            Google Calendar operations
+  contacts       Google Contacts operations
 
 Options:
   -h, --help              Show this help message
@@ -23,6 +25,7 @@ Options:
 Examples:
   gwork mail --help
   gwork cal --help
+  gwork contacts --help
   gwork cal list --account matt@example.com
   gwork --help
 `);
@@ -122,6 +125,58 @@ Examples:
 `);
 }
 
+function printContactsHelp() {
+  console.log(`
+gwork contacts - Google Contacts operations
+
+Usage:
+  gwork contacts <command> [options]
+
+Basic Commands:
+  list [options]                              List contacts
+  get <resourceName>                          Get a specific contact
+  search <query>                              Search contacts
+  find-email <email>                          Find contact by email
+  find-name <name>                            Find contact by name
+  create [options]                            Create a new contact
+  update <resourceName> [options]             Update a contact
+  delete <resourceName> --confirm             Delete a contact
+
+Group Management:
+  groups                                      List contact groups
+  group-contacts <groupResourceName>          List contacts in a group
+  create-group <name> --confirm               Create a contact group
+  delete-group <resourceName> --confirm       Delete a contact group
+  add-to-group <group> <contacts...> --confirm
+  remove-from-group <group> <contacts...> --confirm
+
+Batch Operations:
+  batch-create <jsonFile> --confirm           Create multiple contacts
+  batch-delete <resourceName...> --confirm    Delete multiple contacts
+
+Advanced:
+  profile                                     Get your profile information
+  stats                                       Show contact statistics
+  duplicates [options]                        Find duplicate contacts
+  find-missing-names                          Find contacts with missing names
+  analyze-generic-names                       Find contacts with generic names
+  analyze-imported                            Analyze imported contacts
+  detect-marketing [options]                  Find/remove marketing contacts
+
+Options:
+  -h, --help                                  Show this help message
+  --account <email>                           Use a specific Google account
+
+Examples:
+  gwork contacts list -n 100
+  gwork contacts search "john"
+  gwork contacts find-email "john@example.com"
+  gwork contacts create --first-name John --last-name Doe --email john@example.com --confirm
+  gwork contacts profile
+  gwork contacts stats
+`);
+}
+
 function printVersion() {
   console.log("gwork version 0.1.0");
 }
@@ -166,6 +221,26 @@ async function handleCal(args: string[]) {
   await handleCalCommand(subcommand, filteredArgs, account);
 }
 
+async function handleContacts(args: string[]) {
+  // Check for help flag or no subcommand
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    printContactsHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0];
+  if (!subcommand) {
+    printContactsHelp();
+    process.exit(0);
+  }
+  const subcommandArgs = args.slice(1);
+
+  // Extract account from subcommand args
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  await handleContactsCommand(subcommand, filteredArgs, account);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -191,6 +266,9 @@ async function main() {
       break;
     case "cal":
       await handleCal(commandArgs);
+      break;
+    case "contacts":
+      await handleContacts(commandArgs);
       break;
     default:
       console.error(`Unknown command: ${command}`);
