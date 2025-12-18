@@ -1,0 +1,65 @@
+[
+  {
+    "id": "event1",
+    "summary": "Team Standup",
+    "start": {
+      "dateTime": "2025-12-18T10:00:00Z"
+    },
+    "end": {
+      "dateTime": "2025-12-18T10:30:00Z"
+    },
+    "location": "Conference Room A",
+    "description": "Daily team sync",
+    "attendees": [
+      {
+        "email": "alice@example.com",
+        "responseStatus": "accepted"
+      },
+      {
+        "email": "bob@example.com",
+        "responseStatus": "tentative"
+      }
+    ],
+    "organizer": {
+      "email": "organizer@example.com"
+    },
+    "created": "2025-01-01T08:00:00Z",
+    "updated": "2025-01-01T08:00:00Z"
+  },
+  {
+    "id": "event2",
+    "summary": "Project Kickoff",
+    "start": {
+      "dateTime": "2025-12-19T14:00:00Z"
+    },
+    "end": {
+      "dateTime": "2025-12-19T15:30:00Z"
+    },
+    "location": "Main Office",
+    "description": "Project X kickoff meeting",
+    "recurrence": [
+      "RRULE:FREQ=WEEKLY;BYDAY=FR;COUNT=10"
+    ],
+    "attendees": [
+      {
+        "email": "charlie@example.com",
+        "responseStatus": "accepted"
+      }
+    ],
+    "created": "2025-01-01T09:00:00Z",
+    "updated": "2025-01-01T09:00:00Z"
+  },
+  {
+    "id": "event3",
+    "summary": "All-day Conference",
+    "start": {
+      "date": "2025-12-20"
+    },
+    "end": {
+      "date": "2025-12-21"
+    },
+    "description": "Annual tech conference",
+    "created": "2025-01-01T10:00:00Z",
+    "updated": "2025-01-01T10:00:00Z"
+  }
+]

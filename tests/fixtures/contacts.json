@@ -1,0 +1,148 @@
+[
+  {
+    "resourceName": "people/c1234567890",
+    "etag": "%EgkBA==",
+    "names": [
+      {
+        "displayName": "Alice Johnson",
+        "familyName": "Johnson",
+        "givenName": "Alice",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "emailAddresses": [
+      {
+        "value": "alice@example.com",
+        "type": "work",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "phoneNumbers": [
+      {
+        "value": "+1-555-0100",
+        "type": "mobile",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "organizations": [
+      {
+        "name": "Tech Corp",
+        "title": "Software Engineer",
+        "type": "work",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "objectType": "PERSON",
+      "userTypes": [
+        "myContact"
+      ]
+    }
+  },
+  {
+    "resourceName": "people/c2345678901",
+    "etag": "%EgkBA==",
+    "names": [
+      {
+        "displayName": "Bob Smith",
+        "familyName": "Smith",
+        "givenName": "Bob",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "emailAddresses": [
+      {
+        "value": "bob@example.com",
+        "type": "work",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "objectType": "PERSON",
+      "userTypes": [
+        "myContact"
+      ]
+    }
+  },
+  {
+    "resourceName": "people/c3456789012",
+    "etag": "%EgkBA==",
+    "names": [
+      {
+        "displayName": "Charlie Brown",
+        "familyName": "Brown",
+        "givenName": "Charlie",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "emailAddresses": [
+      {
+        "value": "charlie@example.com",
+        "type": "personal",
+        "metadata": {
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "addresses": [
+      {
+        "formattedValue": "123 Main St, San Francisco, CA 94102",
+        "streetAddress": "123 Main St",
+        "city": "San Francisco",
+        "region": "CA",
+        "postalCode": "94102",
+        "countryCode": "US",
+        "type": "home",
+        "metadata": {
+          "primary": true,
+          "source": {
+            "type": "CONTACT"
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "objectType": "PERSON",
+      "userTypes": [
+        "myContact"
+      ]
+    }
+  }
+]

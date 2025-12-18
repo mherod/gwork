@@ -1,0 +1,108 @@
+[
+  {
+    "id": "msg1",
+    "threadId": "thread1",
+    "labelIds": [
+      "INBOX",
+      "UNREAD"
+    ],
+    "snippet": "Hey, just checking in on the project status...",
+    "payload": {
+      "headers": [
+        {
+          "name": "Subject",
+          "value": "Project Update"
+        },
+        {
+          "name": "From",
+          "value": "alice@example.com"
+        },
+        {
+          "name": "To",
+          "value": "bob@example.com"
+        },
+        {
+          "name": "Date",
+          "value": "Wed, 18 Dec 2025 10:00:00 +0000"
+        }
+      ],
+      "mimeType": "text/plain",
+      "body": {
+        "size": 100,
+        "data": "SGV5LCBqdXN0IGNoZWNraW5nIGluIG9uIHRoZSBwcm9qZWN0IHN0YXR1cy4uLg=="
+      }
+    },
+    "sizeEstimate": 1234,
+    "historyId": "1234567890",
+    "internalDate": "1671351600000"
+  },
+  {
+    "id": "msg2",
+    "threadId": "thread2",
+    "labelIds": [
+      "INBOX",
+      "STARRED"
+    ],
+    "snippet": "Thanks for the update. Everything looks on track...",
+    "payload": {
+      "headers": [
+        {
+          "name": "Subject",
+          "value": "Re: Project Update"
+        },
+        {
+          "name": "From",
+          "value": "bob@example.com"
+        },
+        {
+          "name": "To",
+          "value": "alice@example.com"
+        },
+        {
+          "name": "Date",
+          "value": "Wed, 18 Dec 2025 11:00:00 +0000"
+        }
+      ],
+      "mimeType": "text/plain",
+      "body": {
+        "size": 120,
+        "data": "VGhhbmtzIGZvciB0aGUgdXBkYXRlLiBFdmVyeXRoaW5nIGxvb2tzIG9uIHRyYWNrLi4u"
+      }
+    },
+    "sizeEstimate": 1567,
+    "historyId": "1234567891",
+    "internalDate": "1671355200000"
+  },
+  {
+    "id": "msg3",
+    "threadId": "thread3",
+    "labelIds": [
+      "DRAFT"
+    ],
+    "snippet": "",
+    "payload": {
+      "headers": [
+        {
+          "name": "Subject",
+          "value": "Meeting Notes"
+        },
+        {
+          "name": "From",
+          "value": "charlie@example.com"
+        },
+        {
+          "name": "To",
+          "value": "team@example.com"
+        }
+      ],
+      "mimeType": "text/plain",
+      "body": {
+        "size": 0,
+        "data": ""
+      }
+    },
+    "sizeEstimate": 500,
+    "historyId": "1234567892",
+    "internalDate": "1671358800000"
+  }
+]
