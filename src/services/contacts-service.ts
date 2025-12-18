@@ -1419,4 +1419,323 @@ export class ContactsService {
       importedContacts: importedContacts.length,
     };
   }
+
+  // ============= MARKETING DETECTION =============
+
+  private isMarketingEmail(email: string): {
+    isMarketing: boolean;
+    confidence: number;
+    reasons: string[];
+  } {
+    const reasons: string[] = [];
+    let confidence = 0;
+
+    // Marketing service prefixes
+    const marketingPrefixes = [
+      "noreply",
+      "no-reply",
+      "do-not-reply",
+      "donotreply",
+      "marketing",
+      "newsletter",
+      "notifications",
+      "notification",
+      "noticias",
+      "promo",
+      "promotion",
+      "promotional",
+      "unsubscribe",
+      "sales",
+      "support",
+      "help",
+      "info",
+      "contact",
+      "hello",
+      "team",
+      "no.reply",
+      "postmaster",
+      "mailer",
+      "mailbox",
+      "bounce",
+      "automated",
+      "admin",
+      "webmaster",
+    ];
+
+    // Marketing domains
+    const marketingDomains = [
+      "mailchimp.com",
+      "sendgrid.net",
+      "constantcontact.com",
+      "aweber.com",
+      "icontact.com",
+      "getresponse.com",
+      "convertkit.com",
+      "klaviyo.com",
+      "substack.com",
+      "brevo.com",
+      "sendpulse.com",
+      "mailgun.org",
+      "postmark.com",
+      "sendwithus.com",
+      "mandrill.com",
+      "sparkpost.com",
+      "elasticemail.com",
+      "pepipost.com",
+      "zoho.com",
+      "mailblaze.com",
+    ];
+
+    const localPart = email.split("@")[0].toLowerCase();
+    const domain = email.split("@")[1]?.toLowerCase() || "";
+
+    // Check for marketing prefixes
+    const hasMarketingPrefix = marketingPrefixes.some((prefix) =>
+      localPart.startsWith(prefix)
+    );
+
+    if (hasMarketingPrefix) {
+      reasons.push("Marketing prefix detected");
+      confidence += 30;
+    }
+
+    // Check for marketing domains
+    const hasMarketingDomain = marketingDomains.some((marketDomain) =>
+      domain.includes(marketDomain)
+    );
+
+    if (hasMarketingDomain) {
+      reasons.push("Marketing service domain");
+      confidence += 50;
+    }
+
+    // Check for common patterns
+    if (email.includes("noreply")) {
+      reasons.push("'noreply' pattern");
+      confidence += 35;
+    }
+
+    if (email.includes("newsletter")) {
+      reasons.push("Newsletter address");
+      confidence += 40;
+    }
+
+    if (email.includes("promo") || email.includes("promotion")) {
+      reasons.push("Promotional email");
+      confidence += 40;
+    }
+
+    if (email.includes("alert") || email.includes("notification")) {
+      reasons.push("Alert/notification address");
+      confidence += 20;
+    }
+
+    // Check for email aliases with marketing keywords
+    if (email.includes("+")) {
+      const alias = email.split("+")[1]?.split("@")[0].toLowerCase() || "";
+      if (
+        alias.includes("promo") ||
+        alias.includes("news") ||
+        alias.includes("offer")
+      ) {
+        reasons.push("Marketing alias detected");
+        confidence += 25;
+      }
+    }
+
+    return {
+      isMarketing: confidence >= 30,
+      confidence: Math.min(confidence, 100),
+      reasons,
+    };
+  }
+
+  private isMarketingName(name: string): {
+    isMarketing: boolean;
+    confidence: number;
+    reasons: string[];
+  } {
+    const reasons: string[] = [];
+    let confidence = 0;
+
+    const lowerName = name.toLowerCase();
+
+    // Marketing-related names
+    const marketingPatterns = [
+      /newsletter/i,
+      /marketing/i,
+      /promotions?/i,
+      /sales/i,
+      /support/i,
+      /noreply/i,
+      /alerts?/i,
+      /notifications?/i,
+      /updates?/i,
+      /announcements?/i,
+      /no.?reply/i,
+      /do.?not.?reply/i,
+      /unsubscribe/i,
+      /automated/i,
+      /system/i,
+      /postmaster/i,
+      /mailer/i,
+      /bounce/i,
+      /webmaster/i,
+      /helpdesk/i,
+      /ticketing/i,
+    ];
+
+    marketingPatterns.forEach((pattern) => {
+      if (pattern.test(lowerName)) {
+        reasons.push(`Pattern: ${pattern.source}`);
+        confidence += 20;
+      }
+    });
+
+    // All caps (common for automated emails)
+    if (lowerName !== name && /^[A-Z\s]+$/.test(name)) {
+      reasons.push("All caps name (automated)");
+      confidence += 15;
+    }
+
+    return {
+      isMarketing: confidence >= 20,
+      confidence: Math.min(confidence, 100),
+      reasons,
+    };
+  }
+
+  private isMarketingContact(contact: Person): {
+    isMarketing: boolean;
+    confidence: number;
+    reasons: string[];
+  } {
+    const reasons: string[] = [];
+    let confidence = 0;
+
+    // Check email
+    if (contact.emailAddresses?.[0]?.value) {
+      const emailAnalysis = this.isMarketingEmail(
+        contact.emailAddresses[0].value
+      );
+      if (emailAnalysis.isMarketing) {
+        confidence += emailAnalysis.confidence * 0.6;
+        reasons.push(...emailAnalysis.reasons);
+      }
+    }
+
+    // Check name
+    const name = contact.names?.[0]?.displayName || "";
+    if (name) {
+      const nameAnalysis = this.isMarketingName(name);
+      if (nameAnalysis.isMarketing) {
+        confidence += nameAnalysis.confidence * 0.4;
+        reasons.push(...nameAnalysis.reasons);
+      }
+    }
+
+    // Heuristic: No phone, no organization, only email = likely marketing
+    if (
+      !contact.phoneNumbers &&
+      !contact.organizations &&
+      contact.emailAddresses?.length
+    ) {
+      confidence += 15;
+      reasons.push("No phone/organization (email-only)");
+    }
+
+    // Heuristic: Multiple email addresses = potential mailing list
+    if (contact.emailAddresses && contact.emailAddresses.length > 2) {
+      confidence += 10;
+      reasons.push("Multiple email addresses");
+    }
+
+    return {
+      isMarketing: confidence >= 30,
+      confidence: Math.min(confidence, 100),
+      reasons: [...new Set(reasons)],
+    };
+  }
+
+  async detectMarketingContacts(options: {
+    pageSize?: number;
+  }): Promise<{
+    contacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      detectionReasons: string[];
+      confidence: number;
+    }>;
+    totalContacts: number;
+    marketingContacts: number;
+  }> {
+    await this.initialize();
+
+    const { pageSize = 200 } = options;
+
+    const contacts = await this.listContacts({ pageSize });
+
+    const marketingContacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      detectionReasons: string[];
+      confidence: number;
+    }> = [];
+
+    contacts.forEach((contact) => {
+      const analysis = this.isMarketingContact(contact);
+
+      if (analysis.isMarketing) {
+        marketingContacts.push({
+          resourceName: contact.resourceName || "",
+          displayName: contact.names?.[0]?.displayName || "Unknown",
+          email: contact.emailAddresses?.[0]?.value,
+          detectionReasons: analysis.reasons,
+          confidence: analysis.confidence,
+        });
+      }
+    });
+
+    // Sort by confidence descending
+    marketingContacts.sort((a, b) => b.confidence - a.confidence);
+
+    return {
+      contacts: marketingContacts,
+      totalContacts: contacts.length,
+      marketingContacts: marketingContacts.length,
+    };
+  }
+
+  async cleanupMarketingContacts(
+    contacts: Array<{ resourceName: string }>
+  ): Promise<{
+    deleted: number;
+    failed: number;
+    failedContacts: Array<{ resourceName: string; error: string }>;
+  }> {
+    let deleted = 0;
+    let failed = 0;
+    const failedContacts: Array<{ resourceName: string; error: string }> = [];
+
+    for (const contact of contacts) {
+      try {
+        await this.deleteContact(contact.resourceName);
+        deleted++;
+      } catch (error) {
+        failed++;
+        failedContacts.push({
+          resourceName: contact.resourceName,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    return {
+      deleted,
+      failed,
+      failedContacts,
+    };
+  }
 }

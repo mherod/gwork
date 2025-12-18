@@ -1430,11 +1430,134 @@ async function analyzeImportedContacts(args: string[]) {
 async function detectMarketing(args: string[]) {
   const spinner = ora("Detecting marketing contacts...").start();
   try {
-    spinner.succeed("Marketing detection coming soon");
-    console.log(chalk.yellow("This feature will be implemented in the next phase"));
+    const options: {
+      maxResults: number;
+      format: string;
+      cleanup: boolean;
+      confirm: boolean;
+    } = {
+      maxResults: 200,
+      format: "table",
+      cleanup: false,
+      confirm: false,
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "-n" || arg === "--max-results") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      } else if (arg === "-f" || arg === "--format") {
+        const value = args[++i];
+        if (value) options.format = value;
+      } else if (arg === "--cleanup") {
+        options.cleanup = true;
+      } else if (arg === "--confirm") {
+        options.confirm = true;
+      }
+    }
+
+    const result = await contactsService.detectMarketingContacts({
+      pageSize: options.maxResults,
+    });
+
+    spinner.succeed(
+      `Found ${result.marketingContacts} marketing contact(s)`
+    );
+
+    if (result.marketingContacts === 0) {
+      console.log(
+        chalk.green("\n🎉 No marketing contacts found!")
+      );
+      process.exit(0);
+    }
+
+    if (options.format === "json") {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(chalk.bold("\nDetected Marketing Contacts:"));
+      console.log("─".repeat(120));
+      console.log(
+        `${chalk.cyan("Name".padEnd(25))} ${chalk.cyan("Email".padEnd(35))} ${chalk.cyan("Confidence".padEnd(12))} ${chalk.cyan("Reasons")}`
+      );
+      console.log("─".repeat(120));
+
+      result.contacts.forEach((contact) => {
+        const name = contact.displayName.substring(0, 24).padEnd(25);
+        const email = (contact.email || "No email").substring(0, 34).padEnd(35);
+        const confidence = `${contact.confidence}%`.padEnd(12);
+        const reasons = contact.detectionReasons.join("; ");
+
+        console.log(
+          `${chalk.yellow(name)} ${chalk.white(email)} ${chalk.red(confidence)} ${chalk.gray(reasons)}`
+        );
+      });
+
+      if (options.cleanup) {
+        if (!options.confirm) {
+          console.log(
+            chalk.red(
+              "\n❌ --confirm flag required for cleanup (this is destructive!)"
+            )
+          );
+          console.log(chalk.yellow("Use: gwork contacts detect-marketing --cleanup --confirm"));
+          process.exit(1);
+        }
+
+        // Perform cleanup
+        const cleanupSpinner = ora(
+          `Deleting ${result.marketingContacts} contact(s)...`
+        ).start();
+        try {
+          const cleanupResult = await contactsService.cleanupMarketingContacts(
+            result.contacts.map((c) => ({ resourceName: c.resourceName }))
+          );
+
+          cleanupSpinner.succeed("Cleanup completed");
+
+          console.log(chalk.bold("\nCleanup Results:"));
+          console.log("─".repeat(80));
+          console.log(
+            `${chalk.green("Deleted:")} ${cleanupResult.deleted}/${result.marketingContacts}`
+          );
+
+          if (cleanupResult.failed > 0) {
+            console.log(`${chalk.red("Failed:")} ${cleanupResult.failed}`);
+
+            if (cleanupResult.failedContacts.length > 0) {
+              console.log(chalk.bold("\nFailed Deletions:"));
+              cleanupResult.failedContacts.forEach((contact, index) => {
+                console.log(
+                  `${index + 1}. ${contact.resourceName}: ${contact.error}`
+                );
+              });
+            }
+          }
+        } catch (cleanupError: unknown) {
+          cleanupSpinner.fail("Cleanup failed");
+          const message =
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : "Unknown error";
+          console.error(chalk.red("Error:"), message);
+          process.exit(1);
+        }
+      } else {
+        console.log(
+          chalk.yellow(
+            "\n💡 Use --cleanup --confirm to delete these marketing contacts"
+          )
+        );
+      }
+    }
+
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to detect marketing contacts");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
     process.exit(1);
   }
 }
