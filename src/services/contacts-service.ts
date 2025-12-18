@@ -1080,4 +1080,343 @@ export class ContactsService {
       results: dryRun ? undefined : results,
     };
   }
+
+  // ============= DATA QUALITY ANALYSIS =============
+
+  private getFullName(contact: Person): string | null {
+    const names = contact.names?.[0];
+    if (!names) return null;
+
+    const parts: string[] = [];
+    if (names.givenName) parts.push(names.givenName);
+    if (names.middleName) parts.push(names.middleName);
+    if (names.familyName) parts.push(names.familyName);
+
+    return parts.length > 0 ? parts.join(" ") : null;
+  }
+
+  private isGenericName(name: string): boolean {
+    const genericPatterns = [
+      /^contact$/i,
+      /^contact \d+$/i,
+      /^home$/i,
+      /^work$/i,
+      /^mobile$/i,
+      /^phone$/i,
+      /^email$/i,
+      /^unknown$/i,
+      /^unnamed$/i,
+      /^noname$/i,
+      /^test$/i,
+      /^\d+$/,
+      /^[a-z0-9]+@[a-z0-9]+\.[a-z]+$/i, // Email as name
+      /^[+]?[\d\s\-()]+$/, // Phone as name
+    ];
+
+    return genericPatterns.some((pattern) => pattern.test(name.trim()));
+  }
+
+  private extractSurnameHints(contact: Person): string[] {
+    const hints: string[] = [];
+
+    // Try to extract surname from email
+    if (contact.emailAddresses?.[0]?.value) {
+      const email = contact.emailAddresses[0].value;
+      const localPart = email.split("@")[0];
+      const parts = localPart.split(/[._-]/);
+      if (parts.length >= 2) {
+        hints.push(`From email: ${parts[parts.length - 1]}`);
+      }
+    }
+
+    // Try to extract from organization
+    if (contact.organizations?.[0]?.name) {
+      const org = contact.organizations[0].name;
+      const lastWord = org.split(/\s+/).pop();
+      if (lastWord && lastWord.length > 2) {
+        hints.push(`From organization: ${lastWord}`);
+      }
+    }
+
+    // Try to extract from phone if it looks like it has a name component
+    if (contact.phoneNumbers?.[0]?.value) {
+      const phone = contact.phoneNumbers[0].value;
+      // Only if phone has non-numeric characters that might be a name
+      const nonDigits = phone.replace(/[\d\s\-()]/g, "");
+      if (nonDigits.length > 2) {
+        hints.push(`From phone: ${nonDigits}`);
+      }
+    }
+
+    return hints;
+  }
+
+  private isLikelyImportedContact(contact: Person): boolean {
+    const name = this.getFullName(contact) || "";
+    const email = contact.emailAddresses?.[0]?.value || "";
+
+    // Auto-generated contact patterns
+    const importedPatterns = [
+      /^contact\d+/i,
+      /^imported_/i,
+      /^sync_/i,
+      /^\d{5,}$/, // Just numbers as name
+      /^test_/i,
+      /^no.?name/i,
+      /^[a-z0-9]+\+[a-z0-9]+@/i, // Gmail aliases
+      /^noreply/i,
+      /^do.?not.?reply/i,
+      /^mailer/i,
+      /^notification/i,
+    ];
+
+    const isAutoGenName = importedPatterns.some((pattern) =>
+      pattern.test(name)
+    );
+    const isAutoGenEmail = importedPatterns.some((pattern) =>
+      pattern.test(email)
+    );
+
+    // Check for minimal data
+    const hasMinimalData =
+      !contact.emailAddresses ||
+      (contact.emailAddresses.length === 1 &&
+        !contact.phoneNumbers) ||
+      !contact.organizations;
+
+    // Check if name matches email pattern
+    const nameMatchesEmail =
+      name.toLowerCase().replace(/\s/g, "") ===
+      email.split("@")[0].toLowerCase();
+
+    return isAutoGenName || (isAutoGenEmail && hasMinimalData) || nameMatchesEmail;
+  }
+
+  async findContactsWithMissingNames(options: {
+    pageSize?: number;
+  }): Promise<{
+    contacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      issueType: string;
+      surnameHints: string[];
+    }>;
+    totalContacts: number;
+    contactsWithIssues: number;
+  }> {
+    await this.initialize();
+
+    const { pageSize = 100 } = options;
+
+    const contacts = await this.listContacts({ pageSize });
+
+    const contactsWithIssues: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      issueType: string;
+      surnameHints: string[];
+    }> = [];
+
+    contacts.forEach((contact) => {
+      const fullName = this.getFullName(contact);
+      const displayName = contact.names?.[0]?.displayName || "Unknown";
+
+      // Check for missing first name
+      const hasGivenName = !!contact.names?.[0]?.givenName;
+
+      // Check for missing last name
+      const hasFamilyName = !!contact.names?.[0]?.familyName;
+
+      // Determine issue
+      let issueType = "";
+      if (!hasGivenName && !hasFamilyName) {
+        issueType = "No first or last name";
+      } else if (!hasGivenName) {
+        issueType = "Missing first name";
+      } else if (!hasFamilyName) {
+        issueType = "Missing last name";
+      }
+
+      if (issueType) {
+        const hints = this.extractSurnameHints(contact);
+        contactsWithIssues.push({
+          resourceName: contact.resourceName || "",
+          displayName,
+          email: contact.emailAddresses?.[0]?.value,
+          phone: contact.phoneNumbers?.[0]?.value,
+          organization: contact.organizations?.[0]?.name,
+          issueType,
+          surnameHints: hints,
+        });
+      }
+    });
+
+    return {
+      contacts: contactsWithIssues,
+      totalContacts: contacts.length,
+      contactsWithIssues: contactsWithIssues.length,
+    };
+  }
+
+  async findContactsWithGenericNames(options: {
+    pageSize?: number;
+  }): Promise<{
+    contacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      surnameHints: string[];
+    }>;
+    totalContacts: number;
+    contactsWithGenericNames: number;
+  }> {
+    await this.initialize();
+
+    const { pageSize = 100 } = options;
+
+    const contacts = await this.listContacts({ pageSize });
+
+    const contactsWithGenericNames: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      surnameHints: string[];
+    }> = [];
+
+    contacts.forEach((contact) => {
+      const displayName = contact.names?.[0]?.displayName || "Unknown";
+      const familyName = contact.names?.[0]?.familyName || "";
+      const givenName = contact.names?.[0]?.givenName || "";
+
+      // Check if surname is generic
+      if (familyName && this.isGenericName(familyName)) {
+        const hints = this.extractSurnameHints(contact);
+        contactsWithGenericNames.push({
+          resourceName: contact.resourceName || "",
+          displayName,
+          email: contact.emailAddresses?.[0]?.value,
+          phone: contact.phoneNumbers?.[0]?.value,
+          organization: contact.organizations?.[0]?.name,
+          surnameHints: hints,
+        });
+      }
+
+      // Also check if full name is generic (and it's the only name)
+      if (!familyName && this.isGenericName(givenName)) {
+        const hints = this.extractSurnameHints(contact);
+        contactsWithGenericNames.push({
+          resourceName: contact.resourceName || "",
+          displayName,
+          email: contact.emailAddresses?.[0]?.value,
+          phone: contact.phoneNumbers?.[0]?.value,
+          organization: contact.organizations?.[0]?.name,
+          surnameHints: hints,
+        });
+      }
+    });
+
+    return {
+      contacts: contactsWithGenericNames,
+      totalContacts: contacts.length,
+      contactsWithGenericNames: contactsWithGenericNames.length,
+    };
+  }
+
+  async analyzeImportedContacts(options: {
+    pageSize?: number;
+  }): Promise<{
+    contacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      issueType: string;
+      confidence: number;
+    }>;
+    totalContacts: number;
+    importedContacts: number;
+  }> {
+    await this.initialize();
+
+    const { pageSize = 100 } = options;
+
+    const contacts = await this.listContacts({ pageSize });
+
+    const importedContacts: Array<{
+      resourceName: string;
+      displayName: string;
+      email?: string;
+      phone?: string;
+      organization?: string;
+      issueType: string;
+      confidence: number;
+    }> = [];
+
+    contacts.forEach((contact) => {
+      const name = this.getFullName(contact) || "";
+      const email = contact.emailAddresses?.[0]?.value || "";
+      const displayName = contact.names?.[0]?.displayName || "Unknown";
+
+      let issueType = "";
+      let confidence = 0;
+
+      // Check for auto-generated patterns
+      if (name.toLowerCase().startsWith("contact")) {
+        issueType = "Auto-generated 'Contact' name";
+        confidence = 95;
+      } else if (/^imported_|^sync_/.test(name.toLowerCase())) {
+        issueType = "Auto-import identifier";
+        confidence = 90;
+      } else if (/^test_/i.test(name)) {
+        issueType = "Test contact";
+        confidence = 85;
+      } else if (
+        name.toLowerCase().match(/noreply|donotreply|mailer|notification/i)
+      ) {
+        issueType = "System-generated contact";
+        confidence = 80;
+      } else if (
+        email &&
+        email.match(/^[a-z0-9]+\+[a-z0-9]+@/i)
+      ) {
+        issueType = "Email alias (potential import artifact)";
+        confidence = 60;
+      } else if (!contact.phoneNumbers && !contact.organizations) {
+        issueType = "Minimal data (email-only)";
+        confidence = 40;
+      }
+
+      if (issueType && confidence > 0) {
+        importedContacts.push({
+          resourceName: contact.resourceName || "",
+          displayName,
+          email: contact.emailAddresses?.[0]?.value,
+          phone: contact.phoneNumbers?.[0]?.value,
+          organization: contact.organizations?.[0]?.name,
+          issueType,
+          confidence,
+        });
+      }
+    });
+
+    // Sort by confidence descending
+    importedContacts.sort((a, b) => b.confidence - a.confidence);
+
+    return {
+      contacts: importedContacts,
+      totalContacts: contacts.length,
+      importedContacts: importedContacts.length,
+    };
+  }
 }

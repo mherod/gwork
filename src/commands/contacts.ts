@@ -1201,11 +1201,72 @@ async function findDuplicates(args: string[]) {
 async function findMissingNames(args: string[]) {
   const spinner = ora("Finding contacts with missing names...").start();
   try {
-    spinner.succeed("Missing names feature coming soon");
-    console.log(chalk.yellow("This feature will be implemented in the next phase"));
+    const options: { maxResults: number; format: string } = {
+      maxResults: 100,
+      format: "table",
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "-n" || arg === "--max-results") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      } else if (arg === "-f" || arg === "--format") {
+        const value = args[++i];
+        if (value) options.format = value;
+      }
+    }
+
+    const result = await contactsService.findContactsWithMissingNames({
+      pageSize: options.maxResults,
+    });
+
+    spinner.succeed(
+      `Found ${result.contactsWithIssues} contact(s) with missing names`
+    );
+
+    if (result.contactsWithIssues === 0) {
+      console.log(
+        chalk.green("\n🎉 All contacts have proper names!")
+      );
+      process.exit(0);
+    }
+
+    if (options.format === "json") {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(chalk.bold("\nContacts with Missing Names:"));
+      console.log("─".repeat(100));
+
+      result.contacts.forEach((contact, index) => {
+        console.log(`\n${index + 1}. ${chalk.cyan(contact.displayName)}`);
+        console.log(`   ${chalk.gray("Resource:")} ${contact.resourceName}`);
+        console.log(`   ${chalk.gray("Email:")} ${contact.email || "N/A"}`);
+        console.log(`   ${chalk.gray("Phone:")} ${contact.phone || "N/A"}`);
+        console.log(`   ${chalk.red("Issue:")} ${contact.issueType}`);
+
+        if (contact.surnameHints.length > 0) {
+          console.log(`   ${chalk.yellow("Surname Hints:")}`);
+          contact.surnameHints.forEach((hint) => {
+            console.log(`     • ${hint}`);
+          });
+        }
+      });
+
+      console.log(
+        chalk.yellow(
+          "\n💡 Use the update command to fix these names with proper first/last names"
+        )
+      );
+    }
+
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find missing names");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
     process.exit(1);
   }
 }
@@ -1213,11 +1274,72 @@ async function findMissingNames(args: string[]) {
 async function analyzeGenericNames(args: string[]) {
   const spinner = ora("Analyzing contacts with generic names...").start();
   try {
-    spinner.succeed("Generic names analysis coming soon");
-    console.log(chalk.yellow("This feature will be implemented in the next phase"));
+    const options: { maxResults: number; format: string } = {
+      maxResults: 100,
+      format: "table",
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "-n" || arg === "--max-results") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      } else if (arg === "-f" || arg === "--format") {
+        const value = args[++i];
+        if (value) options.format = value;
+      }
+    }
+
+    const result = await contactsService.findContactsWithGenericNames({
+      pageSize: options.maxResults,
+    });
+
+    spinner.succeed(
+      `Found ${result.contactsWithGenericNames} contact(s) with generic names`
+    );
+
+    if (result.contactsWithGenericNames === 0) {
+      console.log(
+        chalk.green("\n🎉 No contacts with generic names found!")
+      );
+      process.exit(0);
+    }
+
+    if (options.format === "json") {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(chalk.bold("\nContacts with Generic Surnames:"));
+      console.log("─".repeat(100));
+
+      result.contacts.forEach((contact, index) => {
+        console.log(`\n${index + 1}. ${chalk.cyan(contact.displayName)}`);
+        console.log(`   ${chalk.gray("Resource:")} ${contact.resourceName}`);
+        console.log(`   ${chalk.gray("Email:")} ${contact.email || "N/A"}`);
+        console.log(`   ${chalk.gray("Phone:")} ${contact.phone || "N/A"}`);
+        console.log(`   ${chalk.gray("Organization:")} ${contact.organization || "N/A"}`);
+
+        if (contact.surnameHints.length > 0) {
+          console.log(`   ${chalk.yellow("Surname Suggestions:")}`);
+          contact.surnameHints.forEach((hint) => {
+            console.log(`     • ${hint}`);
+          });
+        }
+      });
+
+      console.log(
+        chalk.yellow(
+          "\n💡 Use the update command to fix these names with better surnames"
+        )
+      );
+    }
+
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze generic names");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
     process.exit(1);
   }
 }
@@ -1225,11 +1347,82 @@ async function analyzeGenericNames(args: string[]) {
 async function analyzeImportedContacts(args: string[]) {
   const spinner = ora("Analyzing imported contacts...").start();
   try {
-    spinner.succeed("Imported contacts analysis coming soon");
-    console.log(chalk.yellow("This feature will be implemented in the next phase"));
+    const options: { maxResults: number; format: string } = {
+      maxResults: 100,
+      format: "table",
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "-n" || arg === "--max-results") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      } else if (arg === "-f" || arg === "--format") {
+        const value = args[++i];
+        if (value) options.format = value;
+      }
+    }
+
+    const result = await contactsService.analyzeImportedContacts({
+      pageSize: options.maxResults,
+    });
+
+    spinner.succeed(
+      `Found ${result.importedContacts} potential imported contact(s)`
+    );
+
+    if (result.importedContacts === 0) {
+      console.log(
+        chalk.green("\n🎉 No problematic imported contacts found!")
+      );
+      process.exit(0);
+    }
+
+    if (options.format === "json") {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(chalk.bold("\nImported Contacts Analysis:"));
+      console.log("─".repeat(100));
+
+      // Group by issue type
+      const groupedContacts: Record<string, typeof result.contacts> = {};
+      result.contacts.forEach((contact) => {
+        if (!groupedContacts[contact.issueType]) {
+          groupedContacts[contact.issueType] = [];
+        }
+        groupedContacts[contact.issueType].push(contact);
+      });
+
+      Object.keys(groupedContacts).forEach((issueType) => {
+        console.log(
+          chalk.yellow(
+            `\n${issueType} (${groupedContacts[issueType].length} contacts):`
+          )
+        );
+        groupedContacts[issueType].forEach((contact, index) => {
+          const confidence = `${contact.confidence}%`;
+          console.log(
+            `  ${(index + 1).toString().padEnd(3)} ${chalk.cyan(contact.displayName.padEnd(30))} ${chalk.gray(`[${confidence}]`)}`
+          );
+          console.log(`      ${chalk.gray("Email:")} ${contact.email || "N/A"}`);
+          console.log(`      ${chalk.gray("Resource:")} ${contact.resourceName}`);
+        });
+      });
+
+      console.log(
+        chalk.yellow(
+          "\n💡 Consider cleaning up these contacts or organizing them into appropriate groups"
+        )
+      );
+    }
+
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze imported contacts");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
     process.exit(1);
   }
 }
