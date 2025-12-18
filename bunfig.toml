@@ -1,0 +1,26 @@
+# Bun configuration for gwork CLI
+
+[build]
+target = "node"
+minify = true
+external = ["better-sqlite3"]
+
+# Test configuration
+[test]
+# Enable coverage collection
+coverage = true
+
+# Set coverage threshold - fail if below this percentage
+coverageThreshold = 70
+
+# Coverage directory for reports
+coverageDirectory = "./coverage"
+
+# Test timeout (milliseconds)
+timeout = 10000
+
+# Preload setup file before running tests
+preload = ["./tests/setup.ts"]
+
+# Test root directory
+root = "./tests"
