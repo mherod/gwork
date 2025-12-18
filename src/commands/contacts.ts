@@ -145,6 +145,17 @@ export async function handleContactsCommand(
     case "duplicates":
       await findDuplicates(args);
       break;
+    case "merge":
+      if (args.length < 2) {
+        console.error("Error: At least two resource names are required");
+        console.error("Usage: gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
+        process.exit(1);
+      }
+      await mergeContacts(args[0], args.slice(1, -1), args.slice(-1));
+      break;
+    case "auto-merge":
+      await autoMergeContacts(args);
+      break;
     case "find-missing-names":
       await findMissingNames(args);
       break;
@@ -913,14 +924,276 @@ async function getStats(args: string[]) {
   }
 }
 
+async function mergeContacts(targetResourceName: string, sourceResourceNames: string[], confirmArgs: string[]) {
+  const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
+
+  if (!confirm) {
+    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
+    process.exit(1);
+  }
+
+  const spinner = ora("Merging contacts...").start();
+  try {
+    const result = await contactsService.mergeContacts(
+      sourceResourceNames,
+      targetResourceName,
+      { deleteAfterMerge: true }
+    );
+
+    spinner.succeed("Contacts merged successfully");
+
+    console.log(chalk.bold("\nMerge Results:"));
+    console.log("─".repeat(80));
+    const mergedName = result.mergedContact.names?.[0]?.displayName || "No name";
+    console.log(`${chalk.cyan("Target Contact:")} ${mergedName}`);
+    console.log(`${chalk.cyan("Resource Name:")} ${result.mergedContact.resourceName}`);
+    console.log(`${chalk.cyan("Source Contacts:")} ${result.sourceContacts.length}`);
+
+    if (result.deletedContacts.length > 0) {
+      console.log(`${chalk.cyan("Deleted Contacts:")} ${result.deletedContacts.length}`);
+    }
+
+    console.log(chalk.bold("\nMerged Contact Details:"));
+    console.log(`${chalk.cyan("Emails:")} ${result.mergedContact.emailAddresses?.length || 0}`);
+    console.log(`${chalk.cyan("Phones:")} ${result.mergedContact.phoneNumbers?.length || 0}`);
+    console.log(`${chalk.cyan("Addresses:")} ${result.mergedContact.addresses?.length || 0}`);
+
+    process.exit(0);
+  } catch (error: unknown) {
+    spinner.fail("Failed to merge contacts");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
+    process.exit(1);
+  }
+}
+
+async function autoMergeContacts(args: string[]) {
+  const dryRun = !args.includes("--confirm");
+  const confirm = args.includes("--confirm");
+
+  if (!confirm && !dryRun) {
+    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
+    process.exit(1);
+  }
+
+  const spinner = ora("Analyzing contacts for auto-merge...").start();
+  try {
+    const options: {
+      criteria: string[];
+      threshold: number;
+      maxResults: number;
+    } = {
+      criteria: ["email"],
+      threshold: 95,
+      maxResults: 1000,
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "--criteria" || arg === "-c") {
+        const value = args[++i];
+        if (value) options.criteria = value.split(",").map((c) => c.trim());
+      } else if (arg === "--threshold" || arg === "-t") {
+        const value = args[++i];
+        if (value) options.threshold = parseInt(value);
+      } else if (arg === "--max-results" || arg === "-n") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      }
+    }
+
+    const result = await contactsService.autoMergeDuplicates({
+      criteria: options.criteria,
+      threshold: options.threshold,
+      maxResults: options.maxResults,
+      dryRun: dryRun,
+    });
+
+    if (dryRun) {
+      spinner.succeed(
+        `Found ${result.mergeOperations} merge operations in duplicates`
+      );
+
+      console.log(chalk.bold("\nAuto-Merge Preview:"));
+      console.log("─".repeat(80));
+      console.log(`${chalk.cyan("Merge Operations:")} ${result.mergeOperations}`);
+
+      if (result.mergeOperations === 0) {
+        console.log(chalk.green("No duplicates to merge!"));
+      } else {
+        console.log(
+          chalk.yellow(
+            `\nRe-run with --confirm to execute these ${result.mergeOperations} merge operation(s)`
+          )
+        );
+      }
+    } else {
+      spinner.succeed(`Executed ${result.mergeOperations} merge operations`);
+
+      console.log(chalk.bold("\nAuto-Merge Results:"));
+      console.log("─".repeat(80));
+      console.log(`${chalk.cyan("Merge Operations:")} ${result.mergeOperations}`);
+
+      if (result.results) {
+        const successful = result.results.filter((r) => r.success).length;
+        const failed = result.results.filter((r) => !r.success).length;
+
+        console.log(`${chalk.cyan("Successful:")} ${chalk.green(successful)}`);
+        if (failed > 0) {
+          console.log(`${chalk.cyan("Failed:")} ${chalk.red(failed)}`);
+
+          console.log(chalk.bold("\nFailed Operations:"));
+          result.results
+            .filter((r) => !r.success)
+            .forEach((r, index) => {
+              console.log(`${index + 1}. ${r.target}: ${r.error || "Unknown error"}`);
+            });
+        }
+      }
+    }
+
+    process.exit(0);
+  } catch (error: unknown) {
+    spinner.fail("Failed to auto-merge contacts");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
+    process.exit(1);
+  }
+}
+
 async function findDuplicates(args: string[]) {
   const spinner = ora("Searching for duplicate contacts...").start();
   try {
-    spinner.succeed("Duplicate search feature coming soon");
-    console.log(chalk.yellow("This feature will be implemented in the next phase"));
+    const options: {
+      criteria: string[];
+      threshold: number;
+      maxResults: number;
+      format: string;
+      showDetails: boolean;
+    } = {
+      criteria: ["email", "phone", "name"],
+      threshold: 80,
+      maxResults: 1000,
+      format: "table",
+      showDetails: false,
+    };
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+
+      if (arg === "--criteria" || arg === "-c") {
+        const value = args[++i];
+        if (value) options.criteria = value.split(",").map((c) => c.trim());
+      } else if (arg === "--threshold" || arg === "-t") {
+        const value = args[++i];
+        if (value) options.threshold = parseInt(value);
+      } else if (arg === "--max-results" || arg === "-n") {
+        const value = args[++i];
+        if (value) options.maxResults = parseInt(value);
+      } else if (arg === "-f" || arg === "--format") {
+        const value = args[++i];
+        if (value) options.format = value;
+      } else if (arg === "--show-details") {
+        options.showDetails = true;
+      }
+    }
+
+    const result = await contactsService.findDuplicates({
+      criteria: options.criteria,
+      threshold: options.threshold,
+      maxResults: options.maxResults,
+    });
+
+    spinner.succeed(
+      `Found ${result.totalDuplicates} duplicate group(s) in ${result.totalContacts} contact(s)`
+    );
+
+    if (result.totalDuplicates === 0) {
+      console.log(chalk.green("\n🎉 No duplicates found! Your contacts are clean."));
+      process.exit(0);
+    }
+
+    if (options.format === "json") {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (options.showDetails) {
+      // Detailed format
+      console.log(chalk.bold("\nDuplicate Analysis:"));
+      console.log("─".repeat(80));
+      console.log(`${chalk.cyan("Total Contacts Analyzed:")} ${result.totalContacts}`);
+      console.log(`${chalk.cyan("Duplicate Groups Found:")} ${result.totalDuplicates}`);
+      console.log("");
+
+      result.duplicates.forEach((group, index) => {
+        console.log(
+          chalk.bold(
+            `\n${index + 1}. ${group.type.toUpperCase()} Duplicate Group`
+          )
+        );
+        console.log(`${chalk.cyan("Match Value:")} ${group.value}`);
+        console.log(
+          `${chalk.cyan("Confidence:")} ${group.confidence}%`
+        );
+        console.log(`${chalk.cyan("Contacts:")} ${group.contacts.length}`);
+        console.log("─".repeat(60));
+
+        group.contacts.forEach((contact, contactIndex) => {
+          const name = contact.names?.[0]?.displayName || "No name";
+          console.log(`  ${contactIndex + 1}. ${chalk.yellow(name)}`);
+          console.log(`     ${chalk.gray("Resource:")} ${contact.resourceName}`);
+          if (contact.emailAddresses?.[0]) {
+            console.log(
+              `     ${chalk.gray("Email:")} ${contact.emailAddresses[0].value}`
+            );
+          }
+          if (contact.phoneNumbers?.[0]) {
+            console.log(
+              `     ${chalk.gray("Phone:")} ${contact.phoneNumbers[0].value}`
+            );
+          }
+          if (contact.organizations?.[0]) {
+            console.log(
+              `     ${chalk.gray("Org:")} ${contact.organizations[0].name}`
+            );
+          }
+        });
+      });
+    } else {
+      // Table format
+      console.log(chalk.bold("\nDuplicate Groups:"));
+      console.log("─".repeat(100));
+      console.log(
+        `${chalk.cyan("Type".padEnd(8))} ${chalk.cyan("Match Value".padEnd(25))} ${chalk.cyan("Confidence".padEnd(10))} ${chalk.cyan("Count".padEnd(8))} ${chalk.cyan("Contacts")}`
+      );
+      console.log("─".repeat(100));
+
+      result.duplicates.forEach((group) => {
+        const type = group.type.padEnd(8);
+        const value = group.value.substring(0, 24).padEnd(25);
+        const confidence = `${group.confidence}%`.padEnd(10);
+        const count = group.contacts.length.toString().padEnd(8);
+        const names = group.contacts
+          .map((c) => c.names?.[0]?.displayName || "No name")
+          .join(", ")
+          .substring(0, 40);
+
+        console.log(
+          `${chalk.yellow(type)} ${chalk.white(value)} ${chalk.green(confidence)} ${chalk.blue(count)} ${chalk.gray(names)}`
+        );
+      });
+
+      console.log(
+        `\n${chalk.yellow("💡 Use --show-details to see full contact information for each group")}`
+      );
+    }
+
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to search for duplicates");
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(chalk.red("Error:"), message);
     process.exit(1);
   }
 }

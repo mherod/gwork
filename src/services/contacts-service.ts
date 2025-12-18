@@ -678,4 +678,406 @@ export class ContactsService {
       throw error;
     }
   }
+
+  // ============= DUPLICATE DETECTION =============
+
+  private levenshteinDistance(str1: string, str2: string): number {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const matrix: number[][] = [];
+
+    for (let i = 0; i <= len2; i++) {
+      matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= len1; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= len2; i++) {
+      for (let j = 1; j <= len1; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+
+    return matrix[len2][len1];
+  }
+
+  private normalizeName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s]/g, "");
+  }
+
+  private calculateNameSimilarity(name1: string, name2: string): number {
+    const normalized1 = this.normalizeName(name1);
+    const normalized2 = this.normalizeName(name2);
+
+    if (normalized1 === normalized2) {
+      return 100;
+    }
+
+    const maxLen = Math.max(normalized1.length, normalized2.length);
+    if (maxLen === 0) return 0;
+
+    const distance = this.levenshteinDistance(normalized1, normalized2);
+    const similarity = ((maxLen - distance) / maxLen) * 100;
+
+    return Math.round(similarity);
+  }
+
+  private getContactEmail(contact: Person): string | null {
+    return contact.emailAddresses?.[0]?.value?.toLowerCase() || null;
+  }
+
+  private getContactPhone(contact: Person): string | null {
+    return contact.phoneNumbers?.[0]?.value?.replace(/\D/g, "") || null;
+  }
+
+  private getContactName(contact: Person): string | null {
+    return contact.names?.[0]?.displayName || null;
+  }
+
+  async findDuplicates(options: {
+    criteria?: string[];
+    threshold?: number;
+    maxResults?: number;
+  }): Promise<{
+    duplicates: Array<{
+      type: string;
+      value: string;
+      confidence: number;
+      contacts: Person[];
+    }>;
+    totalDuplicates: number;
+    totalContacts: number;
+  }> {
+    await this.initialize();
+
+    const {
+      criteria = ["email", "phone", "name"],
+      threshold = 80,
+      maxResults = 1000,
+    } = options;
+
+    // Fetch contacts
+    const contacts = await this.listContacts({ pageSize: maxResults });
+
+    if (contacts.length === 0) {
+      return {
+        duplicates: [],
+        totalDuplicates: 0,
+        totalContacts: 0,
+      };
+    }
+
+    const duplicateGroups: Array<{
+      type: string;
+      value: string;
+      confidence: number;
+      contacts: Person[];
+    }> = [];
+
+    const processedPairs = new Set<string>();
+
+    // Phase 1: Exact email matches (100% confidence)
+    if (criteria.includes("email")) {
+      const emailMap = new Map<string, Person[]>();
+
+      contacts.forEach((contact) => {
+        const email = this.getContactEmail(contact);
+        if (email) {
+          if (!emailMap.has(email)) {
+            emailMap.set(email, []);
+          }
+          emailMap.get(email)!.push(contact);
+        }
+      });
+
+      emailMap.forEach((emailContacts, email) => {
+        if (emailContacts.length > 1) {
+          const key = emailContacts.map((c) => c.resourceName).sort().join("|");
+          if (!processedPairs.has(key)) {
+            duplicateGroups.push({
+              type: "email",
+              value: email,
+              confidence: 100,
+              contacts: emailContacts,
+            });
+            processedPairs.add(key);
+          }
+        }
+      });
+    }
+
+    // Phase 2: Exact phone matches (100% confidence)
+    if (criteria.includes("phone")) {
+      const phoneMap = new Map<string, Person[]>();
+
+      contacts.forEach((contact) => {
+        const phone = this.getContactPhone(contact);
+        if (phone && phone.length >= 7) {
+          if (!phoneMap.has(phone)) {
+            phoneMap.set(phone, []);
+          }
+          phoneMap.get(phone)!.push(contact);
+        }
+      });
+
+      phoneMap.forEach((phoneContacts, phone) => {
+        if (phoneContacts.length > 1) {
+          const key = phoneContacts.map((c) => c.resourceName).sort().join("|");
+          if (!processedPairs.has(key)) {
+            duplicateGroups.push({
+              type: "phone",
+              value: phone,
+              confidence: 100,
+              contacts: phoneContacts,
+            });
+            processedPairs.add(key);
+          }
+        }
+      });
+    }
+
+    // Phase 3: Fuzzy name matching
+    if (criteria.includes("name")) {
+      const nameGroups = new Map<number, Person[][]>();
+
+      for (let i = 0; i < contacts.length; i++) {
+        for (let j = i + 1; j < contacts.length; j++) {
+          const contact1 = contacts[i];
+          const contact2 = contacts[j];
+
+          const key = [contact1.resourceName, contact2.resourceName]
+            .sort()
+            .join("|");
+          if (processedPairs.has(key)) {
+            continue;
+          }
+
+          const name1 = this.getContactName(contact1);
+          const name2 = this.getContactName(contact2);
+
+          if (name1 && name2) {
+            const similarity = this.calculateNameSimilarity(name1, name2);
+
+            if (similarity >= threshold) {
+              const group = [contact1, contact2];
+              const confidence = similarity;
+
+              duplicateGroups.push({
+                type: "name",
+                value: name1,
+                confidence: Math.round(confidence),
+                contacts: group,
+              });
+              processedPairs.add(key);
+            }
+          }
+        }
+      }
+    }
+
+    // Sort by confidence (descending)
+    duplicateGroups.sort((a, b) => b.confidence - a.confidence);
+
+    return {
+      duplicates: duplicateGroups,
+      totalDuplicates: duplicateGroups.length,
+      totalContacts: contacts.length,
+    };
+  }
+
+  async mergeContacts(
+    sourceResourceNames: string[],
+    targetResourceName: string,
+    options: { deleteAfterMerge?: boolean } = {}
+  ): Promise<{
+    mergedContact: Person;
+    sourceContacts: Person[];
+    deletedContacts: string[];
+  }> {
+    await this.initialize();
+
+    const targetContact = await this.getContact(targetResourceName);
+    const sourceContacts = await Promise.all(
+      sourceResourceNames.map((rn) => this.getContact(rn))
+    );
+
+    // Merge contact data
+    const mergedData: any = { ...targetContact };
+
+    // Merge emails
+    const emails = new Set<string>();
+    if (targetContact.emailAddresses) {
+      targetContact.emailAddresses.forEach((e) => {
+        if (e.value) emails.add(e.value);
+      });
+    }
+    sourceContacts.forEach((c) => {
+      c.emailAddresses?.forEach((e) => {
+        if (e.value) emails.add(e.value);
+      });
+    });
+
+    if (emails.size > 0) {
+      mergedData.emailAddresses = Array.from(emails).map((email, idx) => ({
+        value: email,
+        metadata: { primary: idx === 0 },
+      }));
+    }
+
+    // Merge phones
+    const phones = new Set<string>();
+    if (targetContact.phoneNumbers) {
+      targetContact.phoneNumbers.forEach((p) => {
+        if (p.value) phones.add(p.value);
+      });
+    }
+    sourceContacts.forEach((c) => {
+      c.phoneNumbers?.forEach((p) => {
+        if (p.value) phones.add(p.value);
+      });
+    });
+
+    if (phones.size > 0) {
+      mergedData.phoneNumbers = Array.from(phones).map((phone, idx) => ({
+        value: phone,
+        metadata: { primary: idx === 0 },
+      }));
+    }
+
+    // Merge addresses
+    const addresses = new Set<string>();
+    if (targetContact.addresses) {
+      targetContact.addresses.forEach((a) => {
+        if (a.formattedValue) addresses.add(a.formattedValue);
+      });
+    }
+    sourceContacts.forEach((c) => {
+      c.addresses?.forEach((a) => {
+        if (a.formattedValue) addresses.add(a.formattedValue);
+      });
+    });
+
+    if (addresses.size > 0) {
+      mergedData.addresses = Array.from(addresses).map((addr, idx) => ({
+        formattedValue: addr,
+        metadata: { primary: idx === 0 },
+      }));
+    }
+
+    // Update target contact with merged data
+    const updated = await this.updateContact(targetResourceName, mergedData);
+
+    // Delete source contacts
+    const deletedContacts: string[] = [];
+    for (const sourceContact of sourceContacts) {
+      try {
+        if (sourceContact.resourceName) {
+          await this.deleteContact(sourceContact.resourceName);
+          deletedContacts.push(sourceContact.resourceName);
+        }
+      } catch (error) {
+        // Continue even if deletion fails
+      }
+    }
+
+    return {
+      mergedContact: updated,
+      sourceContacts,
+      deletedContacts,
+    };
+  }
+
+  async autoMergeDuplicates(options: {
+    criteria?: string[];
+    threshold?: number;
+    maxResults?: number;
+    dryRun?: boolean;
+  }): Promise<{
+    mergeOperations: number;
+    results?: Array<{
+      target: string;
+      sources: string[];
+      success: boolean;
+      error?: string;
+    }>;
+  }> {
+    const {
+      criteria = ["email"],
+      threshold = 95,
+      maxResults = 1000,
+      dryRun = false,
+    } = options;
+
+    const duplicates = await this.findDuplicates({
+      criteria,
+      threshold,
+      maxResults,
+    });
+
+    const results: Array<{
+      target: string;
+      sources: string[];
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    let mergeCount = 0;
+
+    for (const duplicate of duplicates.duplicates) {
+      if (duplicate.contacts.length < 2) continue;
+
+      const target = duplicate.contacts[0];
+      const sources = duplicate.contacts.slice(1);
+
+      if (!target.resourceName) continue;
+
+      const sourceNames = sources
+        .map((c) => c.resourceName)
+        .filter((rn) => rn) as string[];
+
+      if (sourceNames.length === 0) continue;
+
+      if (!dryRun) {
+        try {
+          await this.mergeContacts(sourceNames, target.resourceName, {
+            deleteAfterMerge: true,
+          });
+          results.push({
+            target: target.resourceName,
+            sources: sourceNames,
+            success: true,
+          });
+          mergeCount++;
+        } catch (error) {
+          results.push({
+            target: target.resourceName,
+            sources: sourceNames,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      } else {
+        mergeCount++;
+      }
+    }
+
+    return {
+      mergeOperations: mergeCount,
+      results: dryRun ? undefined : results,
+    };
+  }
 }
