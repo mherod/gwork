@@ -228,6 +228,150 @@
 - [x] `star` - Star message (add STARRED)
 - [x] `unstar` - Unstar message (remove STARRED)
 
+### Contacts - All Commands (30+ commands)
+
+#### Basic Contact Operations
+- [x] `list` - List all contacts
+  - Pagination support (--page-size, -n)
+  - Sort options (--sort: LAST_NAME_ASCENDING, FIRST_NAME_ASCENDING)
+  - Output formats (--format: table, json, list, detailed)
+
+- [x] `get` - Get contact details
+  - Complete contact information
+  - All phone numbers, emails, addresses
+  - Organization and job title
+  - Full person details
+
+- [x] `search` - Search contacts
+  - Query-based search
+  - Name, email, organization filtering
+  - Configurable page size and output format
+
+- [x] `find-email` - Find contact by email
+  - Fast lookup by email address
+  - Returns matching contact
+
+- [x] `find-name` - Find contact by name
+  - Query-based name search
+  - Partial name matching
+
+- [x] `create` - Create new contact
+  - Required: --first-name, --email (one of them)
+  - Optional: --last-name, --nickname, --phone, --organization, --job-title, --address, --biography
+  - Requires --confirm flag
+
+- [x] `update` - Update existing contact
+  - Update any contact field
+  - ResourceName required for identification
+  - Requires --confirm flag
+
+- [x] `delete` - Delete contact
+  - Permanent deletion
+  - Requires --confirm flag for safety
+
+#### Group Management
+- [x] `groups` - List all contact groups
+  - Shows group names and member counts
+  - System groups identified
+
+- [x] `group-contacts` - List contacts in group
+  - View all members of a specific group
+  - Configurable output format
+
+- [x] `create-group` - Create new contact group
+  - Requires group name
+  - Requires --confirm flag
+
+- [x] `delete-group` - Delete contact group
+  - Remove entire group
+  - Requires --confirm flag
+
+- [x] `add-to-group` - Add contacts to group
+  - Bulk add multiple contacts to a group
+  - Requires --confirm flag
+
+- [x] `remove-from-group` - Remove contacts from group
+  - Bulk remove contacts from a group
+  - Requires --confirm flag
+
+#### Batch Operations
+- [x] `batch-create` - Create multiple contacts
+  - From JSON file (--file <path>) or stdin
+  - Dry-run mode (--dry-run) for preview
+  - Requires --confirm for actual creation
+  - Shows summary of created contacts
+
+- [x] `batch-delete` - Delete multiple contacts
+  - Delete multiple contacts by resourceName
+  - Dry-run mode (--dry-run) for preview
+  - Requires --confirm flag
+  - Tracks successful and failed deletions
+
+#### Account Information
+- [x] `profile` - Get user profile
+  - Display authenticated user's profile information
+  - Email, display name, etag
+
+- [x] `stats` - Show contact statistics
+  - Total contact count
+  - Contact group count
+  - Breakdown by categories
+
+#### Advanced Operations - Phase 2: Duplicate Detection & Merge
+- [x] `duplicates` - Find duplicate contacts
+  - Multi-criteria detection: email, phone, name
+  - Configurable threshold (--threshold: 0-100)
+  - Configurable search criteria (--criteria)
+  - Max results control (--max-results)
+  - Output formats: table (default), json, detailed
+  - Shows: duplicate groups, reasons for match, confidence scores
+
+- [x] `merge` - Merge two contacts
+  - Consolidate two duplicate contacts
+  - Merge strategies: keep_source, keep_target, merge_all
+  - Field consolidation (non-empty field selection)
+  - Optional source deletion (--delete-source)
+  - Dry-run mode (--dry-run) for preview
+  - Requires --confirm flag
+
+- [x] `auto-merge` - Automatically merge all duplicates
+  - Find and merge all duplicate groups
+  - Merge strategies available
+  - Dry-run mode (--dry-run) for preview
+  - Progress tracking
+  - Requires --confirm flag
+
+#### Advanced Operations - Phase 3: Data Quality Analysis
+- [x] `find-missing-names` - Find contacts with missing names
+  - Identifies contacts without first or last names
+  - Shows contact ID and available information
+  - Helps identify incomplete contact entries
+
+- [x] `analyze-generic-names` - Find contacts with generic names
+  - Detects generic names: "Friend", "Contact", "User", etc.
+  - Shows suspicious contact entries
+  - Helps identify data quality issues
+
+- [x] `analyze-imported` - Analyze imported contacts
+  - Finds likely imported contacts based on patterns
+  - Detects imported Gmail/Hotmail addresses
+  - Identifies automated naming patterns
+  - Helps identify stale/auto-generated contacts
+
+#### Advanced Operations - Phase 4: Marketing Contact Detection
+- [x] `detect-marketing` - Find and remove marketing contacts
+  - Multi-factor scoring system:
+    - Email analysis: 60% weight
+    - Name analysis: 40% weight
+  - Email patterns: 28+ prefixes (noreply, info, support, sales, marketing, etc.)
+  - Domain detection: 20+ known marketing services
+  - Name patterns: 21+ marketing-related names
+  - Configurable threshold (--threshold, default: 30%)
+  - Dry-run mode (--dry-run) for preview
+  - Optional auto-deletion (--delete)
+  - Requires --confirm flag for deletion
+  - Detailed reporting with scoring breakdown
+
 ## Summary
 
 ### Total Implementation Status
@@ -236,11 +380,14 @@
   - 13 Advanced commands
 - ✅ **Gmail Commands**: 30/30 (100% complete)
   - All mail operations fully functional
+- ✅ **Contacts Commands**: 30+/30+ (100% complete)
+  - 20 Core commands
+  - 10+ Advanced commands
 
 ### Technologies Used
 - **Runtime**: Bun
 - **Language**: TypeScript
-- **APIs**: Google Calendar API v3, Gmail API v1
+- **APIs**: Google Calendar API v3, Gmail API v1, People API v1
 - **Authentication**: OAuth2 with @google-cloud/local-auth
 - **Dependencies**:
   - chalk - Colored terminal output
@@ -251,27 +398,29 @@
   - @google-cloud/local-auth - OAuth2 authentication
 
 ### Code Architecture
-- **Services Layer**: CalendarService, MailService
-  - OAuth2 token caching (~/.calendar_token.json, ~/.gmail_token.json)
+- **Services Layer**: CalendarService, MailService, ContactsService
+  - OAuth2 token caching (~/.calendar_token.json, ~/.gmail_token.json, ~/.gwork_tokens.db)
   - Lazy initialization
   - Comprehensive error handling
-- **Commands Layer**: cal.ts, mail.ts
+  - Multi-account support
+- **Commands Layer**: cal.ts, mail.ts, contacts.ts
   - Manual argument parsing (no external CLI framework)
   - Consistent UX with spinners and chalk
   - Process.exit() for clean exits
-- **Utilities**: format.ts
+- **Utilities**: format.ts, args.ts
   - Smart date formatting (today, tomorrow, relative times)
   - Date range parsing (today, this-week, next-month, etc.)
+  - Account flag parsing for multi-account support
 
 ### Authentication Setup
-Both Calendar and Gmail require OAuth2 credentials:
+Calendar, Gmail, and Contacts require OAuth2 credentials:
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create/select project
-3. Enable Google Calendar API and Gmail API
+3. Enable Google Calendar API, Gmail API, and People API
 4. Create OAuth2 credentials (Desktop app)
 5. Download as `~/.credentials.json`
 6. Run any command to authenticate (opens browser)
-7. Token saved for future use
+7. Tokens saved for future use (multi-account support via SQLite database)
 
 ### Future Enhancements
 All planned features are now implemented. Potential future additions:
