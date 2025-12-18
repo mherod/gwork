@@ -1,6 +1,6 @@
 # gwork
 
-Swiss Army knife for Google Workspace - A CLI tool for Gmail, Google Calendar, and more.
+Swiss Army knife for Google Workspace - A CLI tool for Gmail, Google Calendar, Contacts, and more.
 
 ## Installation
 
@@ -36,6 +36,7 @@ bun run build
 gwork --help
 gwork mail --help
 gwork cal --help
+gwork contacts --help
 ```
 
 ## Usage
@@ -46,6 +47,7 @@ gwork <command> [options]
 Commands:
   mail           Gmail operations
   cal            Google Calendar operations
+  contacts       Google Contacts operations
 
 Options:
   -h, --help     Show help message
@@ -54,20 +56,21 @@ Options:
 Examples:
   gwork mail --help
   gwork cal --help
+  gwork contacts --help
 ```
 
 ## Setup
 
 ### Google API Credentials
 
-To use calendar and Gmail features, you need OAuth2 credentials from Google Cloud Console:
+To use calendar, Gmail, and Contacts features, you need OAuth2 credentials from Google Cloud Console:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the **Google Calendar API** and **Gmail API**
+3. Enable the **Google Calendar API**, **Gmail API**, and **People API**
 4. Create OAuth2 credentials (Desktop app type)
 5. Download credentials and save as `~/.credentials.json`
-6. Run any `gwork cal` or `gwork mail` command to authenticate
+6. Run any `gwork cal`, `gwork mail`, or `gwork contacts` command to authenticate
 
 **On first run**, the CLI will display a friendly setup guide if credentials are missing, walking you through the process step-by-step.
 
@@ -261,6 +264,78 @@ gwork cal recurrence --text "every weekday"
 gwork cal date --format "2025-12-20" --relative     # Show relative time
 gwork cal date --parse "tomorrow" --iso             # Convert to ISO
 gwork cal date --add 7 --days                       # Add 7 days to now
+```
+
+### Contacts (Google Contacts) - 30+ Commands
+
+**List & Search:**
+```bash
+gwork contacts list                           # List all contacts
+gwork contacts list -n 50                     # List 50 contacts
+gwork contacts search "john"                  # Search by name
+gwork contacts find-email "john@example.com"  # Find by email
+gwork contacts get <resourceName>             # Get contact details
+```
+
+**Create & Update:**
+```bash
+# Create contact
+gwork contacts create --first-name John --last-name Doe \
+  --email john@example.com --phone "+1-555-1234" --confirm
+
+# Update contact
+gwork contacts update <resourceName> --email newemail@example.com --confirm
+
+# Delete contact
+gwork contacts delete <resourceName> --confirm
+```
+
+**Group Management:**
+```bash
+gwork contacts groups                                # List all groups
+gwork contacts create-group "Friends" --confirm     # Create group
+gwork contacts group-contacts <groupResourceName>   # List group members
+gwork contacts add-to-group <group> <contact1> <contact2> --confirm
+gwork contacts remove-from-group <group> <contact> --confirm
+```
+
+**Batch Operations:**
+```bash
+# Create multiple contacts from JSON
+gwork contacts batch-create contacts.json --confirm
+
+# Delete multiple contacts
+gwork contacts batch-delete <id1> <id2> <id3> --confirm
+```
+
+**Account & Analytics:**
+```bash
+gwork contacts profile                        # Your profile info
+gwork contacts stats                          # Contact statistics
+```
+
+**Advanced Operations - Duplicate Detection:**
+```bash
+gwork contacts duplicates                     # Find duplicate contacts
+gwork contacts duplicates --threshold 85      # More strict matching
+gwork contacts merge <contact1> <contact2> --confirm
+gwork contacts auto-merge --dry-run           # Preview before merging
+gwork contacts auto-merge --confirm           # Merge all duplicates
+```
+
+**Advanced Operations - Data Quality:**
+```bash
+gwork contacts find-missing-names             # Find incomplete entries
+gwork contacts analyze-generic-names          # Find suspicious names
+gwork contacts analyze-imported               # Find imported/stale contacts
+```
+
+**Advanced Operations - Marketing Detection:**
+```bash
+gwork contacts detect-marketing               # Find marketing contacts
+gwork contacts detect-marketing --threshold 50 # Stricter threshold
+gwork contacts detect-marketing --delete --dry-run  # Preview deletion
+gwork contacts detect-marketing --delete --confirm  # Remove marketing contacts
 ```
 
 ## Publishing
