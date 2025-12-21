@@ -13,10 +13,10 @@ export function parseAccount(args: string[]): ParsedArgs {
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--account" && i + 1 < args.length) {
-      account = args[i + 1];
+      account = args[i + 1]!;
       i++; // Skip next arg since we consumed it
     } else {
-      filteredArgs.push(args[i]);
+      filteredArgs.push(args[i]!);
     }
   }
 

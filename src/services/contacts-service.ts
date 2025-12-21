@@ -67,9 +67,7 @@ export class ContactsService {
 
         // Duck-type check: verify auth object has OAuth2Client methods
         if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
-          // @ts-expect-error - Library version conflict: googleapis-common depends on older google-auth-library version
-          auth = newAuth as AuthClient;
-          // @ts-expect-error - Same library version conflict
+          auth = newAuth as unknown as AuthClient;
           await this.saveAuth(auth);
         } else {
           throw new Error('Invalid authentication object returned from authenticate()');
@@ -88,9 +86,7 @@ export class ContactsService {
       throw new Error('Failed to initialize authentication');
     }
 
-    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.auth = auth;
-    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.people = google.people({ version: "v1", auth: this.auth });
   }
 
@@ -252,7 +248,7 @@ export class ContactsService {
         readMask: this.DEFAULT_PERSON_FIELDS,
       });
 
-      return result.data.results?.map((r) => r.person).filter(Boolean) || [];
+      return result.data.results?.map((r) => r.person).filter((p) => p !== undefined) as Person[] || [];
     } catch (error: unknown) {
       if (error instanceof Error) {
         throw new Error(`Failed to search contacts: ${error.message}`);
@@ -336,7 +332,7 @@ export class ContactsService {
     try {
       const result = await this.people.people.createContact({
         requestBody: { person },
-      });
+      } as any);
 
       if (!result.data) {
         throw new Error("No contact data returned");
@@ -409,7 +405,7 @@ export class ContactsService {
         resourceName: fullResourceName,
         requestBody: { person },
         updatePersonFields: this.DEFAULT_PERSON_FIELDS,
-      });
+      } as any);
 
       if (!result.data) {
         throw new Error("No contact data returned");
@@ -704,24 +700,24 @@ export class ContactsService {
     }
 
     for (let j = 0; j <= len1; j++) {
-      matrix[0][j] = j;
+      matrix[0]![j] = j;
     }
 
     for (let i = 1; i <= len2; i++) {
       for (let j = 1; j <= len1; j++) {
         if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
+          matrix[i]![j] = matrix[i - 1]![j - 1]!;
         } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
+          matrix[i]![j] = Math.min(
+            matrix[i - 1]![j - 1]! + 1,
+            matrix[i]![j - 1]! + 1,
+            matrix[i - 1]![j]! + 1
           );
         }
       }
     }
 
-    return matrix[len2][len1];
+    return matrix[len2]![len1]!;
   }
 
   private normalizeName(name: string): string {
@@ -869,8 +865,8 @@ export class ContactsService {
 
       for (let i = 0; i < contacts.length; i++) {
         for (let j = i + 1; j < contacts.length; j++) {
-          const contact1 = contacts[i];
-          const contact2 = contacts[j];
+          const contact1 = contacts[i]!;
+          const contact2 = contacts[j]!;
 
           const key = [contact1.resourceName, contact2.resourceName]
             .sort()
@@ -1053,7 +1049,7 @@ export class ContactsService {
     for (const duplicate of duplicates.duplicates) {
       if (duplicate.contacts.length < 2) continue;
 
-      const target = duplicate.contacts[0];
+      const target = duplicate.contacts[0]!;
       const sources = duplicate.contacts.slice(1);
 
       if (!target.resourceName) continue;
@@ -1066,18 +1062,18 @@ export class ContactsService {
 
       if (!dryRun) {
         try {
-          await this.mergeContacts(sourceNames, target.resourceName, {
+          await this.mergeContacts(sourceNames, target.resourceName!, {
             deleteAfterMerge: true,
           });
           results.push({
-            target: target.resourceName,
+            target: target.resourceName!,
             sources: sourceNames,
             success: true,
           });
           mergeCount++;
         } catch (error) {
           results.push({
-            target: target.resourceName,
+            target: target.resourceName!,
             sources: sourceNames,
             success: false,
             error: error instanceof Error ? error.message : "Unknown error",
@@ -1135,7 +1131,7 @@ export class ContactsService {
     // Try to extract surname from email
     if (contact.emailAddresses?.[0]?.value) {
       const email = contact.emailAddresses[0].value;
-      const localPart = email.split("@")[0];
+      const localPart = email.split("@")[0]!;
       const parts = localPart.split(/[._-]/);
       if (parts.length >= 2) {
         hints.push(`From email: ${parts[parts.length - 1]}`);
@@ -1200,7 +1196,7 @@ export class ContactsService {
     // Check if name matches email pattern
     const nameMatchesEmail =
       name.toLowerCase().replace(/\s/g, "") ===
-      email.split("@")[0].toLowerCase();
+      email.split("@")[0]!.toLowerCase();
 
     return isAutoGenName || (isAutoGenEmail && hasMinimalData) || nameMatchesEmail;
   }
@@ -1261,9 +1257,9 @@ export class ContactsService {
         contactsWithIssues.push({
           resourceName: contact.resourceName || "",
           displayName,
-          email: contact.emailAddresses?.[0]?.value,
-          phone: contact.phoneNumbers?.[0]?.value,
-          organization: contact.organizations?.[0]?.name,
+          email: contact.emailAddresses?.[0]?.value ?? undefined,
+          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
+          organization: contact.organizations?.[0]?.name ?? undefined,
           issueType,
           surnameHints: hints,
         });
@@ -1317,9 +1313,9 @@ export class ContactsService {
         contactsWithGenericNames.push({
           resourceName: contact.resourceName || "",
           displayName,
-          email: contact.emailAddresses?.[0]?.value,
-          phone: contact.phoneNumbers?.[0]?.value,
-          organization: contact.organizations?.[0]?.name,
+          email: contact.emailAddresses?.[0]?.value ?? undefined,
+          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
+          organization: contact.organizations?.[0]?.name ?? undefined,
           surnameHints: hints,
         });
       }
@@ -1330,9 +1326,9 @@ export class ContactsService {
         contactsWithGenericNames.push({
           resourceName: contact.resourceName || "",
           displayName,
-          email: contact.emailAddresses?.[0]?.value,
-          phone: contact.phoneNumbers?.[0]?.value,
-          organization: contact.organizations?.[0]?.name,
+          email: contact.emailAddresses?.[0]?.value ?? undefined,
+          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
+          organization: contact.organizations?.[0]?.name ?? undefined,
           surnameHints: hints,
         });
       }
@@ -1414,9 +1410,9 @@ export class ContactsService {
         importedContacts.push({
           resourceName: contact.resourceName || "",
           displayName,
-          email: contact.emailAddresses?.[0]?.value,
-          phone: contact.phoneNumbers?.[0]?.value,
-          organization: contact.organizations?.[0]?.name,
+          email: contact.emailAddresses?.[0]?.value ?? undefined,
+          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
+          organization: contact.organizations?.[0]?.name ?? undefined,
           issueType,
           confidence,
         });
@@ -1499,7 +1495,7 @@ export class ContactsService {
       "mailblaze.com",
     ];
 
-    const localPart = email.split("@")[0].toLowerCase();
+    const localPart = email.split("@")[0]!.toLowerCase();
     const domain = email.split("@")[1]?.toLowerCase() || "";
 
     // Check for marketing prefixes
@@ -1545,7 +1541,7 @@ export class ContactsService {
 
     // Check for email aliases with marketing keywords
     if (email.includes("+")) {
-      const alias = email.split("+")[1]?.split("@")[0].toLowerCase() || "";
+      const alias = email.split("+")[1]?.split("@")[0]?.toLowerCase() || "";
       if (
         alias.includes("promo") ||
         alias.includes("news") ||
@@ -1704,7 +1700,7 @@ export class ContactsService {
         marketingContacts.push({
           resourceName: contact.resourceName || "",
           displayName: contact.names?.[0]?.displayName || "Unknown",
-          email: contact.emailAddresses?.[0]?.value,
+          email: contact.emailAddresses?.[0]?.value ?? undefined,
           detectionReasons: analysis.reasons,
           confidence: analysis.confidence,
         });

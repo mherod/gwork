@@ -53,11 +53,18 @@ export class MailService {
     if (!auth) {
       // If no saved token, authenticate and save it
       try {
-        auth = await authenticate({
+        const newAuth = await authenticate({
           scopes: this.SCOPES,
           keyfilePath: CREDENTIALS_PATH,
         });
-        await this.saveAuth(auth);
+
+        // Duck-type check: verify auth object has OAuth2Client methods
+        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
+          auth = newAuth as unknown as AuthClient;
+          await this.saveAuth(auth);
+        } else {
+          throw new Error('Invalid authentication object returned from authenticate()');
+        }
       } catch (error: unknown) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
           console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
@@ -69,7 +76,7 @@ export class MailService {
     }
 
     this.auth = auth;
-    this.gmail = google.gmail({ version: "v1", auth: this.auth });
+    this.gmail = google.gmail({ version: "v1", auth: this.auth } as any);
   }
 
   private async loadSavedAuthIfExist() {
@@ -135,9 +142,9 @@ export class MailService {
       this.tokenStore.saveToken({
         service: "gmail",
         account: this.account,
-        access_token: auth.credentials.access_token,
-        refresh_token: auth.credentials.refresh_token,
-        expiry_date: auth.credentials.expiry_date,
+        access_token: auth.credentials.access_token ?? "",
+        refresh_token: auth.credentials.refresh_token ?? "",
+        expiry_date: auth.credentials.expiry_date ?? 0,
         scopes: this.SCOPES,
       });
       console.log(`Gmail token saved (account: ${this.account})`);

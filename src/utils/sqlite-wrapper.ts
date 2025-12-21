@@ -27,7 +27,8 @@ export class Database {
 
     if (this.isBunRuntime) {
       // Bun's Database constructor
-      this.db = new SQLiteModule.Database(filename);
+      const DatabaseClass = (SQLiteModule as any).default || SQLiteModule;
+      this.db = new DatabaseClass(filename);
     } else {
       // better-sqlite3 constructor
       const BetterSQLite = SQLiteModule.default;

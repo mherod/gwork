@@ -55,9 +55,7 @@ export class CalendarService {
 
         // Duck-type check: verify auth object has OAuth2Client methods
         if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
-          // @ts-expect-error - Library version conflict: googleapis-common depends on older google-auth-library version
-          auth = newAuth as AuthClient;
-          // @ts-expect-error - Same library version conflict
+          auth = newAuth as unknown as AuthClient;
           await this.saveAuth(auth);
         } else {
           throw new Error('Invalid authentication object returned from authenticate()');
@@ -76,9 +74,7 @@ export class CalendarService {
       throw new Error('Failed to initialize authentication');
     }
 
-    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.auth = auth;
-    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.calendar = google.calendar({ version: "v3", auth: this.auth });
   }
 
@@ -272,7 +268,7 @@ export class CalendarService {
       calendarId,
       eventId,
       resource: eventData,
-    });
+    } as any);
 
     if (!result.data) {
       throw new Error("No event data returned");
@@ -398,7 +394,7 @@ export class CalendarService {
         timeMax: timeMax.toISOString(),
         items: calendarIds.map((id) => ({ id })),
       },
-    });
+    } as any);
 
     if (!result.data) {
       throw new Error("No freebusy data returned");

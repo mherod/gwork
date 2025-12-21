@@ -26,7 +26,6 @@
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
-    "noUnusedPrivateClassMembers": true,
     // exactOptionalPropertyTypes causes issues with Google API types
     // "exactOptionalPropertyTypes": true,
 
