@@ -1,13 +1,19 @@
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
-import { authenticate } from "@google-cloud/local-auth";
+/**
+ * Google Calendar API service wrapper.
+ * Provides methods for managing calendars, events, free/busy queries, and convenience date methods.
+ */
+
 import { google } from "googleapis";
-import { TokenStore } from "./token-store.ts";
-import { ensureCredentialsExist } from "../utils/setup-guide.ts";
+import { BaseService } from "./base-service.ts";
+import { handleGoogleApiError } from "./error-handler.ts";
+import { withRetry } from "./retry.ts";
+import {
+  validateResourceId,
+  validateMaxResults,
+  validateDateString,
+} from "./validators.ts";
 import type {
   CalendarClient,
-  AuthClient,
   Event,
   CalendarListEntry,
   Calendar as CalendarType,
@@ -15,146 +21,85 @@ import type {
   ListEventsOptions,
   SearchEventsOptions,
 } from "../types/google-apis.ts";
+import type { calendar_v3 } from "googleapis";
 
-export class CalendarService {
+export interface EventsResponse {
+  events: Event[];
+  nextPageToken?: string | null;
+}
+
+export class CalendarService extends BaseService {
   private calendar: CalendarClient | null = null;
-  private auth: AuthClient | null = null;
-  private readonly SCOPES: string[];
-  private tokenStore: TokenStore;
-  private account: string;
 
   constructor(account: string = "default") {
-    this.account = account;
-    this.tokenStore = TokenStore.getInstance();
-    this.SCOPES = [
-      "https://www.googleapis.com/auth/calendar.readonly",
-      "https://www.googleapis.com/auth/calendar",
-    ];
+    super(
+      "Calendar",
+      [
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar",
+      ],
+      account
+    );
   }
 
-  async initialize() {
-    if (this.calendar) return;
-
-    const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-
-    // Check if credentials file exists and show setup guide if not
-    if (!ensureCredentialsExist()) {
-      process.exit(1);
-    }
-
-    // Try to load existing token first
-    let auth = await this.loadSavedAuthIfExist();
-
-    if (!auth) {
-      // If no saved token, authenticate and save it
-      try {
-        const newAuth = await authenticate({
-          scopes: this.SCOPES,
-          keyfilePath: CREDENTIALS_PATH,
-        });
-
-        // Duck-type check: verify auth object has OAuth2Client methods
-        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
-          auth = newAuth as unknown as AuthClient;
-          await this.saveAuth(auth);
-        } else {
-          throw new Error('Invalid authentication object returned from authenticate()');
-        }
-      } catch (error: unknown) {
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-          console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
-          ensureCredentialsExist();
-          process.exit(1);
-        }
-        throw error;
-      }
-    }
-
-    if (!auth) {
-      throw new Error('Failed to initialize authentication');
-    }
-
-    this.auth = auth;
+  /**
+   * Initialize the service: authenticate and set up Calendar API client.
+   * Overrides BaseService.initialize() to initialize the calendar client.
+   *
+   * @throws {InitializationError} If credentials missing or authentication fails
+   */
+  async initialize(): Promise<void> {
+    await super.initialize();
+    this.ensureInitialized();
+    // Initialize Calendar API client
     this.calendar = google.calendar({ version: "v3", auth: this.auth });
   }
 
-  private async loadSavedAuthIfExist() {
-    try {
-      const token = this.tokenStore.getToken("calendar", this.account);
+  // ============= EVENT OPERATIONS =============
 
-      if (!token) {
-        return null;
-      }
-
-      // Check if token has the required scopes
-      const hasRequiredScopes = this.SCOPES.every((scope) =>
-        token.scopes.includes(scope)
-      );
-
-      if (!hasRequiredScopes) {
-        console.log(
-          "Token has incorrect scopes. Deleting token to re-authenticate..."
-        );
-        this.tokenStore.deleteToken("calendar", this.account);
-        return null;
-      }
-
-      // Load credentials to get client_id and client_secret
-      const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-      const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-      const credentials = JSON.parse(credentialsContent);
-      const clientConfig = credentials.installed || credentials.web;
-
-      // Create auth object with client credentials
-      const auth = new google.auth.OAuth2(
-        clientConfig.client_id,
-        clientConfig.client_secret,
-        clientConfig.redirect_uris?.[0] || "http://localhost"
-      );
-      auth.setCredentials({
-        refresh_token: token.refresh_token,
-        access_token: token.access_token,
-        expiry_date: token.expiry_date,
-      });
-
-      // Test if the token is still valid by making a simple request
-      try {
-        await auth.getAccessToken();
-        console.log(`Using saved Calendar token (account: ${this.account})`);
-        return auth;
-      } catch (error) {
-        // Token is expired or invalid, remove it
-        console.log("Saved token is invalid. Re-authenticating...");
-        this.tokenStore.deleteToken("calendar", this.account);
-        return null;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to load saved token:", message);
-      this.tokenStore.deleteToken("calendar", this.account);
-    }
-    return null;
-  }
-
-  private async saveAuth(auth: AuthClient) {
-    try {
-      this.tokenStore.saveToken({
-        service: "calendar",
-        account: this.account,
-        access_token: auth.credentials.access_token ?? "",
-        refresh_token: auth.credentials.refresh_token ?? "",
-        expiry_date: auth.credentials.expiry_date ?? 0,
-        scopes: this.SCOPES,
-      });
-      console.log(`Calendar token saved (account: ${this.account})`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to save token:", message);
-    }
-  }
-
-  async listEvents(calendarId = "primary", options: ListEventsOptions = {}): Promise<Event[]> {
+  /**
+   * Lists events from a calendar with optional filtering and pagination.
+   *
+   * @param calendarId - Calendar ID (default: "primary")
+   * @param options - Optional parameters
+   * @param options.maxResults - Maximum events to return (1-2500, default: 10)
+   * @param options.timeMin - Start time (ISO 8601, default: now)
+   * @param options.timeMax - End time (ISO 8601, optional)
+   * @param options.singleEvents - Expand recurring events (default: true)
+   * @param options.orderBy - Sort order: "startTime" (default) or "updated"
+   * @param options.q - Search query string
+   * @param options.pageToken - Token for fetching next page
+   *
+   * @returns Object with events array and pagination metadata
+   * @throws {NotFoundError} If calendar not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If parameters are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const cal = new CalendarService();
+   * await cal.initialize();
+   *
+   * // Get upcoming events
+   * const { events, nextPageToken } = await cal.listEvents("primary", {
+   *   maxResults: 25,
+   *   timeMin: new Date().toISOString()
+   * });
+   *
+   * // Fetch next page
+   * if (nextPageToken) {
+   *   const nextPage = await cal.listEvents("primary", { pageToken: nextPageToken });
+   * }
+   * ```
+   */
+  async listEvents(
+    calendarId = "primary",
+    options: ListEventsOptions = {}
+  ): Promise<EventsResponse> {
     await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
 
     const {
       maxResults = 10,
@@ -163,7 +108,19 @@ export class CalendarService {
       singleEvents = true,
       orderBy = "startTime",
       q = null,
+      pageToken = null,
     } = options;
+
+    // Validate inputs
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 2500);
+    }
+    if (timeMin) {
+      validateDateString(timeMin, "timeMin");
+    }
+    if (timeMax) {
+      validateDateString(timeMax, "timeMax");
+    }
 
     const params: {
       calendarId: string;
@@ -173,6 +130,7 @@ export class CalendarService {
       orderBy: "startTime" | "updated";
       timeMax?: string;
       q?: string;
+      pageToken?: string;
     } = {
       calendarId,
       timeMin,
@@ -183,38 +141,48 @@ export class CalendarService {
 
     if (timeMax !== null && timeMax !== undefined) params.timeMax = timeMax;
     if (q !== null && q !== undefined) params.q = q;
+    if (pageToken !== null && pageToken !== undefined) params.pageToken = pageToken;
 
     try {
-      if (!this.calendar) {
-        throw new Error("Calendar service not initialized");
-      }
-      const result = await this.calendar.events.list(params);
-      return result.data.items || [];
+      return await withRetry(
+        async () => {
+          const result = await this.calendar!.events.list(params);
+          return {
+            events: result.data.items || [],
+            nextPageToken: result.data.nextPageToken || null,
+          };
+        },
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(
-          `Calendar not found: ${calendarId}. Please check the calendar ID and ensure you have access.`
-        );
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to calendar ${calendarId}. Please check your permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list events: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list events");
     }
   }
 
+  /**
+   * Gets a single event by ID.
+   *
+   * @param calendarId - Calendar ID containing the event
+   * @param eventId - Event ID to retrieve
+   * @returns Event object with full details
+   * @throws {NotFoundError} If event or calendar not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If IDs are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const event = await cal.getEvent("primary", "abc123xyz");
+   * ```
+   */
   async getEvent(calendarId: string, eventId: string): Promise<Event> {
     await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+    validateResourceId(eventId, "eventId");
 
     try {
-      const result = await this.calendar.events.get({
+      const result = await this.calendar!.events.get({
         calendarId,
         eventId,
       });
@@ -224,129 +192,159 @@ export class CalendarService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(
-          `Event or calendar not found. Calendar: ${calendarId}, Event: ${eventId}`
-        );
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to calendar ${calendarId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get event: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get event");
     }
   }
 
+  /**
+   * Creates a new event.
+   *
+   * @param calendarId - Calendar ID to create event in
+   * @param eventData - Event properties (summary, start, end, etc.)
+   * @returns Created Event object
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If calendarId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const event = await cal.createEvent("primary", {
+   *   summary: "Team Meeting",
+   *   start: { dateTime: "2024-01-15T10:00:00Z" },
+   *   end: { dateTime: "2024-01-15T11:00:00Z" }
+   * });
+   * ```
+   */
   async createEvent(calendarId: string, eventData: Partial<Event>): Promise<Event> {
     await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    const result = await this.calendar.events.insert({
-      calendarId,
-      resource: eventData,
-    } as any);
-
-    if (!result.data) {
-      throw new Error("No event data returned");
-    }
-    return result.data;
-  }
-
-  async updateEvent(calendarId: string, eventId: string, eventData: Partial<Event>): Promise<Event> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    const result = await this.calendar.events.update({
-      calendarId,
-      eventId,
-      resource: eventData,
-    } as any);
-
-    if (!result.data) {
-      throw new Error("No event data returned");
-    }
-    return result.data;
-  }
-
-  async deleteEvent(calendarId: string, eventId: string): Promise<{ success: boolean }> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    await this.calendar.events.delete({
-      calendarId,
-      eventId,
-    });
-
-    return { success: true };
-  }
-
-  async listCalendars(): Promise<CalendarListEntry[]> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
 
     try {
-      const result = await this.calendar.calendarList.list();
-      return result.data.items || [];
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to list calendars. Please check your authentication and permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list calendars: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async getCalendar(calendarId: string): Promise<CalendarType> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    try {
-      const result = await this.calendar.calendars.get({
+      const result = await this.calendar!.events.insert({
         calendarId,
+        requestBody: eventData as calendar_v3.Schema$Event,
       });
 
       if (!result.data) {
-        throw new Error("No calendar data returned");
+        throw new Error("No event data returned");
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(
-          `Calendar not found: ${calendarId}. Please check the calendar ID.`
-        );
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to calendar ${calendarId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get calendar: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "create event");
     }
   }
 
-  async searchEvents(query: string, calendarId = "primary", options: SearchEventsOptions = {}): Promise<Event[]> {
+  /**
+   * Updates an existing event.
+   *
+   * @param calendarId - Calendar ID containing the event
+   * @param eventId - Event ID to update
+   * @param eventData - Updated event properties
+   * @returns Updated Event object
+   * @throws {NotFoundError} If event not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If IDs are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const updated = await cal.updateEvent("primary", "abc123", {
+   *   summary: "Updated Meeting Title"
+   * });
+   * ```
+   */
+  async updateEvent(
+    calendarId: string,
+    eventId: string,
+    eventData: Partial<Event>
+  ): Promise<Event> {
     await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+    validateResourceId(eventId, "eventId");
+
+    try {
+      const result = await this.calendar!.events.update({
+        calendarId,
+        eventId,
+        requestBody: eventData as calendar_v3.Schema$Event,
+      });
+
+      if (!result.data) {
+        throw new Error("No event data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "update event");
+    }
+  }
+
+  /**
+   * Deletes an event.
+   *
+   * @param calendarId - Calendar ID containing the event
+   * @param eventId - Event ID to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If event not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If IDs are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await cal.deleteEvent("primary", "abc123");
+   * ```
+   */
+  async deleteEvent(calendarId: string, eventId: string): Promise<{ success: boolean }> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+    validateResourceId(eventId, "eventId");
+
+    try {
+      await this.calendar!.events.delete({
+        calendarId,
+        eventId,
+      });
+      return { success: true };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "delete event");
+    }
+  }
+
+  /**
+   * Searches for events matching a query string.
+   *
+   * @param query - Search query (searches summary, description, etc.)
+   * @param calendarId - Calendar ID to search (default: "primary")
+   * @param options - Optional parameters
+   * @param options.maxResults - Max results to return (default: 10)
+   * @param options.timeMin - Start time (ISO 8601, default: now)
+   * @param options.timeMax - End time (ISO 8601, optional)
+   *
+   * @returns Array of matching Event objects
+   * @throws {NotFoundError} If calendar not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If parameters are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const results = await cal.searchEvents("meeting", "primary", {
+   *   maxResults: 20,
+   *   timeMin: new Date().toISOString()
+   * });
+   * ```
+   */
+  async searchEvents(
+    query: string,
+    calendarId = "primary",
+    options: SearchEventsOptions = {}
+  ): Promise<Event[]> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
 
     const {
       maxResults = 10,
@@ -354,8 +352,15 @@ export class CalendarService {
       timeMax = null,
     } = options;
 
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
+    // Validate inputs
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 2500);
+    }
+    if (timeMin) {
+      validateDateString(timeMin, "timeMin");
+    }
+    if (timeMax) {
+      validateDateString(timeMax, "timeMax");
     }
 
     const params: {
@@ -377,96 +382,69 @@ export class CalendarService {
 
     if (timeMax !== null && timeMax !== undefined) params.timeMax = timeMax;
 
-    const result = await this.calendar.events.list(params);
-    return result.data.items || [];
+    try {
+      return await withRetry(
+        async () => {
+          const result = await this.calendar!.events.list(params);
+          return result.data.items || [];
+        },
+        { maxRetries: 3 }
+      );
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "search events");
+    }
   }
 
-  async getFreeBusy(timeMin: Date, timeMax: Date, calendarIds: string[] = ["primary"]): Promise<FreeBusyResponse> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    const result = await this.calendar.freebusy.query({
-      resource: {
-        timeMin: timeMin.toISOString(),
-        timeMax: timeMax.toISOString(),
-        items: calendarIds.map((id) => ({ id })),
-      },
-    } as any);
-
-    if (!result.data) {
-      throw new Error("No freebusy data returned");
-    }
-    return result.data;
-  }
-
-  async createCalendar(calendarData: Partial<CalendarType>): Promise<CalendarType> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    const result = await this.calendar.calendars.insert({
-      resource: calendarData,
-    } as any);
-
-    if (!result.data) {
-      throw new Error("No calendar data returned");
-    }
-    return result.data;
-  }
-
-  async updateCalendar(calendarId: string, calendarData: Partial<CalendarType>): Promise<CalendarType> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    const result = await this.calendar.calendars.update({
-      calendarId,
-      resource: calendarData,
-    } as any);
-
-    if (!result.data) {
-      throw new Error("No calendar data returned");
-    }
-    return result.data;
-  }
-
-  async deleteCalendar(calendarId: string): Promise<{ success: boolean }> {
-    await this.initialize();
-
-    if (!this.calendar) {
-      throw new Error("Calendar service not initialized");
-    }
-
-    await this.calendar.calendars.delete({
-      calendarId,
-    });
-
-    return { success: true };
-  }
-
+  /**
+   * Gets events for the next N days.
+   *
+   * @param days - Number of days ahead (default: 7)
+   * @param calendarId - Calendar ID (default: "primary")
+   * @returns Array of upcoming Event objects
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * // Get next 7 days
+   * const upcoming = await cal.getUpcomingEvents(7);
+   *
+   * // Get next 30 days
+   * const month = await cal.getUpcomingEvents(30);
+   * ```
+   */
   async getUpcomingEvents(days = 7, calendarId = "primary"): Promise<Event[]> {
     await this.initialize();
+    this.ensureInitialized();
 
     const timeMin = new Date();
     const timeMax = new Date();
     timeMax.setDate(timeMax.getDate() + days);
 
-    return await this.listEvents(calendarId, {
+    const result = await this.listEvents(calendarId, {
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       maxResults: 50,
     });
+
+    return result.events;
   }
 
+  /**
+   * Gets all events for today.
+   *
+   * @param calendarId - Calendar ID (default: "primary")
+   * @returns Array of today's Event objects
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const today = await cal.getTodayEvents();
+   * console.log(`You have ${today.length} events today`);
+   * ```
+   */
   async getTodayEvents(calendarId = "primary"): Promise<Event[]> {
     await this.initialize();
+    this.ensureInitialized();
 
     const today = new Date();
     const timeMin = new Date(
@@ -480,10 +458,237 @@ export class CalendarService {
       today.getDate() + 1
     );
 
-    return await this.listEvents(calendarId, {
+    const result = await this.listEvents(calendarId, {
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       maxResults: 50,
     });
+
+    return result.events;
+  }
+
+  // ============= CALENDAR OPERATIONS =============
+
+  /**
+   * Lists all calendars the user has access to.
+   *
+   * @returns Array of CalendarListEntry objects
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const calendars = await cal.listCalendars();
+   * calendars.forEach(c => console.log(c.summary));
+   * ```
+   */
+  async listCalendars(): Promise<CalendarListEntry[]> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.calendar!.calendarList.list();
+      return result.data.items || [];
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "list calendars");
+    }
+  }
+
+  /**
+   * Gets a single calendar by ID.
+   *
+   * @param calendarId - Calendar ID to retrieve
+   * @returns Calendar object with full details
+   * @throws {NotFoundError} If calendar not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If calendarId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const calendar = await cal.getCalendar("primary");
+   * ```
+   */
+  async getCalendar(calendarId: string): Promise<CalendarType> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+
+    try {
+      const result = await this.calendar!.calendars.get({
+        calendarId,
+      });
+
+      if (!result.data) {
+        throw new Error("No calendar data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "get calendar");
+    }
+  }
+
+  /**
+   * Creates a new calendar.
+   *
+   * @param calendarData - Calendar properties (summary, description, timeZone, etc.)
+   * @returns Created Calendar object
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const calendar = await cal.createCalendar({
+   *   summary: "Work Calendar",
+   *   timeZone: "America/New_York"
+   * });
+   * ```
+   */
+  async createCalendar(calendarData: Partial<CalendarType>): Promise<CalendarType> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.calendar!.calendars.insert({
+        requestBody: calendarData as calendar_v3.Schema$Calendar,
+      });
+
+      if (!result.data) {
+        throw new Error("No calendar data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "create calendar");
+    }
+  }
+
+  /**
+   * Updates an existing calendar.
+   *
+   * @param calendarId - Calendar ID to update
+   * @param calendarData - Updated calendar properties
+   * @returns Updated Calendar object
+   * @throws {NotFoundError} If calendar not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If calendarId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const updated = await cal.updateCalendar("abc123", {
+   *   summary: "Updated Calendar Name"
+   * });
+   * ```
+   */
+  async updateCalendar(
+    calendarId: string,
+    calendarData: Partial<CalendarType>
+  ): Promise<CalendarType> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+
+    try {
+      const result = await this.calendar!.calendars.update({
+        calendarId,
+        requestBody: calendarData as calendar_v3.Schema$Calendar,
+      });
+
+      if (!result.data) {
+        throw new Error("No calendar data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "update calendar");
+    }
+  }
+
+  /**
+   * Deletes a calendar.
+   *
+   * @param calendarId - Calendar ID to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If calendar not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If calendarId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await cal.deleteCalendar("abc123");
+   * ```
+   */
+  async deleteCalendar(calendarId: string): Promise<{ success: boolean }> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(calendarId, "calendarId");
+
+    try {
+      await this.calendar!.calendars.delete({
+        calendarId,
+      });
+      return { success: true };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "delete calendar");
+    }
+  }
+
+  // ============= FREE/BUSY OPERATIONS =============
+
+  /**
+   * Queries free/busy status for one or more calendars.
+   *
+   * @param timeMin - Start time for query
+   * @param timeMax - End time for query
+   * @param calendarIds - Array of calendar IDs to check (default: ["primary"])
+   * @returns FreeBusyResponse with busy time slots
+   * @throws {ValidationError} If dates or calendar IDs are invalid
+   * @throws {PermissionDeniedError} If user lacks access to any calendar
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const timeMin = new Date("2024-01-15T09:00:00Z");
+   * const timeMax = new Date("2024-01-15T17:00:00Z");
+   * const freebusy = await cal.getFreeBusy(timeMin, timeMax, ["primary"]);
+   *
+   * // Check if a specific time slot is free
+   * const calendars = freebusy.calendars || {};
+   * const primaryBusy = calendars["primary"]?.busy || [];
+   * ```
+   */
+  async getFreeBusy(
+    timeMin: Date,
+    timeMax: Date,
+    calendarIds: string[] = ["primary"]
+  ): Promise<FreeBusyResponse> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    // Validate inputs
+    if (timeMin >= timeMax) {
+      throw new Error("timeMin must be before timeMax");
+    }
+    if (calendarIds.length === 0) {
+      throw new Error("At least one calendar ID is required");
+    }
+    calendarIds.forEach((id) => validateResourceId(id, "calendarId"));
+
+    try {
+      const result = await this.calendar!.freebusy.query({
+        requestBody: {
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          items: calendarIds.map((id) => ({ id })),
+        },
+      });
+
+      if (!result.data) {
+        throw new Error("No freebusy data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "query free/busy");
+    }
   }
 }

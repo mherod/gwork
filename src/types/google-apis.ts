@@ -40,6 +40,7 @@ export interface ListEventsOptions {
   singleEvents?: boolean;
   orderBy?: "startTime" | "updated";
   q?: string | null;
+  pageToken?: string | null;
 }
 
 export interface SearchEventsOptions {
