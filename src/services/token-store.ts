@@ -498,6 +498,62 @@ export class TokenStore {
     return requiredScopes.every(scope => token.scopes.includes(scope));
   }
 
+  /**
+   * Finds a token that matches the service, account, and has all required scopes.
+   * This is useful for finding the right token when multiple tokens exist for the same account.
+   * 
+   * **CRITICAL:** This operation uses retry logic to handle database locks.
+   * 
+   * **Behavior:**
+   * - Returns token if it exists for service/account AND has all required scopes
+   * - Returns null if no matching token found
+   * - Scopes must match exactly (all required scopes must be present)
+   * - Retries on database lock errors with exponential backoff
+   * 
+   * **Performance:**
+   * - Typical: Succeeds immediately (< 10ms)
+   * - With lock: May retry 1-5 times (1s → 2s → 4s → 8s → 10s delays)
+   * 
+   * **Use cases:**
+   * - Find token with specific scopes for an account
+   * - Verify token has required permissions before use
+   * - Multi-scope token management
+   * 
+   * @param service - Service name (e.g., "gmail", "calendar", "contacts")
+   * @param account - Account identifier (default: "default")
+   * @param requiredScopes - Array of required OAuth2 scopes
+   * @returns Token data if found with matching scopes, null otherwise
+   * @throws Error if database operation fails after all retries
+   * 
+   * @example
+   * ```typescript
+   * const store = TokenStore.getInstance();
+   * 
+   * // Find token with specific scopes
+   * const token = store.findTokenWithScopes(
+   *   "gmail",
+   *   "work@example.com",
+   *   ["https://www.googleapis.com/auth/gmail.readonly"]
+   * );
+   * 
+   * if (token) {
+   *   console.log("Found token with required scopes");
+   * }
+   * ```
+   */
+  findTokenWithScopes(
+    service: string,
+    requiredScopes: string[],
+    account: string = "default"
+  ): TokenData | null {
+    const token = this.getToken(service, account);
+    if (!token) return null;
+
+    // Check if token has all required scopes
+    const hasAllScopes = requiredScopes.every(scope => token.scopes.includes(scope));
+    return hasAllScopes ? token : null;
+  }
+
   close(): void {
     this.db.close();
   }

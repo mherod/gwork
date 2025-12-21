@@ -89,11 +89,21 @@ export abstract class BaseService {
       if (!token) return null;
 
       // Scope validation
+      // Handle case where token has empty scopes (old tokens or migration issue)
+      if (!token.scopes || token.scopes.length === 0) {
+        this.logger.info(
+          `Token has no scopes for ${this.serviceName}. Re-authenticating...`
+        );
+        this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
+        return null;
+      }
+
       const hasRequiredScopes = this.SCOPES.every((scope) => token.scopes.includes(scope));
 
       if (!hasRequiredScopes) {
+        const missingScopes = this.SCOPES.filter((scope) => !token.scopes.includes(scope));
         this.logger.info(
-          `Token has incorrect scopes for ${this.serviceName}. Re-authenticating...`
+          `Token has incorrect scopes for ${this.serviceName}. Missing: ${missingScopes.join(", ")}. Re-authenticating...`
         );
         this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
         return null;
@@ -101,8 +111,8 @@ export abstract class BaseService {
 
       // Reconstruct auth client from stored credentials
       const credentialsContent = await fs.readFile(credentialsPath, "utf8");
-      const credentials = JSON.parse(credentialsContent);
-      const clientConfig = credentials.installed || credentials.web;
+      const credentialsFile = JSON.parse(credentialsContent);
+      const clientConfig = credentialsFile.installed || credentialsFile.web;
 
       const auth = new google.auth.OAuth2(
         clientConfig.client_id,
@@ -117,11 +127,41 @@ export abstract class BaseService {
       });
 
       // Validate token by making a test API call
-      await auth.getAccessToken();
-      this.logger.info(`Using saved ${this.serviceName} token (account: ${this.account})`);
+      // This will automatically refresh if expired
+      const accessTokenResponse = await auth.getAccessToken();
+      const authCredentials = (auth as any).credentials || {};
+      
+      // Check if token was refreshed by comparing expiry dates or access tokens
+      const wasRefreshed = 
+        (authCredentials.expiry_date && authCredentials.expiry_date !== token.expiry_date) ||
+        (accessTokenResponse.token && accessTokenResponse.token !== token.access_token);
+      
+      // Always save the current credentials to ensure expiry_date is up to date
+      // This handles cases where the token was silently refreshed
+      // IMPORTANT: Always use this.SCOPES to ensure correct scopes are saved
+      // Don't preserve old scopes from database as they may be incorrect/empty
+      this.tokenStore.saveToken({
+        service: this.serviceName.toLowerCase(),
+        account: this.account,
+        access_token: accessTokenResponse.token || token.access_token,
+        refresh_token: token.refresh_token, // Keep existing refresh token
+        scopes: this.SCOPES, // Always use service's required scopes
+        expiry_date: authCredentials.expiry_date || token.expiry_date,
+      });
+      
+      if (wasRefreshed) {
+        this.logger.info(`Refreshed and saved ${this.serviceName} token (account: ${this.account})`);
+      } else {
+        this.logger.info(`Using saved ${this.serviceName} token (account: ${this.account})`);
+      }
+      
       return auth;
     } catch (error) {
-      this.logger.warn(`Saved ${this.serviceName} token is invalid. Re-authenticating...`);
+      // Log the actual error for debugging
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Saved ${this.serviceName} token is invalid (${errorMessage}). Re-authenticating...`
+      );
       this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
       return null;
     }
