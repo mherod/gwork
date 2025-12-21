@@ -132,8 +132,22 @@ export abstract class BaseService {
    * @param auth - Authenticated OAuth2 client
    */
   protected async saveAuth(auth: AuthClient): Promise<void> {
-    const credentials = await auth.getCredentials();
     const accessToken = await auth.getAccessToken();
+    
+    // Try to get credentials, but handle cases where it might not be available
+    let credentials: any = {};
+    try {
+      if (typeof auth.getCredentials === "function") {
+        credentials = await auth.getCredentials();
+      } else {
+        // Fallback: extract from internal credentials if available
+        credentials = (auth as any).credentials || {};
+      }
+    } catch (error) {
+      // If getCredentials fails, use empty credentials object
+      this.logger.warn("Could not retrieve full credentials, using available token data");
+      credentials = {};
+    }
 
     this.tokenStore.saveToken(this.serviceName.toLowerCase(), this.account, {
       access_token: accessToken.token || credentials.access_token || "",
