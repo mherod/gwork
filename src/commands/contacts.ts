@@ -32,7 +32,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts get <resourceName>");
         process.exit(1);
       }
-      await getContact(args[0], args.slice(1));
+      await getContact(args[0]!, args.slice(1));
       break;
     case "search":
       if (args.length === 0 || !args[0]) {
@@ -40,7 +40,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts search <query>");
         process.exit(1);
       }
-      await searchContacts(args[0], args.slice(1));
+      await searchContacts(args[0]!, args.slice(1));
       break;
     case "find-email":
       if (args.length === 0 || !args[0]) {
@@ -48,7 +48,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-email <email>");
         process.exit(1);
       }
-      await findContactByEmail(args[0]);
+      await findContactByEmail(args[0]!);
       break;
     case "find-name":
       if (args.length === 0 || !args[0]) {
@@ -56,7 +56,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-name <name>");
         process.exit(1);
       }
-      await findContactByName(args[0]);
+      await findContactByName(args[0]!);
       break;
     case "create":
       await createContact(args);
@@ -67,7 +67,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts update <resourceName> [options]");
         process.exit(1);
       }
-      await updateContact(args[0], args.slice(1));
+      await updateContact(args[0]!, args.slice(1));
       break;
     case "delete":
       if (args.length === 0 || !args[0]) {
@@ -75,7 +75,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete <resourceName> --confirm");
         process.exit(1);
       }
-      await deleteContact(args[0], args.slice(1));
+      await deleteContact(args[0]!, args.slice(1));
       break;
     case "groups":
       await listGroups(args);
@@ -86,7 +86,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts group-contacts <groupResourceName>");
         process.exit(1);
       }
-      await getContactsInGroup(args[0], args.slice(1));
+      await getContactsInGroup(args[0]!, args.slice(1));
       break;
     case "create-group":
       if (args.length === 0) {
@@ -94,7 +94,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts create-group <name> --confirm");
         process.exit(1);
       }
-      await createGroup(args[0], args.slice(1));
+      await createGroup(args[0]!, args.slice(1));
       break;
     case "delete-group":
       if (args.length === 0 || !args[0]) {
@@ -102,7 +102,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete-group <groupResourceName> --confirm");
         process.exit(1);
       }
-      await deleteGroup(args[0], args.slice(1));
+      await deleteGroup(args[0]!, args.slice(1));
       break;
     case "add-to-group":
       if (args.length < 2) {
@@ -110,7 +110,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
         process.exit(1);
       }
-      await addToGroup(args[0], args.slice(1, -1), args.slice(-1));
+      await addToGroup(args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "remove-from-group":
       if (args.length < 2) {
@@ -118,7 +118,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
         process.exit(1);
       }
-      await removeFromGroup(args[0], args.slice(1, -1), args.slice(-1));
+      await removeFromGroup(args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "batch-create":
       if (args.length === 0) {
@@ -126,7 +126,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts batch-create <jsonFile> --confirm");
         process.exit(1);
       }
-      await batchCreateContacts(args[0], args.slice(1));
+      await batchCreateContacts(args[0]!, args.slice(1));
       break;
     case "batch-delete":
       if (args.length === 0) {
@@ -151,7 +151,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
         process.exit(1);
       }
-      await mergeContacts(args[0], args.slice(1, -1), args.slice(-1));
+      await mergeContacts(args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "auto-merge":
       await autoMergeContacts(args);
@@ -191,10 +191,10 @@ async function listContacts(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.max = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -246,7 +246,7 @@ async function getContact(resourceName: string, args: string[]) {
       if (!arg) continue;
 
       if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -296,7 +296,7 @@ async function getContact(resourceName: string, args: string[]) {
         });
       }
 
-      if (contact.biographies && contact.biographies.length > 0) {
+      if (contact.biographies && contact.biographies.length > 0 && contact.biographies[0]?.value) {
         console.log(`\n${chalk.cyan("Biography:")}`);
         console.log(contact.biographies[0].value);
       }
@@ -321,10 +321,10 @@ async function searchContacts(query: string, args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.max = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -462,22 +462,22 @@ async function createContact(args: string[]) {
       if (!arg) continue;
 
       if (arg === "--first-name") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.firstName = value;
       } else if (arg === "--last-name") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.lastName = value;
       } else if (arg === "--email") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.email = value;
       } else if (arg === "--phone") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.phone = value;
       } else if (arg === "--organization") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.organization = value;
       } else if (arg === "--job-title") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.jobTitle = value;
       }
     }
@@ -531,22 +531,22 @@ async function updateContact(resourceName: string, args: string[]) {
       if (!arg) continue;
 
       if (arg === "--first-name") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.firstName = value;
       } else if (arg === "--last-name") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.lastName = value;
       } else if (arg === "--email") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.email = value;
       } else if (arg === "--phone") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.phone = value;
       } else if (arg === "--organization") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.organization = value;
       } else if (arg === "--job-title") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.jobTitle = value;
       }
     }
@@ -604,7 +604,7 @@ async function listGroups(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -694,7 +694,7 @@ async function deleteGroup(resourceName: string, args: string[]) {
   }
 }
 
-async function getContactsInGroup(groupResourceName: string, args: string[]) {
+async function getContactsInGroup(groupResourceName: string, _args: string[]) {
   const spinner = ora("Fetching contacts in group...").start();
   try {
     const result = await contactsService.getContactsInGroup(groupResourceName);
@@ -846,7 +846,7 @@ async function getProfile(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -889,7 +889,7 @@ async function getProfile(args: string[]) {
   }
 }
 
-async function getStats(args: string[]) {
+async function getStats(_args: string[]) {
   const spinner = ora("Fetching contact statistics...").start();
   try {
     const contacts = await contactsService.listContacts({ pageSize: 10000 });
@@ -993,13 +993,13 @@ async function autoMergeContacts(args: string[]) {
       if (!arg) continue;
 
       if (arg === "--criteria" || arg === "-c") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.criteria = value.split(",").map((c) => c.trim());
       } else if (arg === "--threshold" || arg === "-t") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.threshold = parseInt(value);
       } else if (arg === "--max-results" || arg === "-n") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       }
     }
@@ -1085,16 +1085,16 @@ async function findDuplicates(args: string[]) {
       if (!arg) continue;
 
       if (arg === "--criteria" || arg === "-c") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.criteria = value.split(",").map((c) => c.trim());
       } else if (arg === "--threshold" || arg === "-t") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.threshold = parseInt(value);
       } else if (arg === "--max-results" || arg === "-n") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       } else if (arg === "--show-details") {
         options.showDetails = true;
@@ -1211,10 +1211,10 @@ async function findMissingNames(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max-results") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -1284,10 +1284,10 @@ async function analyzeGenericNames(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max-results") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -1357,10 +1357,10 @@ async function analyzeImportedContacts(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max-results") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       }
     }
@@ -1392,16 +1392,16 @@ async function analyzeImportedContacts(args: string[]) {
         if (!groupedContacts[contact.issueType]) {
           groupedContacts[contact.issueType] = [];
         }
-        groupedContacts[contact.issueType].push(contact);
+        groupedContacts[contact.issueType]!.push(contact);
       });
 
       Object.keys(groupedContacts).forEach((issueType) => {
         console.log(
           chalk.yellow(
-            `\n${issueType} (${groupedContacts[issueType].length} contacts):`
+            `\n${issueType} (${groupedContacts[issueType]!.length} contacts):`
           )
         );
-        groupedContacts[issueType].forEach((contact, index) => {
+        groupedContacts[issueType]!.forEach((contact, index) => {
           const confidence = `${contact.confidence}%`;
           console.log(
             `  ${(index + 1).toString().padEnd(3)} ${chalk.cyan(contact.displayName.padEnd(30))} ${chalk.gray(`[${confidence}]`)}`
@@ -1447,10 +1447,10 @@ async function detectMarketing(args: string[]) {
       if (!arg) continue;
 
       if (arg === "-n" || arg === "--max-results") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.maxResults = parseInt(value);
       } else if (arg === "-f" || arg === "--format") {
-        const value = args[++i];
+        const value = args[++i]!;
         if (value) options.format = value;
       } else if (arg === "--cleanup") {
         options.cleanup = true;

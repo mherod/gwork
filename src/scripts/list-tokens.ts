@@ -16,7 +16,7 @@ console.log("=".repeat(80));
 
 let currentService = "";
 
-allTokens.forEach((token, index) => {
+allTokens.forEach((token, _index) => {
   if (token.service !== currentService) {
     currentService = token.service;
     console.log(`\n${chalk.cyan.bold(token.service.toUpperCase())}:`);

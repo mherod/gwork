@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import ora from "ora";
-import { startCase, find } from "lodash-es";
+import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import fs from "node:fs";
 
@@ -94,7 +94,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail get <messageId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getMessage(args[0], args.slice(1));
+      await getMessage(args[0]!, args.slice(1));
       break;
     case "search":
       if (args.length === 0) {
@@ -103,7 +103,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         process.exit(1);
       }
       // Extract query (first arg) and remaining options
-      const query = args[0];
+      const query = args[0]!;
       const searchOptions = args.slice(1);
       await searchMessages(query, searchOptions);
       break;
@@ -119,7 +119,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail thread <threadId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getThread(args[0], args.slice(1));
+      await getThread(args[0]!, args.slice(1));
       break;
     case "unread":
       await listUnread(args);
@@ -139,7 +139,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail attachments <messageId>");
         process.exit(1);
       }
-      await listAttachments(args[0]);
+      await listAttachments(args[0]!);
       break;
     case "download":
       if (args.length < 2) {
@@ -147,7 +147,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail download <messageId> <attachmentId> [filename]");
         process.exit(1);
       }
-      await downloadAttachment(args[0], args[1], args[2]);
+      await downloadAttachment(args[0]!, args[1]!, args[2]);
       break;
     case "delete":
       if (args.length === 0) {
@@ -155,7 +155,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete <messageId>");
         process.exit(1);
       }
-      await deleteMessage(args[0]);
+      await deleteMessage(args[0]!);
       break;
     case "delete-query":
       if (args.length === 0) {
@@ -163,7 +163,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete-query <query>");
         process.exit(1);
       }
-      await deleteQuery(args.join(" "));
+      await deleteQuery(args.join(" ")!);
       break;
     case "archive":
       if (args.length === 0) {
@@ -171,7 +171,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive <messageId>");
         process.exit(1);
       }
-      await archiveMessage(args[0]);
+      await archiveMessage(args[0]!);
       break;
     case "archive-query":
       if (args.length === 0) {
@@ -179,7 +179,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive-query <query>");
         process.exit(1);
       }
-      await archiveQuery(args.join(" "));
+      await archiveQuery(args.join(" ")!);
       break;
     case "archive-many":
       if (args.length === 0) {
@@ -195,7 +195,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive <messageId>");
         process.exit(1);
       }
-      await unarchiveMessage(args[0]);
+      await unarchiveMessage(args[0]!);
       break;
     case "unarchive-query":
       if (args.length === 0) {
@@ -203,7 +203,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive-query <query>");
         process.exit(1);
       }
-      await unarchiveQuery(args.join(" "));
+      await unarchiveQuery(args.join(" ")!);
       break;
     case "unarchive-many":
       if (args.length === 0) {
@@ -219,7 +219,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail add-label <messageId> <labelName>");
         process.exit(1);
       }
-      await addLabel(args[0], args[1]);
+      await addLabel(args[0]!, args[1]!);
       break;
     case "remove-label":
       if (args.length < 2) {
@@ -227,7 +227,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail remove-label <messageId> <labelName>");
         process.exit(1);
       }
-      await removeLabel(args[0], args[1]);
+      await removeLabel(args[0]!, args[1]!);
       break;
     case "mark-read":
       if (args.length === 0) {
@@ -235,7 +235,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail mark-read <messageId>");
         process.exit(1);
       }
-      await markRead(args[0]);
+      await markRead(args[0]!);
       break;
     case "mark-unread":
       if (args.length === 0) {
@@ -243,7 +243,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail mark-unread <messageId>");
         process.exit(1);
       }
-      await markUnread(args[0]);
+      await markUnread(args[0]!);
       break;
     case "star":
       if (args.length === 0) {
@@ -251,7 +251,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail star <messageId>");
         process.exit(1);
       }
-      await starMessage(args[0]);
+      await starMessage(args[0]!);
       break;
     case "unstar":
       if (args.length === 0) {
@@ -259,7 +259,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unstar <messageId>");
         process.exit(1);
       }
-      await unstarMessage(args[0]);
+      await unstarMessage(args[0]!);
       break;
     case "create-label":
       if (args.length === 0) {
@@ -267,7 +267,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail create-label <labelName> [--color <color>]");
         process.exit(1);
       }
-      await createLabel(args[0], args.slice(1));
+      await createLabel(args[0]!, args.slice(1));
       break;
     case "delete-label":
       if (args.length === 0) {
@@ -275,7 +275,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete-label <labelId>");
         process.exit(1);
       }
-      await deleteLabel(args[0]);
+      await deleteLabel(args[0]!);
       break;
     default:
       console.error(`Unknown mail subcommand: ${subcommand}`);
@@ -284,7 +284,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
   }
 }
 
-async function listLabels(args: string[]) {
+async function listLabels(_args: string[]) {
   const spinner = ora("Fetching labels...").start();
   try {
     const labels = await mailService.listLabels();
@@ -331,12 +331,18 @@ async function listMessages(args: string[]) {
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--max-results" || args[i] === "-n") {
-        options.maxResults = parseInt(args[++i]);
+        if (i + 1 < args.length) {
+          options.maxResults = parseInt(args[++i]!);
+        }
       } else if (args[i] === "--query" || args[i] === "-q") {
-        options.q = args[++i];
+        if (i + 1 < args.length) {
+          options.q = args[++i]!!;
+        }
       } else if (args[i] === "--label" || args[i] === "-l") {
-        if (!options.labelIds) options.labelIds = [];
-        options.labelIds.push(args[++i]);
+        if (i + 1 < args.length) {
+          if (!options.labelIds) options.labelIds = [];
+          options.labelIds.push(args[++i]!);
+        }
       }
     }
 
@@ -392,7 +398,7 @@ async function getMessage(messageId: string, args: string[] = []) {
           console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
           process.exit(1);
         }
-        const value = args[++i];
+        const value = args[++i]!;
         if (value === "plain" || value === "html" || value === "auto") {
           format = value;
         } else {
@@ -436,9 +442,13 @@ async function searchMessages(query: string, extraArgs: string[]) {
 
     for (let i = 0; i < extraArgs.length; i++) {
       if (extraArgs[i] === "--max-results" || extraArgs[i] === "-n") {
-        options.maxResults = parseInt(extraArgs[++i]);
+        if (i + 1 < extraArgs.length) {
+          options.maxResults = parseInt(extraArgs[++i]!);
+        }
       } else if (extraArgs[i] === "--page-token") {
-        options.pageToken = extraArgs[++i];
+        if (i + 1 < extraArgs.length) {
+          options.pageToken = extraArgs[++i]!;
+        }
       }
     }
 
@@ -523,9 +533,9 @@ async function listThreads(args: string[]) {
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--max-results" || args[i] === "-n") {
-        options.maxResults = parseInt(args[++i]);
+        options.maxResults = parseInt(args[++i]!);
       } else if (args[i] === "--query" || args[i] === "-q") {
-        options.q = args[++i];
+        options.q = args[++i]!;
       }
     }
 
@@ -565,7 +575,7 @@ async function getThread(threadId: string, args: string[] = []) {
           console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
           process.exit(1);
         }
-        const value = args[++i];
+        const value = args[++i]!;
         if (value === "plain" || value === "html" || value === "auto") {
           format = value;
           showFullMessages = true;
@@ -846,7 +856,7 @@ async function addLabel(messageId: string, labelName: string) {
     const labels = await mailService.listLabels();
     const label = find(labels, (l) => l.name === labelName || l.id === labelName);
 
-    if (!label) {
+    if (!label || !label.id) {
       spinner.fail("Label not found");
       console.error(chalk.red(`Label "${labelName}" not found`));
       process.exit(1);
@@ -870,7 +880,7 @@ async function removeLabel(messageId: string, labelName: string) {
     const labels = await mailService.listLabels();
     const label = find(labels, (l) => l.name === labelName || l.id === labelName);
 
-    if (!label) {
+    if (!label || !label.id) {
       spinner.fail("Label not found");
       console.error(chalk.red(`Label "${labelName}" not found`));
       process.exit(1);
@@ -954,7 +964,7 @@ async function createLabel(labelName: string, args: string[]) {
     let color: string | undefined;
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--color") {
-        color = args[++i];
+        color = args[++i]!;
       }
     }
 

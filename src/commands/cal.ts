@@ -537,19 +537,19 @@ async function createEvent(calendarId: string, args: string[]) {
     } = {};
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--title") {
-        options.title = args[++i];
+        options.title = args[++i]!;
       } else if (args[i] === "--start") {
-        options.start = args[++i];
+        options.start = args[++i]!;
       } else if (args[i] === "--end") {
-        options.end = args[++i];
+        options.end = args[++i]!;
       } else if (args[i] === "--duration") {
-        options.duration = args[++i];
+        options.duration = args[++i]!;
       } else if (args[i] === "--location") {
-        options.location = args[++i];
+        options.location = args[++i]!;
       } else if (args[i] === "--description") {
-        options.description = args[++i];
+        options.description = args[++i]!;
       } else if (args[i] === "--attendees") {
-        options.attendees = args[++i];
+        options.attendees = args[++i]!;
       } else if (args[i] === "--all-day") {
         options.allDay = true;
       }
@@ -2108,25 +2108,25 @@ async function createRecurringEvent(calendarId: string, args: string[]) {
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--title") {
-        options.title = args[++i];
+        options.title = args[++i]!;
       } else if (args[i] === "--start") {
-        options.start = args[++i];
+        options.start = args[++i]!;
       } else if (args[i] === "--end") {
-        options.end = args[++i];
+        options.end = args[++i]!;
       } else if (args[i] === "--duration") {
-        options.duration = args[++i];
+        options.duration = args[++i]!;
       } else if (args[i] === "--location") {
-        options.location = args[++i];
+        options.location = args[++i]!;
       } else if (args[i] === "--description") {
-        options.description = args[++i];
+        options.description = args[++i]!;
       } else if (args[i] === "--rrule") {
-        options.rrule = args[++i];
+        options.rrule = args[++i]!;
       } else if (args[i] === "--frequency") {
-        options.frequency = args[++i];
+        options.frequency = args[++i]!;
       } else if (args[i] === "--count") {
-        options.count = parseInt(args[++i]);
+        options.count = parseInt(args[++i]!);
       } else if (args[i] === "--until") {
-        options.until = args[++i];
+        options.until = args[++i]!;
       }
     }
 

@@ -13,8 +13,6 @@ import type {
   ListContactsOptions,
   SearchContactsOptions,
   CreateContactOptions,
-  MergeOptions,
-  DuplicateOptions,
 } from "../types/google-apis.ts";
 
 export class ContactsService {
@@ -62,11 +60,20 @@ export class ContactsService {
     if (!auth) {
       // If no saved token, authenticate and save it
       try {
-        auth = await authenticate({
+        const newAuth = await authenticate({
           scopes: this.SCOPES,
           keyfilePath: CREDENTIALS_PATH,
         });
-        await this.saveAuth(auth);
+
+        // Duck-type check: verify auth object has OAuth2Client methods
+        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
+          // @ts-expect-error - Library version conflict: googleapis-common depends on older google-auth-library version
+          auth = newAuth as AuthClient;
+          // @ts-expect-error - Same library version conflict
+          await this.saveAuth(auth);
+        } else {
+          throw new Error('Invalid authentication object returned from authenticate()');
+        }
       } catch (error: unknown) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
           console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
@@ -77,7 +84,13 @@ export class ContactsService {
       }
     }
 
+    if (!auth) {
+      throw new Error('Failed to initialize authentication');
+    }
+
+    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.auth = auth;
+    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.people = google.people({ version: "v1", auth: this.auth });
   }
 
@@ -144,9 +157,9 @@ export class ContactsService {
       this.tokenStore.saveToken({
         service: "contacts",
         account: this.account,
-        access_token: auth.credentials.access_token,
-        refresh_token: auth.credentials.refresh_token,
-        expiry_date: auth.credentials.expiry_date,
+        access_token: auth.credentials.access_token ?? "",
+        refresh_token: auth.credentials.refresh_token ?? "",
+        expiry_date: auth.credentials.expiry_date ?? 0,
         scopes: this.SCOPES,
       });
       console.log(`Contacts token saved (account: ${this.account})`);
@@ -649,7 +662,7 @@ export class ContactsService {
     }
 
     const fullGroupName = this.parseResourceName(groupResourceName);
-    const { pageSize = 50, pageToken = null } = options;
+    const { pageSize = 50, pageToken: _pageToken = null } = options;
 
     try {
       const result = await this.people.contactGroups.get({

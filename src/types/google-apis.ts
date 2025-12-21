@@ -91,7 +91,7 @@ export interface ListContactsOptions {
 
 export interface SearchContactsOptions {
   pageSize?: number;
-  query: string;
+  query?: string;
   readMask?: string;
 }
 

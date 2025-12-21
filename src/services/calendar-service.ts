@@ -48,11 +48,20 @@ export class CalendarService {
     if (!auth) {
       // If no saved token, authenticate and save it
       try {
-        auth = await authenticate({
+        const newAuth = await authenticate({
           scopes: this.SCOPES,
           keyfilePath: CREDENTIALS_PATH,
         });
-        await this.saveAuth(auth);
+
+        // Duck-type check: verify auth object has OAuth2Client methods
+        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
+          // @ts-expect-error - Library version conflict: googleapis-common depends on older google-auth-library version
+          auth = newAuth as AuthClient;
+          // @ts-expect-error - Same library version conflict
+          await this.saveAuth(auth);
+        } else {
+          throw new Error('Invalid authentication object returned from authenticate()');
+        }
       } catch (error: unknown) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
           console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
@@ -63,7 +72,13 @@ export class CalendarService {
       }
     }
 
+    if (!auth) {
+      throw new Error('Failed to initialize authentication');
+    }
+
+    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.auth = auth;
+    // @ts-expect-error - Library version conflict with OAuth2Client types
     this.calendar = google.calendar({ version: "v3", auth: this.auth });
   }
 
@@ -130,9 +145,9 @@ export class CalendarService {
       this.tokenStore.saveToken({
         service: "calendar",
         account: this.account,
-        access_token: auth.credentials.access_token,
-        refresh_token: auth.credentials.refresh_token,
-        expiry_date: auth.credentials.expiry_date,
+        access_token: auth.credentials.access_token ?? "",
+        refresh_token: auth.credentials.refresh_token ?? "",
+        expiry_date: auth.credentials.expiry_date ?? 0,
         scopes: this.SCOPES,
       });
       console.log(`Calendar token saved (account: ${this.account})`);
@@ -238,7 +253,7 @@ export class CalendarService {
     const result = await this.calendar.events.insert({
       calendarId,
       resource: eventData,
-    });
+    } as any);
 
     if (!result.data) {
       throw new Error("No event data returned");
@@ -400,7 +415,7 @@ export class CalendarService {
 
     const result = await this.calendar.calendars.insert({
       resource: calendarData,
-    });
+    } as any);
 
     if (!result.data) {
       throw new Error("No calendar data returned");
@@ -418,7 +433,7 @@ export class CalendarService {
     const result = await this.calendar.calendars.update({
       calendarId,
       resource: calendarData,
-    });
+    } as any);
 
     if (!result.data) {
       throw new Error("No calendar data returned");
