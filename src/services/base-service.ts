@@ -50,6 +50,29 @@ export abstract class BaseService {
       throw new InitializationError(this.serviceName);
     }
 
+    // Clean up any tokens with empty scopes for this service/account
+    // This handles old tokens created before scope tracking was implemented
+    // Also clean up tokens with empty account strings that might cause confusion
+    const existingToken = this.tokenStore.getToken(this.serviceName.toLowerCase(), this.account);
+    if (existingToken && (!existingToken.scopes || existingToken.scopes.length === 0)) {
+      this.logger.info(
+        `Removing token with empty scopes for ${this.serviceName} (account: ${this.account})`
+      );
+      this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
+    }
+    
+    // Also check for and clean up tokens with empty account strings for this service
+    // These are legacy tokens that can cause lookup issues
+    if (this.account === "default") {
+      const emptyAccountToken = this.tokenStore.getToken(this.serviceName.toLowerCase(), "");
+      if (emptyAccountToken && (!emptyAccountToken.scopes || emptyAccountToken.scopes.length === 0)) {
+        this.logger.info(
+          `Removing legacy token with empty account string for ${this.serviceName}`
+        );
+        this.tokenStore.deleteToken(this.serviceName.toLowerCase(), "");
+      }
+    }
+
     let auth = await this.loadSavedAuthIfExist(CREDENTIALS_PATH);
 
     if (!auth) {
