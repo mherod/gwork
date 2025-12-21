@@ -1,26 +1,32 @@
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
-import { authenticate } from "@google-cloud/local-auth";
+/**
+ * Google Contacts (People API) service wrapper.
+ * Provides methods for managing contacts, contact groups, duplicate detection,
+ * data quality analysis, and marketing contact detection.
+ */
+
 import { google } from "googleapis";
-import { TokenStore } from "./token-store.ts";
-import { ensureCredentialsExist } from "../utils/setup-guide.ts";
+import { BaseService } from "./base-service.ts";
+import { handleGoogleApiError } from "./error-handler.ts";
+import { withRetry } from "./retry.ts";
+import {
+  validateEmail,
+  validatePageSize,
+  validateResourceId,
+  validateMaxResults,
+  validateConfidenceScore,
+} from "./validators.ts";
 import type {
   PeopleClient,
-  AuthClient,
   Person,
   ContactGroup,
   ListContactsOptions,
   SearchContactsOptions,
   CreateContactOptions,
 } from "../types/google-apis.ts";
+import type { people_v1 } from "googleapis";
 
-export class ContactsService {
+export class ContactsService extends BaseService {
   private people: PeopleClient | null = null;
-  private auth: AuthClient | null = null;
-  private readonly SCOPES: string[];
-  private tokenStore: TokenStore;
-  private account: string;
 
   private readonly DEFAULT_PERSON_FIELDS = [
     "names",
@@ -35,183 +41,125 @@ export class ContactsService {
   ].join(",");
 
   constructor(account: string = "default") {
-    this.account = account;
-    this.tokenStore = TokenStore.getInstance();
-    this.SCOPES = [
-      "https://www.googleapis.com/auth/contacts",
-      "https://www.googleapis.com/auth/contacts.readonly",
-      "https://www.googleapis.com/auth/contacts.other.readonly",
-    ];
+    super(
+      "Contacts",
+      [
+        "https://www.googleapis.com/auth/contacts",
+        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts.other.readonly",
+      ],
+      account
+    );
   }
 
-  async initialize() {
-    if (this.people) return;
-
-    const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-
-    // Check if credentials file exists and show setup guide if not
-    if (!ensureCredentialsExist()) {
-      process.exit(1);
-    }
-
-    // Try to load existing token first
-    let auth = await this.loadSavedAuthIfExist();
-
-    if (!auth) {
-      // If no saved token, authenticate and save it
-      try {
-        const newAuth = await authenticate({
-          scopes: this.SCOPES,
-          keyfilePath: CREDENTIALS_PATH,
-        });
-
-        // Duck-type check: verify auth object has OAuth2Client methods
-        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
-          auth = newAuth as unknown as AuthClient;
-          await this.saveAuth(auth);
-        } else {
-          throw new Error('Invalid authentication object returned from authenticate()');
-        }
-      } catch (error: unknown) {
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-          console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
-          ensureCredentialsExist();
-          process.exit(1);
-        }
-        throw error;
-      }
-    }
-
-    if (!auth) {
-      throw new Error('Failed to initialize authentication');
-    }
-
-    this.auth = auth;
+  /**
+   * Initialize the service: authenticate and set up People API client.
+   * Overrides BaseService.initialize() to initialize the people client.
+   *
+   * @throws {InitializationError} If credentials missing or authentication fails
+   */
+  async initialize(): Promise<void> {
+    await super.initialize();
+    this.ensureInitialized();
+    // Initialize People API client
     this.people = google.people({ version: "v1", auth: this.auth });
   }
 
-  private async loadSavedAuthIfExist() {
-    try {
-      const token = this.tokenStore.getToken("contacts", this.account);
-
-      if (!token) {
-        return null;
-      }
-
-      // Check if token has the required scopes
-      const hasRequiredScopes = this.SCOPES.every((scope) =>
-        token.scopes.includes(scope)
-      );
-
-      if (!hasRequiredScopes) {
-        console.log(
-          "Token has incorrect scopes. Deleting token to re-authenticate..."
-        );
-        this.tokenStore.deleteToken("contacts", this.account);
-        return null;
-      }
-
-      // Load credentials to get client_id and client_secret
-      const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-      const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-      const credentials = JSON.parse(credentialsContent);
-      const clientConfig = credentials.installed || credentials.web;
-
-      // Create auth object with client credentials
-      const auth = new google.auth.OAuth2(
-        clientConfig.client_id,
-        clientConfig.client_secret,
-        clientConfig.redirect_uris?.[0] || "http://localhost"
-      );
-      auth.setCredentials({
-        refresh_token: token.refresh_token,
-        access_token: token.access_token,
-        expiry_date: token.expiry_date,
-      });
-
-      // Test if the token is still valid by making a simple request
-      try {
-        await auth.getAccessToken();
-        console.log(`Using saved Contacts token (account: ${this.account})`);
-        return auth;
-      } catch (error) {
-        // Token is expired or invalid, remove it
-        console.log("Saved token is invalid. Re-authenticating...");
-        this.tokenStore.deleteToken("contacts", this.account);
-        return null;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to load saved token:", message);
-      this.tokenStore.deleteToken("contacts", this.account);
-    }
-    return null;
-  }
-
-  private async saveAuth(auth: AuthClient) {
-    try {
-      this.tokenStore.saveToken({
-        service: "contacts",
-        account: this.account,
-        access_token: auth.credentials.access_token ?? "",
-        refresh_token: auth.credentials.refresh_token ?? "",
-        expiry_date: auth.credentials.expiry_date ?? 0,
-        scopes: this.SCOPES,
-      });
-      console.log(`Contacts token saved (account: ${this.account})`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to save token:", message);
-    }
-  }
-
+  /**
+   * Parses resource name, adding "people/" prefix if missing.
+   *
+   * @param input - Resource name (with or without prefix)
+   * @returns Full resource name with "people/" prefix
+   */
   private parseResourceName(input: string): string {
     return input.startsWith("people/") ? input : `people/${input}`;
   }
 
+  // ============= CORE CONTACT OPERATIONS =============
+
+  /**
+   * Lists contacts with optional pagination and sorting.
+   *
+   * @param options - Optional parameters
+   * @param options.pageSize - Number of contacts per page (1-2000, default: 50)
+   * @param options.pageToken - Token for fetching next page
+   * @param options.sortOrder - Sort order: "LAST_NAME_ASCENDING" (default) or "FIRST_NAME_ASCENDING"
+   *
+   * @returns Array of Person objects
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If pageSize is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contacts = new ContactsService();
+   * await contacts.initialize();
+   *
+   * // Get first page
+   * const firstPage = await contacts.listContacts({ pageSize: 100 });
+   *
+   * // Get next page
+   * const nextPage = await contacts.listContacts({
+   *   pageSize: 100,
+   *   pageToken: result.nextPageToken
+   * });
+   * ```
+   */
   async listContacts(options: ListContactsOptions = {}): Promise<Person[]> {
     await this.initialize();
+    this.ensureInitialized();
 
-    const { pageSize = 50, pageToken = null, sortOrder = "LAST_NAME_ASCENDING" } =
-      options;
+    const { pageSize = 50, pageToken = null, sortOrder = "LAST_NAME_ASCENDING" } = options;
 
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
+    if (pageSize > 0) {
+      validatePageSize(pageSize, 2000);
     }
 
     try {
-      const result = await this.people.people.connections.list({
-        resourceName: "people/me",
-        pageSize,
-        pageToken: pageToken || undefined,
-        personFields: this.DEFAULT_PERSON_FIELDS,
-        sortOrder: sortOrder as any,
-      });
+      return await withRetry(
+        async () => {
+          const result = await this.people!.people.connections.list({
+            resourceName: "people/me",
+            pageSize,
+            pageToken: pageToken || undefined,
+            personFields: this.DEFAULT_PERSON_FIELDS,
+            sortOrder: sortOrder as people_v1.Params$Resource$People$Connections$List["sortOrder"],
+          });
 
-      return result.data.connections || [];
+          return result.data.connections || [];
+        },
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          "Permission denied: You don't have access to view contacts. Please check your permissions."
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list contacts: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list contacts");
     }
   }
 
+  /**
+   * Gets a single contact by resource name.
+   *
+   * @param resourceName - Contact resource name (with or without "people/" prefix)
+   * @returns Person object with full contact details
+   * @throws {NotFoundError} If contact not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If resourceName is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contact = await contacts.getContact("people/1234567890");
+   * const contact2 = await contacts.getContact("1234567890"); // Auto-prefixes
+   * ```
+   */
   async getContact(resourceName: string): Promise<Person> {
     await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(resourceName, "resourceName");
 
     const fullResourceName = this.parseResourceName(resourceName);
 
     try {
-      const result = await this.people.people.get({
+      const result = await this.people!.people.get({
         resourceName: fullResourceName,
         personFields: this.DEFAULT_PERSON_FIELDS,
       });
@@ -221,43 +169,76 @@ export class ContactsService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Contact not found: ${fullResourceName}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(`Permission denied: You don't have access to contact ${fullResourceName}`);
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get contact: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get contact");
     }
   }
 
+  /**
+   * Searches contacts by query string.
+   *
+   * @param query - Search query (searches names, emails, etc.)
+   * @param options - Optional parameters
+   * @param options.pageSize - Number of results (1-2000, default: 50)
+   *
+   * @returns Array of matching Person objects
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If pageSize is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const results = await contacts.searchContacts("john");
+   * const emailResults = await contacts.searchContacts("john@example.com", { pageSize: 100 });
+   * ```
+   */
   async searchContacts(query: string, options: SearchContactsOptions = {}): Promise<Person[]> {
     await this.initialize();
+    this.ensureInitialized();
 
     const { pageSize = 50 } = options;
 
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
+    if (pageSize > 0) {
+      validatePageSize(pageSize, 2000);
     }
 
     try {
-      const result = await this.people.people.searchContacts({
-        query,
-        pageSize,
-        readMask: this.DEFAULT_PERSON_FIELDS,
-      });
+      return await withRetry(
+        async () => {
+          const result = await this.people!.people.searchContacts({
+            query,
+            pageSize,
+            readMask: this.DEFAULT_PERSON_FIELDS,
+          });
 
-      return result.data.results?.map((r) => r.person).filter((p) => p !== undefined) as Person[] || [];
+          return (
+            result.data.results?.map((r) => r.person).filter((p) => p !== undefined) as Person[] || []
+          );
+        },
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to search contacts: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "search contacts");
     }
   }
 
+  /**
+   * Finds a contact by email address.
+   *
+   * @param email - Email address to search for
+   * @returns Person object if found, null otherwise
+   * @throws {ValidationError} If email format is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contact = await contacts.findContactByEmail("john@example.com");
+   * if (contact) {
+   *   console.log(`Found: ${contact.names?.[0]?.displayName}`);
+   * }
+   * ```
+   */
   async findContactByEmail(email: string): Promise<Person | null> {
+    validateEmail(email);
     const contacts = await this.searchContacts(email);
     return (
       contacts.find(
@@ -269,6 +250,19 @@ export class ContactsService {
     );
   }
 
+  /**
+   * Finds a contact by name (searches display name, given name, family name).
+   *
+   * @param name - Name to search for (partial match)
+   * @returns Person object if found, null otherwise
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contact = await contacts.findContactByName("John");
+   * const smith = await contacts.findContactByName("Smith");
+   * ```
+   */
   async findContactByName(name: string): Promise<Person | null> {
     const contacts = await this.searchContacts(name);
     return (
@@ -284,14 +278,47 @@ export class ContactsService {
     );
   }
 
+  /**
+   * Creates a new contact.
+   *
+   * @param contactData - Contact information
+   * @param contactData.firstName - First name
+   * @param contactData.lastName - Last name
+   * @param contactData.nickname - Nickname
+   * @param contactData.email - Email address (validated)
+   * @param contactData.phone - Phone number
+   * @param contactData.organization - Organization name
+   * @param contactData.jobTitle - Job title
+   * @param contactData.address - Address (formatted)
+   * @param contactData.biography - Biography/notes
+   *
+   * @returns Created Person object
+   * @throws {ValidationError} If email format is invalid
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contact = await contacts.createContact({
+   *   firstName: "John",
+   *   lastName: "Doe",
+   *   email: "john@example.com",
+   *   phone: "+1234567890",
+   *   organization: "Acme Corp"
+   * });
+   * ```
+   */
   async createContact(contactData: CreateContactOptions): Promise<Person> {
     await this.initialize();
+    this.ensureInitialized();
 
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
+    // Validate email if provided
+    if (contactData.email) {
+      validateEmail(contactData.email);
     }
 
-    const person: any = {};
+    // Build typed person object (no 'as any')
+    const person: Partial<Person> = {};
 
     if (contactData.firstName || contactData.lastName) {
       person.names = [
@@ -315,10 +342,11 @@ export class ContactsService {
     }
 
     if (contactData.organization) {
-      person.organizations = [{ name: contactData.organization }];
+      const org: people_v1.Schema$Organization = { name: contactData.organization };
       if (contactData.jobTitle) {
-        person.organizations[0].title = contactData.jobTitle;
+        org.title = contactData.jobTitle;
       }
+      person.organizations = [org];
     }
 
     if (contactData.address) {
@@ -330,39 +358,58 @@ export class ContactsService {
     }
 
     try {
-      const result = await this.people.people.createContact({
+      const result = await this.people!.people.createContact({
         requestBody: { person },
-      } as any);
+      });
 
       if (!result.data) {
         throw new Error("No contact data returned");
       }
       return result.data;
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to create contact: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "create contact");
     }
   }
 
+  /**
+   * Updates an existing contact.
+   *
+   * @param resourceName - Contact resource name to update
+   * @param contactData - Fields to update (same as createContact)
+   * @returns Updated Person object
+   * @throws {NotFoundError} If contact not found
+   * @throws {ValidationError} If email format is invalid
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const updated = await contacts.updateContact("people/123", {
+   *   email: "newemail@example.com",
+   *   phone: "+1987654321"
+   * });
+   * ```
+   */
   async updateContact(
     resourceName: string,
     contactData: CreateContactOptions
   ): Promise<Person> {
     await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(resourceName, "resourceName");
 
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
+    // Validate email if provided
+    if (contactData.email) {
+      validateEmail(contactData.email);
     }
 
     const fullResourceName = this.parseResourceName(resourceName);
 
-    // First, get the current contact
+    // Get current contact
     const currentContact = await this.getContact(fullResourceName);
 
-    // Build the updated person object
-    const person: any = { ...currentContact };
+    // Build updated person object (typed, no 'as any')
+    const person: Partial<Person> = { ...currentContact };
 
     if (contactData.firstName || contactData.lastName) {
       person.names = person.names || [];
@@ -401,73 +448,100 @@ export class ContactsService {
     }
 
     try {
-      const result = await this.people.people.updateContact({
+      const result = await this.people!.people.updateContact({
         resourceName: fullResourceName,
         requestBody: { person },
         updatePersonFields: this.DEFAULT_PERSON_FIELDS,
-      } as any);
+      });
 
       if (!result.data) {
         throw new Error("No contact data returned");
       }
       return result.data;
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to update contact: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "update contact");
     }
   }
 
+  /**
+   * Deletes a contact.
+   *
+   * @param resourceName - Contact resource name to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If contact not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If resourceName is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await contacts.deleteContact("people/1234567890");
+   * ```
+   */
   async deleteContact(resourceName: string): Promise<{ success: boolean }> {
     await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(resourceName, "resourceName");
 
     const fullResourceName = this.parseResourceName(resourceName);
 
     try {
-      await this.people.people.deleteContact({
+      await this.people!.people.deleteContact({
         resourceName: fullResourceName,
       });
       return { success: true };
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to delete contact: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "delete contact");
     }
   }
 
+  // ============= CONTACT GROUP OPERATIONS =============
+
+  /**
+   * Lists all contact groups.
+   *
+   * @returns Array of ContactGroup objects
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const groups = await contacts.getContactGroups();
+   * ```
+   */
   async getContactGroups(): Promise<ContactGroup[]> {
     await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    this.ensureInitialized();
 
     try {
-      const result = await this.people.contactGroups.list();
+      const result = await this.people!.contactGroups.list();
       return result.data.contactGroups || [];
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to list contact groups: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list contact groups");
     }
   }
 
+  /**
+   * Creates a new contact group.
+   *
+   * @param name - Group name
+   * @returns Created ContactGroup object
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If name is empty
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const group = await contacts.createContactGroup("Work Contacts");
+   * ```
+   */
   async createContactGroup(name: string): Promise<ContactGroup> {
     await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(name, "group name");
 
     try {
-      const result = await this.people.contactGroups.create({
+      const result = await this.people!.contactGroups.create({
         requestBody: {
           contactGroup: {
             name,
@@ -480,44 +554,203 @@ export class ContactsService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to create contact group: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "create contact group");
     }
   }
 
+  /**
+   * Deletes a contact group.
+   *
+   * @param resourceName - Group resource name to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If group not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If resourceName is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await contacts.deleteContactGroup("contactGroups/123");
+   * ```
+   */
   async deleteContactGroup(resourceName: string): Promise<{ success: boolean }> {
     await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(resourceName, "resourceName");
 
     const fullResourceName = this.parseResourceName(resourceName);
 
     try {
-      await this.people.contactGroups.delete({
+      await this.people!.contactGroups.delete({
         resourceName: fullResourceName,
       });
       return { success: true };
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to delete contact group: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "delete contact group");
     }
   }
 
-  async getMyProfile(): Promise<Person> {
+  /**
+   * Adds contacts to a group.
+   *
+   * @param groupResourceName - Group to add contacts to
+   * @param contactResourceNames - Array of contact resource names to add
+   * @returns Count of contacts added
+   * @throws {NotFoundError} If group or contacts not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.addContactsToGroup(
+   *   "contactGroups/123",
+   *   ["people/456", "people/789"]
+   * );
+   * console.log(`Added ${result.addedContacts} contacts`);
+   * ```
+   */
+  async addContactsToGroup(
+    groupResourceName: string,
+    contactResourceNames: string[]
+  ): Promise<{ addedContacts: number }> {
     await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(groupResourceName, "groupResourceName");
 
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
+    const fullGroupName = this.parseResourceName(groupResourceName);
+    const fullContactNames = contactResourceNames.map((r) => this.parseResourceName(r));
 
     try {
-      const result = await this.people.people.get({
+      await this.people!.contactGroups.members.modify({
+        resourceName: fullGroupName,
+        requestBody: {
+          resourceNamesToAdd: fullContactNames,
+        },
+      });
+
+      return { addedContacts: fullContactNames.length };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "add contacts to group");
+    }
+  }
+
+  /**
+   * Removes contacts from a group.
+   *
+   * @param groupResourceName - Group to remove contacts from
+   * @param contactResourceNames - Array of contact resource names to remove
+   * @returns Count of contacts removed
+   * @throws {NotFoundError} If group or contacts not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.removeContactsFromGroup(
+   *   "contactGroups/123",
+   *   ["people/456"]
+   * );
+   * ```
+   */
+  async removeContactsFromGroup(
+    groupResourceName: string,
+    contactResourceNames: string[]
+  ): Promise<{ removedContacts: number }> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(groupResourceName, "groupResourceName");
+
+    const fullGroupName = this.parseResourceName(groupResourceName);
+    const fullContactNames = contactResourceNames.map((r) => this.parseResourceName(r));
+
+    try {
+      await this.people!.contactGroups.members.modify({
+        resourceName: fullGroupName,
+        requestBody: {
+          resourceNamesToRemove: fullContactNames,
+        },
+      });
+
+      return { removedContacts: fullContactNames.length };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "remove contacts from group");
+    }
+  }
+
+  /**
+   * Gets all contacts in a group.
+   *
+   * @param groupResourceName - Group resource name
+   * @param options - Optional parameters
+   * @param options.pageSize - Max contacts to return (default: 50)
+   * @returns Object with contacts array
+   * @throws {NotFoundError} If group not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const { contacts } = await contacts.getContactsInGroup("contactGroups/123");
+   * ```
+   */
+  async getContactsInGroup(
+    groupResourceName: string,
+    options: ListContactsOptions = {}
+  ): Promise<{ contacts: Person[] }> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(groupResourceName, "groupResourceName");
+
+    const fullGroupName = this.parseResourceName(groupResourceName);
+    const { pageSize = 50 } = options;
+
+    try {
+      const result = await this.people!.contactGroups.get({
+        resourceName: fullGroupName,
+        maxMembers: pageSize,
+      });
+
+      const memberResourceNames = result.data.memberResourceNames || [];
+
+      // Fetch contact details for each member
+      const contacts: Person[] = [];
+      for (const resourceName of memberResourceNames) {
+        try {
+          const contact = await this.getContact(resourceName);
+          contacts.push(contact);
+        } catch (error) {
+          // Silently skip contacts that can't be fetched
+          this.logger.debug(`Failed to fetch contact ${resourceName}`, { error });
+        }
+      }
+
+      return { contacts };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "get contacts in group");
+    }
+  }
+
+  // ============= PROFILE & BATCH OPERATIONS =============
+
+  /**
+   * Gets the user's own profile (people/me).
+   *
+   * @returns Person object representing user's profile
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const profile = await contacts.getMyProfile();
+   * console.log(`Name: ${profile.names?.[0]?.displayName}`);
+   * ```
+   */
+  async getMyProfile(): Promise<Person> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.people!.people.get({
         resourceName: "people/me",
         personFields: this.DEFAULT_PERSON_FIELDS,
       });
@@ -527,13 +760,25 @@ export class ContactsService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get profile: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get profile");
     }
   }
 
+  /**
+   * Creates multiple contacts in batches (with rate limiting).
+   *
+   * @param contactsData - Array of contact data objects
+   * @returns Array of created Person objects
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const contacts = await contacts.batchCreateContacts([
+   *   { firstName: "John", email: "john@example.com" },
+   *   { firstName: "Jane", email: "jane@example.com" }
+   * ]);
+   * ```
+   */
   async batchCreateContacts(contactsData: CreateContactOptions[]): Promise<Person[]> {
     const created: Person[] = [];
     const BATCH_SIZE = 5;
@@ -556,6 +801,22 @@ export class ContactsService {
     return created;
   }
 
+  /**
+   * Deletes multiple contacts in batches (with rate limiting).
+   *
+   * @param resourceNames - Array of contact resource names to delete
+   * @returns Count of successfully deleted contacts
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.batchDeleteContacts([
+   *   "people/123",
+   *   "people/456"
+   * ]);
+   * console.log(`Deleted ${result.deletedContacts} contacts`);
+   * ```
+   */
   async batchDeleteContacts(resourceNames: string[]): Promise<{ deletedContacts: number }> {
     let deleted = 0;
     const BATCH_SIZE = 5;
@@ -571,6 +832,7 @@ export class ContactsService {
             deleted++;
           } catch (error) {
             // Silently fail for individual delete errors
+            this.logger.debug(`Failed to delete contact ${rn}`, { error });
           }
         })
       );
@@ -583,113 +845,16 @@ export class ContactsService {
     return { deletedContacts: deleted };
   }
 
-  async addContactsToGroup(
-    groupResourceName: string,
-    contactResourceNames: string[]
-  ): Promise<{ addedContacts: number }> {
-    await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
-    const fullContactNames = contactResourceNames.map((r) =>
-      this.parseResourceName(r)
-    );
-
-    try {
-      await this.people.contactGroups.members.modify({
-        resourceName: fullGroupName,
-        requestBody: {
-          resourceNamesToAdd: fullContactNames,
-        },
-      });
-
-      return { addedContacts: fullContactNames.length };
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to add contacts to group: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async removeContactsFromGroup(
-    groupResourceName: string,
-    contactResourceNames: string[]
-  ): Promise<{ removedContacts: number }> {
-    await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
-    const fullContactNames = contactResourceNames.map((r) =>
-      this.parseResourceName(r)
-    );
-
-    try {
-      await this.people.contactGroups.members.modify({
-        resourceName: fullGroupName,
-        requestBody: {
-          resourceNamesToRemove: fullContactNames,
-        },
-      });
-
-      return { removedContacts: fullContactNames.length };
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to remove contacts from group: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async getContactsInGroup(
-    groupResourceName: string,
-    options: ListContactsOptions = {}
-  ): Promise<{ contacts: Person[] }> {
-    await this.initialize();
-
-    if (!this.people) {
-      throw new Error("Contacts service not initialized");
-    }
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
-    const { pageSize = 50, pageToken: _pageToken = null } = options;
-
-    try {
-      const result = await this.people.contactGroups.get({
-        resourceName: fullGroupName,
-        maxMembers: pageSize,
-      });
-
-      const memberResourceNames = result.data.memberResourceNames || [];
-
-      // Fetch contact details for each member
-      const contacts: Person[] = [];
-      for (const resourceName of memberResourceNames) {
-        try {
-          const contact = await this.getContact(resourceName);
-          contacts.push(contact);
-        } catch (error) {
-          // Silently skip contacts that can't be fetched
-        }
-      }
-
-      return { contacts };
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get contacts in group: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
   // ============= DUPLICATE DETECTION =============
 
+  /**
+   * Calculates Levenshtein distance between two strings.
+   * Used for fuzzy name matching in duplicate detection.
+   *
+   * @param str1 - First string
+   * @param str2 - Second string
+   * @returns Edit distance (0 = identical, higher = more different)
+   */
   private levenshteinDistance(str1: string, str2: string): number {
     const len1 = str1.length;
     const len2 = str2.length;
@@ -720,6 +885,12 @@ export class ContactsService {
     return matrix[len2]![len1]!;
   }
 
+  /**
+   * Normalizes name for comparison (lowercase, trim, remove special chars).
+   *
+   * @param name - Name to normalize
+   * @returns Normalized name string
+   */
   private normalizeName(name: string): string {
     return name
       .toLowerCase()
@@ -728,6 +899,13 @@ export class ContactsService {
       .replace(/[^\w\s]/g, "");
   }
 
+  /**
+   * Calculates name similarity percentage (0-100).
+   *
+   * @param name1 - First name
+   * @param name2 - Second name
+   * @returns Similarity percentage (100 = identical)
+   */
   private calculateNameSimilarity(name1: string, name2: string): number {
     const normalized1 = this.normalizeName(name1);
     const normalized2 = this.normalizeName(name2);
@@ -745,18 +923,72 @@ export class ContactsService {
     return Math.round(similarity);
   }
 
+  /**
+   * Extracts primary email from contact.
+   *
+   * @param contact - Person object
+   * @returns Email address (lowercase) or null
+   */
   private getContactEmail(contact: Person): string | null {
     return contact.emailAddresses?.[0]?.value?.toLowerCase() || null;
   }
 
+  /**
+   * Extracts primary phone from contact (digits only).
+   *
+   * @param contact - Person object
+   * @returns Phone number (digits only) or null
+   */
   private getContactPhone(contact: Person): string | null {
     return contact.phoneNumbers?.[0]?.value?.replace(/\D/g, "") || null;
   }
 
+  /**
+   * Extracts display name from contact.
+   *
+   * @param contact - Person object
+   * @returns Display name or null
+   */
   private getContactName(contact: Person): string | null {
     return contact.names?.[0]?.displayName || null;
   }
 
+  /**
+   * Finds duplicate contacts using multiple detection strategies.
+   *
+   * Uses three-phase detection:
+   * 1. Exact email matches (100% confidence)
+   * 2. Exact phone matches (100% confidence)
+   * 3. Fuzzy name matching using Levenshtein distance (configurable threshold)
+   *
+   * @param options - Detection options
+   * @param options.criteria - Detection criteria: "email", "phone", "name" (default: all)
+   * @param options.threshold - Name similarity threshold 0-100 (default: 80)
+   * @param options.maxResults - Max contacts to analyze (default: 1000)
+   *
+   * @returns Object with duplicates array, total counts, and confidence scores
+   * @throws {ValidationError} If threshold or maxResults are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * // Find all duplicates
+   * const result = await contacts.findDuplicates();
+   *
+   * // Find only email duplicates
+   * const emailDups = await contacts.findDuplicates({
+   *   criteria: ["email"],
+   *   threshold: 95
+   * });
+   *
+   * // Find name duplicates with high confidence
+   * const nameDups = await contacts.findDuplicates({
+   *   criteria: ["name"],
+   *   threshold: 90,
+   *   maxResults: 500
+   * });
+   * ```
+   */
   async findDuplicates(options: {
     criteria?: string[];
     threshold?: number;
@@ -778,6 +1010,14 @@ export class ContactsService {
       threshold = 80,
       maxResults = 1000,
     } = options;
+
+    // Validate inputs
+    if (threshold < 0 || threshold > 100) {
+      validateConfidenceScore(threshold);
+    }
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 10000, 1);
+    }
 
     // Fetch contacts
     const contacts = await this.listContacts({ pageSize: maxResults });
@@ -906,6 +1146,35 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Merges multiple source contacts into a target contact.
+   *
+   * Merges:
+   * - Email addresses (deduplicated)
+   * - Phone numbers (deduplicated)
+   * - Addresses (deduplicated)
+   * - Other fields from target contact (preserved)
+   *
+   * @param sourceResourceNames - Array of source contact resource names to merge
+   * @param targetResourceName - Target contact resource name (receives merged data)
+   * @param options - Merge options
+   * @param options.deleteAfterMerge - Delete source contacts after merge (default: true)
+   *
+   * @returns Object with merged contact, source contacts, and deleted contact names
+   * @throws {NotFoundError} If any contact not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.mergeContacts(
+   *   ["people/456", "people/789"],
+   *   "people/123",
+   *   { deleteAfterMerge: true }
+   * );
+   * console.log(`Merged ${result.sourceContacts.length} contacts`);
+   * ```
+   */
   async mergeContacts(
     sourceResourceNames: string[],
     targetResourceName: string,
@@ -916,14 +1185,15 @@ export class ContactsService {
     deletedContacts: string[];
   }> {
     await this.initialize();
+    this.ensureInitialized();
 
     const targetContact = await this.getContact(targetResourceName);
     const sourceContacts = await Promise.all(
       sourceResourceNames.map((rn) => this.getContact(rn))
     );
 
-    // Merge contact data
-    const mergedData: any = { ...targetContact };
+    // Merge contact data (typed, no 'as any')
+    const mergedData: Partial<Person> = { ...targetContact };
 
     // Merge emails
     const emails = new Set<string>();
@@ -986,7 +1256,7 @@ export class ContactsService {
     }
 
     // Update target contact with merged data
-    const updated = await this.updateContact(targetResourceName, mergedData);
+    const updated = await this.updateContact(targetResourceName, mergedData as CreateContactOptions);
 
     // Delete source contacts if requested
     const deletedContacts: string[] = [];
@@ -999,6 +1269,7 @@ export class ContactsService {
           }
         } catch (error) {
           // Continue even if deletion fails
+          this.logger.debug(`Failed to delete source contact ${sourceContact.resourceName}`, { error });
         }
       }
     }
@@ -1010,6 +1281,31 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Automatically merges duplicate contacts found by findDuplicates().
+   *
+   * @param options - Auto-merge options
+   * @param options.criteria - Detection criteria (default: ["email"])
+   * @param options.threshold - Confidence threshold (default: 95)
+   * @param options.maxResults - Max contacts to analyze (default: 1000)
+   * @param options.dryRun - If true, returns what would be merged without actually merging
+   *
+   * @returns Object with merge operation count and results
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * // Dry run to see what would be merged
+   * const dryRun = await contacts.autoMergeDuplicates({ dryRun: true });
+   * console.log(`Would merge ${dryRun.mergeOperations} groups`);
+   *
+   * // Actually merge duplicates
+   * const result = await contacts.autoMergeDuplicates({
+   *   criteria: ["email"],
+   *   threshold: 95
+   * });
+   * ```
+   */
   async autoMergeDuplicates(options: {
     criteria?: string[];
     threshold?: number;
@@ -1092,6 +1388,12 @@ export class ContactsService {
 
   // ============= DATA QUALITY ANALYSIS =============
 
+  /**
+   * Extracts full name from contact (given + middle + family).
+   *
+   * @param contact - Person object
+   * @returns Full name string or null
+   */
   private getFullName(contact: Person): string | null {
     const names = contact.names?.[0];
     if (!names) return null;
@@ -1104,6 +1406,12 @@ export class ContactsService {
     return parts.length > 0 ? parts.join(" ") : null;
   }
 
+  /**
+   * Checks if name matches generic patterns (e.g., "Contact", "Home", "Test").
+   *
+   * @param name - Name to check
+   * @returns True if name is generic
+   */
   private isGenericName(name: string): boolean {
     const genericPatterns = [
       /^contact$/i,
@@ -1125,6 +1433,12 @@ export class ContactsService {
     return genericPatterns.some((pattern) => pattern.test(name.trim()));
   }
 
+  /**
+   * Extracts surname hints from contact metadata (email, organization, phone).
+   *
+   * @param contact - Person object
+   * @returns Array of hint strings
+   */
   private extractSurnameHints(contact: Person): string[] {
     const hints: string[] = [];
 
@@ -1160,6 +1474,12 @@ export class ContactsService {
     return hints;
   }
 
+  /**
+   * Checks if contact appears to be auto-imported (generic patterns).
+   *
+   * @param contact - Person object
+   * @returns True if likely imported
+   */
   private isLikelyImportedContact(contact: Person): boolean {
     const name = this.getFullName(contact) || "";
     const email = contact.emailAddresses?.[0]?.value || "";
@@ -1179,28 +1499,36 @@ export class ContactsService {
       /^notification/i,
     ];
 
-    const isAutoGenName = importedPatterns.some((pattern) =>
-      pattern.test(name)
-    );
-    const isAutoGenEmail = importedPatterns.some((pattern) =>
-      pattern.test(email)
-    );
+    const isAutoGenName = importedPatterns.some((pattern) => pattern.test(name));
+    const isAutoGenEmail = importedPatterns.some((pattern) => pattern.test(email));
 
     // Check for minimal data
     const hasMinimalData =
       !contact.emailAddresses ||
-      (contact.emailAddresses.length === 1 &&
-        !contact.phoneNumbers) ||
+      (contact.emailAddresses.length === 1 && !contact.phoneNumbers) ||
       !contact.organizations;
 
     // Check if name matches email pattern
     const nameMatchesEmail =
-      name.toLowerCase().replace(/\s/g, "") ===
-      email.split("@")[0]!.toLowerCase();
+      name.toLowerCase().replace(/\s/g, "") === email.split("@")[0]!.toLowerCase();
 
     return isAutoGenName || (isAutoGenEmail && hasMinimalData) || nameMatchesEmail;
   }
 
+  /**
+   * Finds contacts with missing first or last names.
+   *
+   * @param options - Options
+   * @param options.pageSize - Max contacts to analyze (default: 100)
+   * @returns Object with contacts missing names and analysis metadata
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.findContactsWithMissingNames();
+   * console.log(`Found ${result.contactsWithIssues} contacts with missing names`);
+   * ```
+   */
   async findContactsWithMissingNames(options: {
     pageSize?: number;
   }): Promise<{
@@ -1272,6 +1600,19 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Finds contacts with generic names (e.g., "Contact", "Home", "Test").
+   *
+   * @param options - Options
+   * @param options.pageSize - Max contacts to analyze (default: 100)
+   * @returns Object with contacts having generic names
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.findContactsWithGenericNames();
+   * ```
+   */
   async findContactsWithGenericNames(options: {
     pageSize?: number;
   }): Promise<{
@@ -1340,6 +1681,20 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Analyzes contacts to identify likely auto-imported entries.
+   *
+   * @param options - Options
+   * @param options.pageSize - Max contacts to analyze (default: 100)
+   * @returns Object with imported contacts and confidence scores
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.analyzeImportedContacts();
+   * console.log(`Found ${result.importedContacts} likely imported contacts`);
+   * ```
+   */
   async analyzeImportedContacts(options: {
     pageSize?: number;
   }): Promise<{
@@ -1434,6 +1789,12 @@ export class ContactsService {
 
   // ============= MARKETING DETECTION =============
 
+  /**
+   * Analyzes email address for marketing patterns.
+   *
+   * @param email - Email address to analyze
+   * @returns Object with isMarketing flag, confidence score, and reasons
+   */
   private isMarketingEmail(email: string): {
     isMarketing: boolean;
     confidence: number;
@@ -1562,6 +1923,12 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Analyzes name for marketing patterns.
+   *
+   * @param name - Name to analyze
+   * @returns Object with isMarketing flag, confidence score, and reasons
+   */
   private isMarketingName(name: string): {
     isMarketing: boolean;
     confidence: number;
@@ -1617,6 +1984,12 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Analyzes contact for marketing patterns (email + name + heuristics).
+   *
+   * @param contact - Person object to analyze
+   * @returns Object with isMarketing flag, confidence score, and reasons
+   */
   private isMarketingContact(contact: Person): {
     isMarketing: boolean;
     confidence: number;
@@ -1669,6 +2042,23 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Detects marketing contacts using email patterns, name patterns, and heuristics.
+   *
+   * @param options - Options
+   * @param options.pageSize - Max contacts to analyze (default: 200)
+   * @returns Object with marketing contacts, confidence scores, and detection reasons
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await contacts.detectMarketingContacts();
+   * console.log(`Found ${result.marketingContacts} marketing contacts`);
+   *
+   * // Review high-confidence detections
+   * const highConfidence = result.contacts.filter(c => c.confidence >= 80);
+   * ```
+   */
   async detectMarketingContacts(options: {
     pageSize?: number;
   }): Promise<{
@@ -1720,6 +2110,20 @@ export class ContactsService {
     };
   }
 
+  /**
+   * Deletes multiple marketing contacts.
+   *
+   * @param contacts - Array of contact objects with resourceName
+   * @returns Object with deletion counts and failed contacts
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const marketing = await contacts.detectMarketingContacts();
+   * const result = await contacts.cleanupMarketingContacts(marketing.contacts);
+   * console.log(`Deleted ${result.deleted} marketing contacts`);
+   * ```
+   */
   async cleanupMarketingContacts(
     contacts: Array<{ resourceName: string }>
   ): Promise<{
