@@ -28,6 +28,16 @@ export function handleGoogleApiError(error: unknown, context: string): never {
     const httpCode = (error as any).code;
 
     switch (httpCode) {
+      case 401:
+        // 401 Unauthorized / Login Required
+        // This usually means the token is invalid or expired
+        // Suggest re-authentication
+        throw new ServiceError(
+          `Authentication required: ${error instanceof Error ? error.message : "Login Required"}. Please re-authenticate.`,
+          "AUTHENTICATION_REQUIRED",
+          401,
+          true // Retryable - user can re-authenticate
+        );
       case 404:
         throw new NotFoundError(context, "resource");
       case 403:

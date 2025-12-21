@@ -76,6 +76,7 @@ export abstract class BaseService {
     let auth = await this.loadSavedAuthIfExist(CREDENTIALS_PATH);
 
     if (!auth) {
+      this.logger.info(`Authenticating ${this.serviceName} service (account: ${this.account})...`);
       const newAuth = await authenticate({
         scopes: this.SCOPES,
         keyfilePath: CREDENTIALS_PATH,
@@ -88,7 +89,28 @@ export abstract class BaseService {
         "setCredentials" in newAuth
       ) {
         auth = newAuth as unknown as AuthClient;
-        await this.saveAuth(auth);
+        // Validate the new auth works before saving
+        try {
+          const accessToken = await auth.getAccessToken();
+          if (!accessToken.token) {
+            throw new Error("No access token received from authentication");
+          }
+          await this.saveAuth(auth);
+          
+          // CRITICAL: After saving, ensure the auth object has the latest credentials
+          // This ensures the auth object is in sync with what we saved to the database
+          const authCredentials = (auth as any).credentials || {};
+          auth.setCredentials({
+            access_token: accessToken.token,
+            refresh_token: authCredentials.refresh_token || "",
+            expiry_date: authCredentials.expiry_date || 0,
+          });
+          
+          this.logger.info(`Successfully authenticated and saved ${this.serviceName} token (account: ${this.account})`);
+        } catch (error) {
+          this.logger.error(`Failed to validate new authentication: ${error instanceof Error ? error.message : String(error)}`);
+          throw new InitializationError(this.serviceName);
+        }
       } else {
         throw new InitializationError(this.serviceName);
       }
@@ -96,6 +118,9 @@ export abstract class BaseService {
 
     this.auth = auth;
     this.initialized = true;
+    
+    // Note: Subclasses should override initialize() to set up their API clients
+    // after calling super.initialize(). The auth object is now ready to use.
   }
 
   /**
