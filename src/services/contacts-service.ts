@@ -861,8 +861,6 @@ export class ContactsService {
 
     // Phase 3: Fuzzy name matching
     if (criteria.includes("name")) {
-      const nameGroups = new Map<number, Person[][]>();
-
       for (let i = 0; i < contacts.length; i++) {
         for (let j = i + 1; j < contacts.length; j++) {
           const contact1 = contacts[i]!;
@@ -990,16 +988,18 @@ export class ContactsService {
     // Update target contact with merged data
     const updated = await this.updateContact(targetResourceName, mergedData);
 
-    // Delete source contacts
+    // Delete source contacts if requested
     const deletedContacts: string[] = [];
-    for (const sourceContact of sourceContacts) {
-      try {
-        if (sourceContact.resourceName) {
-          await this.deleteContact(sourceContact.resourceName);
-          deletedContacts.push(sourceContact.resourceName);
+    if (options.deleteAfterMerge !== false) {
+      for (const sourceContact of sourceContacts) {
+        try {
+          if (sourceContact.resourceName) {
+            await this.deleteContact(sourceContact.resourceName);
+            deletedContacts.push(sourceContact.resourceName);
+          }
+        } catch (error) {
+          // Continue even if deletion fails
         }
-      } catch (error) {
-        // Continue even if deletion fails
       }
     }
 
@@ -1233,7 +1233,6 @@ export class ContactsService {
     }> = [];
 
     contacts.forEach((contact) => {
-      const fullName = this.getFullName(contact);
       const displayName = contact.names?.[0]?.displayName || "Unknown";
 
       // Check for missing first name
@@ -1373,49 +1372,53 @@ export class ContactsService {
     }> = [];
 
     contacts.forEach((contact) => {
-      const name = this.getFullName(contact) || "";
-      const email = contact.emailAddresses?.[0]?.value || "";
       const displayName = contact.names?.[0]?.displayName || "Unknown";
 
-      let issueType = "";
-      let confidence = 0;
+      // Use isLikelyImportedContact to detect imported contacts
+      if (this.isLikelyImportedContact(contact)) {
+        const name = this.getFullName(contact) || "";
+        const email = contact.emailAddresses?.[0]?.value || "";
 
-      // Check for auto-generated patterns
-      if (name.toLowerCase().startsWith("contact")) {
-        issueType = "Auto-generated 'Contact' name";
-        confidence = 95;
-      } else if (/^imported_|^sync_/.test(name.toLowerCase())) {
-        issueType = "Auto-import identifier";
-        confidence = 90;
-      } else if (/^test_/i.test(name)) {
-        issueType = "Test contact";
-        confidence = 85;
-      } else if (
-        name.toLowerCase().match(/noreply|donotreply|mailer|notification/i)
-      ) {
-        issueType = "System-generated contact";
-        confidence = 80;
-      } else if (
-        email &&
-        email.match(/^[a-z0-9]+\+[a-z0-9]+@/i)
-      ) {
-        issueType = "Email alias (potential import artifact)";
-        confidence = 60;
-      } else if (!contact.phoneNumbers && !contact.organizations) {
-        issueType = "Minimal data (email-only)";
-        confidence = 40;
-      }
+        let issueType = "";
+        let confidence = 0;
 
-      if (issueType && confidence > 0) {
-        importedContacts.push({
-          resourceName: contact.resourceName || "",
-          displayName,
-          email: contact.emailAddresses?.[0]?.value ?? undefined,
-          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
-          organization: contact.organizations?.[0]?.name ?? undefined,
-          issueType,
-          confidence,
-        });
+        // Determine specific type and confidence level
+        if (name.toLowerCase().startsWith("contact")) {
+          issueType = "Auto-generated 'Contact' name";
+          confidence = 95;
+        } else if (/^imported_|^sync_/.test(name.toLowerCase())) {
+          issueType = "Auto-import identifier";
+          confidence = 90;
+        } else if (/^test_/i.test(name)) {
+          issueType = "Test contact";
+          confidence = 85;
+        } else if (
+          name.toLowerCase().match(/noreply|donotreply|mailer|notification/i)
+        ) {
+          issueType = "System-generated contact";
+          confidence = 80;
+        } else if (
+          email &&
+          email.match(/^[a-z0-9]+\+[a-z0-9]+@/i)
+        ) {
+          issueType = "Email alias (potential import artifact)";
+          confidence = 60;
+        } else {
+          issueType = "Likely imported contact";
+          confidence = 50;
+        }
+
+        if (confidence > 0) {
+          importedContacts.push({
+            resourceName: contact.resourceName || "",
+            displayName,
+            email: contact.emailAddresses?.[0]?.value ?? undefined,
+            phone: contact.phoneNumbers?.[0]?.value ?? undefined,
+            organization: contact.organizations?.[0]?.name ?? undefined,
+            issueType,
+            confidence,
+          });
+        }
       }
     });
 
