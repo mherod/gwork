@@ -10,9 +10,9 @@ external = ["better-sqlite3"]
 # Coverage directory for reports
 coverageDirectory = "./coverage"
 
-# NOTE: coverageThreshold is disabled due to Bun bug where ANY threshold value
-# causes `bun test --coverage` to exit with code 1, even when threshold is met.
-# Current coverage: 93.94% lines, 96.15% functions (target: 70%+)
+# NOTE: coverageThreshold is disabled due to Bun bug (oven-sh/bun#17028) where
+# ANY threshold value causes `bun test --coverage` to exit with code 1, even when
+# threshold is met. Current coverage: 93.94% lines, 96.15% functions (target: 70%+)
 
 # Test timeout (milliseconds)
 timeout = 10000
