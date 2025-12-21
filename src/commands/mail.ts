@@ -7,6 +7,8 @@ import fs from "node:fs";
 // Module-level service instance (set by handleMailCommand)
 let mailService: MailService;
 
+type EmailBodyFormat = "plain" | "html" | "auto";
+
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await mailService.initialize();
@@ -21,7 +23,7 @@ function getHeader(headers: Array<{ name?: string | null; value?: string | null 
   return header?.value || "";
 }
 
-function formatMessage(message: any): string {
+function formatMessage(message: any, format: EmailBodyFormat = "auto"): string {
   const headers = message.payload?.headers || [];
   const from = getHeader(headers, "from");
   const to = getHeader(headers, "to");
@@ -32,14 +34,36 @@ function formatMessage(message: any): string {
   if (message.payload?.body?.data) {
     body = decodeBase64(message.payload.body.data);
   } else if (message.payload?.parts) {
-    for (const part of message.payload.parts) {
-      if (part.mimeType === "text/plain" && part.body?.data) {
-        body = decodeBase64(part.body.data);
+    const parts = message.payload.parts;
+
+    switch (format) {
+      case "plain":
+        const plainPart = parts.find((p: any) => p.mimeType === "text/plain" && p.body?.data);
+        if (plainPart) body = decodeBase64(plainPart.body.data);
         break;
-      } else if (part.mimeType === "text/html" && part.body?.data && !body) {
-        body = decodeBase64(part.body.data);
-      }
+
+      case "html":
+        const htmlPart = parts.find((p: any) => p.mimeType === "text/html" && p.body?.data);
+        if (htmlPart) body = decodeBase64(htmlPart.body.data);
+        break;
+
+      case "auto":
+      default:
+        // Current behavior: prefer plain, fallback to html
+        for (const part of parts) {
+          if (part.mimeType === "text/plain" && part.body?.data) {
+            body = decodeBase64(part.body.data);
+            break;
+          } else if (part.mimeType === "text/html" && part.body?.data && !body) {
+            body = decodeBase64(part.body.data);
+          }
+        }
     }
+  }
+
+  // Add warning if requested format not available
+  if (!body && format !== "auto") {
+    body = `[No ${format} version available for this message]`;
   }
 
   return `From: ${from}
@@ -67,10 +91,10 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
     case "get":
       if (args.length === 0) {
         console.error("Error: messageId is required");
-        console.error("Usage: gwork mail get <messageId>");
+        console.error("Usage: gwork mail get <messageId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getMessage(args[0]);
+      await getMessage(args[0], args.slice(1));
       break;
     case "search":
       if (args.length === 0) {
@@ -92,10 +116,10 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
     case "thread":
       if (args.length === 0) {
         console.error("Error: threadId is required");
-        console.error("Usage: gwork mail thread <threadId>");
+        console.error("Usage: gwork mail thread <threadId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getThread(args[0]);
+      await getThread(args[0], args.slice(1));
       break;
     case "unread":
       await listUnread(args);
@@ -357,15 +381,34 @@ async function listMessages(args: string[]) {
   }
 }
 
-async function getMessage(messageId: string) {
+async function getMessage(messageId: string, args: string[] = []) {
   const spinner = ora("Fetching message...").start();
   try {
+    let format: EmailBodyFormat = "auto";
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--format" || args[i] === "-f") {
+        if (i + 1 >= args.length) {
+          spinner.fail("Missing format value");
+          console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
+          process.exit(1);
+        }
+        const value = args[++i];
+        if (value === "plain" || value === "html" || value === "auto") {
+          format = value;
+        } else {
+          spinner.fail("Invalid format option");
+          console.error(chalk.red(`Error: Invalid format "${value}". Use: plain, html, or auto`));
+          process.exit(1);
+        }
+      }
+    }
+
     const message = await mailService.getMessage(messageId, "full");
     spinner.succeed("Message fetched");
 
     console.log(chalk.bold("\nMessage:"));
     console.log("─".repeat(80));
-    console.log(formatMessage(message));
+    console.log(formatMessage(message, format));
 
     const parts = message.payload?.parts || [];
     if (parts.length > 0) {
@@ -509,9 +552,31 @@ async function listThreads(args: string[]) {
   }
 }
 
-async function getThread(threadId: string) {
+async function getThread(threadId: string, args: string[] = []) {
   const spinner = ora("Fetching thread...").start();
   try {
+    let format: EmailBodyFormat = "auto";
+    let showFullMessages = false;
+
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--format" || args[i] === "-f") {
+        if (i + 1 >= args.length) {
+          spinner.fail("Missing format value");
+          console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
+          process.exit(1);
+        }
+        const value = args[++i];
+        if (value === "plain" || value === "html" || value === "auto") {
+          format = value;
+          showFullMessages = true;
+        } else {
+          spinner.fail("Invalid format option");
+          console.error(chalk.red(`Error: Invalid format "${value}". Use: plain, html, or auto`));
+          process.exit(1);
+        }
+      }
+    }
+
     const thread = await mailService.getThread(threadId);
     spinner.succeed("Thread fetched");
 
@@ -522,17 +587,25 @@ async function getThread(threadId: string) {
 
     if (thread.messages && thread.messages.length > 0) {
       thread.messages.forEach((message: any, index: number) => {
-        const headers = message.payload?.headers || [];
-        const from = getHeader(headers, "from");
-        const subject = getHeader(headers, "subject");
-        const date = getHeader(headers, "date");
-
         console.log(`\n${chalk.bold(`Message ${index + 1}:`)}`);
-        console.log(`  ${chalk.gray("From:")} ${from}`);
-        console.log(`  ${chalk.gray("Subject:")} ${subject}`);
-        console.log(`  ${chalk.gray("Date:")} ${date}`);
-        if (message.snippet) {
-          console.log(`  ${chalk.gray("Preview:")} ${message.snippet.substring(0, 100)}...`);
+        console.log("─".repeat(80));
+
+        if (showFullMessages) {
+          // Show full message with body
+          console.log(formatMessage(message, format));
+        } else {
+          // Current snippet preview behavior (unchanged)
+          const headers = message.payload?.headers || [];
+          const from = getHeader(headers, "from");
+          const subject = getHeader(headers, "subject");
+          const date = getHeader(headers, "date");
+
+          console.log(`  ${chalk.gray("From:")} ${from}`);
+          console.log(`  ${chalk.gray("Subject:")} ${subject}`);
+          console.log(`  ${chalk.gray("Date:")} ${date}`);
+          if (message.snippet) {
+            console.log(`  ${chalk.gray("Preview:")} ${message.snippet.substring(0, 100)}...`);
+          }
         }
       });
     }
