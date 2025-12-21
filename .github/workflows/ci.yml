@@ -26,7 +26,7 @@ jobs:
         run: bunx tsc --noEmit
 
       - name: Run tests with coverage
-        run: bun run test:ci
+        run: bun test --coverage
 
       - name: Build production bundle
         run: bun run build
