@@ -173,6 +173,23 @@ export class AuthManager {
       // Create OAuth2Client from token
       const auth = await this.createOAuth2ClientFromToken(token, credentialsPath);
       
+      // Validate token using getTokenInfo() if available (like in the Google example)
+      // This helps catch invalid tokens early before attempting API calls
+      try {
+        if (token.access_token && typeof (auth as any).getTokenInfo === "function") {
+          const tokenInfo = await (auth as any).getTokenInfo(token.access_token);
+          // Check if token is expired or invalid
+          if (tokenInfo.expiry_date && tokenInfo.expiry_date * 1000 < Date.now()) {
+            logger.info(`Token is expired. Refreshing...`);
+            // Will be refreshed in refreshTokenIfNeeded below
+          }
+        }
+      } catch (tokenInfoError) {
+        // If getTokenInfo fails, token might be invalid - but don't delete yet
+        // Let refreshTokenIfNeeded handle it (it will try to refresh)
+        logger.debug(`Token info check failed (may be expired): ${tokenInfoError instanceof Error ? tokenInfoError.message : String(tokenInfoError)}`);
+      }
+      
       // Refresh token if needed and synchronize credentials
       const originalExpiry = token.expiry_date;
       const refreshedToken = await this.refreshTokenIfNeeded(auth, token, requiredScopes, tokenStore, logger);
@@ -191,8 +208,25 @@ export class AuthManager {
       return auth;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.warn(`Saved ${service} token is invalid (${errorMessage}). Re-authenticating...`);
-      tokenStore.deleteToken(service.toLowerCase(), account);
+      
+      // Only delete token for authentication-related errors
+      // Don't delete for network errors, file system errors, or other transient issues
+      const isAuthError = 
+        errorMessage.includes("invalid_grant") ||
+        errorMessage.includes("invalid_token") ||
+        errorMessage.includes("unauthorized") ||
+        errorMessage.includes("authentication") ||
+        errorMessage.includes("credentials") ||
+        (error instanceof Error && "code" in error && (error as any).code === 401);
+      
+      if (isAuthError) {
+        logger.warn(`Saved ${service} token is invalid (${errorMessage}). Re-authenticating...`);
+        tokenStore.deleteToken(service.toLowerCase(), account);
+      } else {
+        // For non-auth errors, log but don't delete token - might be transient
+        logger.warn(`Error loading ${service} token (${errorMessage}). Token not deleted - may be transient error.`);
+      }
+      
       return null;
     }
   }
@@ -236,10 +270,27 @@ export class AuthManager {
     existingToken: TokenData,
     requiredScopes: string[],
     tokenStore: TokenStore,
-    _logger: Logger
+    logger: Logger
   ): Promise<TokenData> {
     // getAccessToken() will automatically refresh if expired
-    const accessTokenResponse = await auth.getAccessToken();
+    // This is the recommended approach (like in the Google example)
+    let accessTokenResponse;
+    try {
+      accessTokenResponse = await auth.getAccessToken();
+    } catch (refreshError) {
+      // If refresh fails, it's likely an authentication error
+      const errorMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
+      if (
+        errorMessage.includes("invalid_grant") ||
+        errorMessage.includes("invalid_token") ||
+        errorMessage.includes("unauthorized")
+      ) {
+        logger.warn(`Token refresh failed (${errorMessage}). Token may be revoked.`);
+        throw refreshError; // Will be caught by loadExistingAuth and trigger re-auth
+      }
+      throw refreshError;
+    }
+    
     const authCredentials = (auth as any).credentials || {};
     
     // Always save current credentials (updates expiry_date even if not refreshed)
