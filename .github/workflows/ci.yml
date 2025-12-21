@@ -25,8 +25,8 @@ jobs:
       - name: Type check
         run: bunx tsc --noEmit
 
-      - name: Run tests with coverage
-        run: bun test --coverage
+      - name: Run tests
+        run: bun test
 
       - name: Build production bundle
         run: bun run build

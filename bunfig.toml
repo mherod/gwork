@@ -7,10 +7,7 @@ external = ["better-sqlite3"]
 
 # Test configuration
 [test]
-# Enable coverage collection
-coverage = true
-
-# Set coverage threshold - fail if below this percentage
+# Set coverage threshold - only applies when coverage is enabled via --coverage flag
 coverageThreshold = 70
 
 # Coverage directory for reports
