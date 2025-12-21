@@ -30,3 +30,17 @@ jobs:
 
       - name: Build production bundle
         run: bun run build
+
+      - name: Install CLI globally
+        run: npm link
+
+      - name: Verify CLI help output
+        run: |
+          echo "=== Main help ==="
+          gwork --help
+          echo ""
+          echo "=== Calendar help ==="
+          gwork cal --help
+          echo ""
+          echo "=== Mail help ==="
+          gwork mail --help
