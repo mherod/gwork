@@ -1,14 +1,16 @@
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
-import { authenticate } from "@google-cloud/local-auth";
+/**
+ * Gmail service wrapper for Google Gmail API v1.
+ * Provides methods for managing messages, threads, labels, and profiles.
+ */
+
 import { google } from "googleapis";
-import { TokenStore } from "./token-store.ts";
-import { ensureCredentialsExist } from "../utils/setup-guide.ts";
+import { BaseService } from "./base-service.ts";
+import { handleGoogleApiError } from "./error-handler.ts";
+import { withRetry } from "./retry.ts";
+import { validatePageSize, validateResourceId, validateMaxResults } from "./validators.ts";
 import type { gmail_v1 } from "googleapis";
 import type {
   GmailClient,
-  AuthClient,
   Message,
   Thread,
   Label,
@@ -20,177 +22,158 @@ import type {
   ThreadsResponse,
 } from "../types/google-apis.ts";
 
-export class MailService {
+export class MailService extends BaseService {
   private gmail: GmailClient | null = null;
-  private auth: AuthClient | null = null;
-  private readonly SCOPES: string[];
-  private tokenStore: TokenStore;
-  private account: string;
 
   constructor(account: string = "default") {
-    this.account = account;
-    this.tokenStore = TokenStore.getInstance();
-    this.SCOPES = [
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.modify",
-      "https://www.googleapis.com/auth/gmail.labels",
-    ];
+    super(
+      "Gmail",
+      [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.labels",
+      ],
+      account
+    );
   }
 
-  async initialize() {
-    if (this.gmail) return;
-
-    const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-
-    // Check if credentials file exists and show setup guide if not
-    if (!ensureCredentialsExist()) {
-      process.exit(1);
-    }
-
-    // Try to load existing token first
-    let auth = await this.loadSavedAuthIfExist();
-
-    if (!auth) {
-      // If no saved token, authenticate and save it
-      try {
-        const newAuth = await authenticate({
-          scopes: this.SCOPES,
-          keyfilePath: CREDENTIALS_PATH,
-        });
-
-        // Duck-type check: verify auth object has OAuth2Client methods
-        if (newAuth && typeof newAuth === 'object' && 'getAccessToken' in newAuth && 'setCredentials' in newAuth) {
-          auth = newAuth as unknown as AuthClient;
-          await this.saveAuth(auth);
-        } else {
-          throw new Error('Invalid authentication object returned from authenticate()');
-        }
-      } catch (error: unknown) {
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-          console.error("\n❌ Error: Credentials file not found at " + CREDENTIALS_PATH);
-          ensureCredentialsExist();
-          process.exit(1);
-        }
-        throw error;
-      }
-    }
-
-    this.auth = auth;
-    this.gmail = google.gmail({ version: "v1", auth: this.auth } as any);
+  async initialize(): Promise<void> {
+    await super.initialize();
+    this.ensureInitialized();
+    // Initialize Gmail client
+    this.gmail = google.gmail({ version: "v1", auth: this.auth });
   }
 
-  private async loadSavedAuthIfExist() {
-    try {
-      const token = this.tokenStore.getToken("gmail", this.account);
+  // ============= LABEL OPERATIONS =============
 
-      if (!token) {
-        return null;
-      }
-
-      // Check if token has the required scopes
-      const hasRequiredScopes = this.SCOPES.every((scope) =>
-        token.scopes.includes(scope)
-      );
-
-      if (!hasRequiredScopes) {
-        console.log(
-          "Token has incorrect scopes. Deleting token to re-authenticate..."
-        );
-        this.tokenStore.deleteToken("gmail", this.account);
-        return null;
-      }
-
-      // Load credentials to get client_id and client_secret
-      const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
-      const credentialsContent = fs.readFileSync(CREDENTIALS_PATH, "utf8");
-      const credentials = JSON.parse(credentialsContent);
-      const clientConfig = credentials.installed || credentials.web;
-
-      // Create auth object with client credentials
-      const auth = new google.auth.OAuth2(
-        clientConfig.client_id,
-        clientConfig.client_secret,
-        clientConfig.redirect_uris?.[0] || "http://localhost"
-      );
-      auth.setCredentials({
-        refresh_token: token.refresh_token,
-        access_token: token.access_token,
-        expiry_date: token.expiry_date,
-      });
-
-      // Test if the token is still valid by making a simple request
-      try {
-        await auth.getAccessToken();
-        console.log(`Using saved Gmail token (account: ${this.account})`);
-        return auth;
-      } catch (error) {
-        // Token is expired or invalid, remove it
-        console.log("Saved Gmail token is invalid. Re-authenticating...");
-        this.tokenStore.deleteToken("gmail", this.account);
-        return null;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to load saved Gmail token:", message);
-      this.tokenStore.deleteToken("gmail", this.account);
-    }
-    return null;
-  }
-
-  private async saveAuth(auth: AuthClient) {
-    try {
-      this.tokenStore.saveToken({
-        service: "gmail",
-        account: this.account,
-        access_token: auth.credentials.access_token ?? "",
-        refresh_token: auth.credentials.refresh_token ?? "",
-        expiry_date: auth.credentials.expiry_date ?? 0,
-        scopes: this.SCOPES,
-      });
-      console.log(`Gmail token saved (account: ${this.account})`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.warn("Failed to save Gmail token:", message);
-    }
-  }
-
+  /**
+   * Lists all labels in the user's mailbox.
+   *
+   * @returns Array of Label objects
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const mail = new MailService();
+   * await mail.initialize();
+   * const labels = await mail.listLabels();
+   * ```
+   */
   async listLabels(): Promise<Label[]> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
 
     try {
-      const result = await this.gmail.users.labels.list({
+      const result = await this.gmail!.users.labels.list({
         userId: "me",
       });
       return result.data.labels || [];
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to list labels. Please check your authentication and permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list labels: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list labels");
     }
   }
 
+  /**
+   * Creates a new label.
+   *
+   * @param labelData - Label properties (name, labelListVisibility, etc.)
+   * @returns Created Label object
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const label = await mail.createLabel({ name: "Work" });
+   * ```
+   */
+  async createLabel(labelData: Partial<Label>): Promise<Label> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.gmail!.users.labels.create({
+        userId: "me",
+        requestBody: labelData,
+      });
+      if (!result.data) {
+        throw new Error("No label data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "create label");
+    }
+  }
+
+  /**
+   * Deletes a label.
+   *
+   * @param labelId - ID of label to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If label not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await mail.deleteLabel("Label_1");
+   * ```
+   */
+  async deleteLabel(labelId: string): Promise<{ success: boolean }> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(labelId, "labelId");
+
+    try {
+      await this.gmail!.users.labels.delete({
+        userId: "me",
+        id: labelId,
+      });
+      return { success: true };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "delete label");
+    }
+  }
+
+  // ============= MESSAGE OPERATIONS =============
+
+  /**
+   * Lists messages with optional filtering and pagination.
+   *
+   * @param options - Optional parameters
+   * @param options.maxResults - Max messages to return (1-500, default: 10)
+   * @param options.q - Gmail search query (e.g., "from:user@example.com")
+   * @param options.labelIds - Filter by label IDs
+   * @param options.pageToken - Token for next page
+   *
+   * @returns Object with messages array and pagination metadata
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If options are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const { messages, nextPageToken } = await mail.listMessages({
+   *   maxResults: 25,
+   *   q: "is:unread"
+   * });
+   *
+   * // Fetch next page
+   * if (nextPageToken) {
+   *   const nextPage = await mail.listMessages({ pageToken: nextPageToken });
+   * }
+   * ```
+   */
   async listMessages(options: ListMessagesOptions = {}): Promise<MessagesResponse> {
     await this.initialize();
+    this.ensureInitialized();
 
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
+    const { maxResults = 10, q = null, labelIds = null, pageToken = null } = options;
+
+    // Validate options
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 500);
     }
-
-    const {
-      maxResults = 10,
-      q = null,
-      labelIds = null,
-      pageToken = null,
-    } = options;
 
     const params: {
       userId: string;
@@ -208,33 +191,49 @@ export class MailService {
     if (pageToken !== null && pageToken !== undefined) params.pageToken = pageToken;
 
     try {
-      const result = await this.gmail.users.messages.list(params);
-      return {
-        messages: result.data.messages || [],
-        nextPageToken: result.data.nextPageToken || null,
-        resultSizeEstimate: result.data.resultSizeEstimate || null,
-      };
+      return await withRetry(
+        async () => {
+          const result = await this.gmail!.users.messages.list(params);
+          return {
+            messages: result.data.messages || [],
+            nextPageToken: result.data.nextPageToken || null,
+            resultSizeEstimate: result.data.resultSizeEstimate || null,
+          };
+        },
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to list messages. Please check your authentication and permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list messages: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list messages");
     }
   }
 
-  async getMessage(messageId: string, format: "full" | "metadata" | "minimal" = "full"): Promise<Message> {
+  /**
+   * Gets a single message by ID.
+   *
+   * @param messageId - ID of message to retrieve
+   * @param format - Response format: "full" (default), "metadata", or "minimal"
+   * @returns Message object with requested format
+   * @throws {NotFoundError} If message not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If messageId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const message = await mail.getMessage("1234567890");
+   * const metadataOnly = await mail.getMessage("1234567890", "metadata");
+   * ```
+   */
+  async getMessage(
+    messageId: string,
+    format: "full" | "metadata" | "minimal" = "full"
+  ): Promise<Message> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(messageId, "messageId");
 
     try {
-      const result = await this.gmail.users.messages.get({
+      const result = await this.gmail!.users.messages.get({
         userId: "me",
         id: messageId,
         format,
@@ -244,27 +243,39 @@ export class MailService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Message not found: ${messageId}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to message ${messageId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get message: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get message");
     }
   }
 
-  async searchMessages(query: string, options: SearchMessagesOptions = {}): Promise<MessagesResponse> {
+  /**
+   * Searches for messages matching a Gmail search query.
+   *
+   * @param query - Gmail search query (uses operators like from:, subject:, etc.)
+   * @param options - Optional parameters
+   * @param options.maxResults - Max results to return (default: 10)
+   * @param options.pageToken - Token for next page
+   *
+   * @returns Object with matching messages and pagination metadata
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const { messages } = await mail.searchMessages("from:boss@company.com is:unread");
+   * const results = await mail.searchMessages("filename:pdf", { maxResults: 50 });
+   * ```
+   */
+  async searchMessages(
+    query: string,
+    options: SearchMessagesOptions = {}
+  ): Promise<MessagesResponse> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
 
     const { maxResults = 10, pageToken = null } = options;
+
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 500);
+    }
 
     const params: {
       userId: string;
@@ -280,29 +291,188 @@ export class MailService {
     if (pageToken !== null && pageToken !== undefined) params.pageToken = pageToken;
 
     try {
-      const result = await this.gmail.users.messages.list(params);
-      return {
-        messages: result.data.messages || [],
-        nextPageToken: result.data.nextPageToken || null,
-        resultSizeEstimate: result.data.resultSizeEstimate || null,
-      };
+      return await withRetry(
+        async () => {
+          const result = await this.gmail!.users.messages.list(params);
+          return {
+            messages: result.data.messages || [],
+            nextPageToken: result.data.nextPageToken || null,
+            resultSizeEstimate: result.data.resultSizeEstimate || null,
+          };
+        },
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to search messages: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "search messages");
     }
   }
 
-  async getThread(threadId: string): Promise<Thread> {
+  /**
+   * Deletes a message.
+   *
+   * @param messageId - ID of message to delete
+   * @returns Success indicator
+   * @throws {NotFoundError} If message not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If messageId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await mail.deleteMessage("1234567890");
+   * ```
+   */
+  async deleteMessage(messageId: string): Promise<{ success: boolean }> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(messageId, "messageId");
 
     try {
-      const result = await this.gmail.users.threads.get({
+      await this.gmail!.users.messages.delete({
+        userId: "me",
+        id: messageId,
+      });
+      return { success: true };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "delete message");
+    }
+  }
+
+  /**
+   * Modifies message labels.
+   *
+   * @param messageId - ID of message to modify
+   * @param addLabelIds - Label IDs to add
+   * @param removeLabelIds - Label IDs to remove
+   * @returns Modified Message object
+   * @throws {NotFoundError} If message not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If messageId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const modified = await mail.modifyMessage("123", ["STARRED"], ["UNREAD"]);
+   * ```
+   */
+  async modifyMessage(
+    messageId: string,
+    addLabelIds: string[] = [],
+    removeLabelIds: string[] = []
+  ): Promise<Message> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(messageId, "messageId");
+
+    try {
+      const result = await this.gmail!.users.messages.modify({
+        userId: "me",
+        id: messageId,
+        requestBody: {
+          addLabelIds,
+          removeLabelIds,
+        },
+      });
+      if (!result.data) {
+        throw new Error("No message data returned");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "modify message");
+    }
+  }
+
+  /**
+   * Archives a message (removes from INBOX).
+   *
+   * @param messageId - ID of message to archive
+   * @returns Modified Message object
+   * @throws {NotFoundError} If message not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await mail.archiveMessage("123");
+   * ```
+   */
+  async archiveMessage(messageId: string): Promise<Message> {
+    return await this.modifyMessage(messageId, [], ["INBOX"]);
+  }
+
+  /**
+   * Unarchives a message (adds to INBOX).
+   *
+   * @param messageId - ID of message to unarchive
+   * @returns Modified Message object
+   * @throws {NotFoundError} If message not found
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * await mail.unarchiveMessage("123");
+   * ```
+   */
+  async unarchiveMessage(messageId: string): Promise<Message> {
+    return await this.modifyMessage(messageId, ["INBOX"], []);
+  }
+
+  /**
+   * Batch deletes multiple messages.
+   *
+   * @param messageIds - Array of message IDs to delete
+   * @returns Success indicator with count
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const result = await mail.batchDeleteMessages(["123", "456", "789"]);
+   * console.log(`Deleted ${result.count} messages`);
+   * ```
+   */
+  async batchDeleteMessages(messageIds: string[]): Promise<{ success: boolean; count: number }> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      await this.gmail!.users.messages.batchDelete({
+        userId: "me",
+        requestBody: {
+          ids: messageIds,
+        },
+      });
+      return { success: true, count: messageIds.length };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "batch delete messages");
+    }
+  }
+
+  // ============= THREAD OPERATIONS =============
+
+  /**
+   * Gets a single thread by ID.
+   *
+   * @param threadId - ID of thread to retrieve
+   * @returns Thread object with full message content
+   * @throws {NotFoundError} If thread not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If threadId is invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const thread = await mail.getThread("1234567890");
+   * ```
+   */
+  async getThread(threadId: string): Promise<Thread> {
+    await this.initialize();
+    this.ensureInitialized();
+    validateResourceId(threadId, "threadId");
+
+    try {
+      const result = await this.gmail!.users.threads.get({
         userId: "me",
         id: threadId,
         format: "full",
@@ -312,32 +482,41 @@ export class MailService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Thread not found: ${threadId}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to thread ${threadId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get thread: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get thread");
     }
   }
 
+  /**
+   * Lists threads with optional filtering and pagination.
+   *
+   * @param options - Optional parameters
+   * @param options.maxResults - Max threads to return (default: 10)
+   * @param options.q - Gmail search query
+   * @param options.labelIds - Filter by label IDs
+   * @param options.pageToken - Token for next page
+   *
+   * @returns Object with threads array and pagination metadata
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {ValidationError} If options are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const { threads, nextPageToken } = await mail.listThreads({
+   *   maxResults: 20,
+   *   q: "is:unread"
+   * });
+   * ```
+   */
   async listThreads(options: ListThreadsOptions = {}): Promise<ThreadsResponse> {
     await this.initialize();
+    this.ensureInitialized();
 
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
+    const { maxResults = 10, q = null, labelIds = null, pageToken = null } = options;
+
+    if (maxResults > 0) {
+      validateMaxResults(maxResults, 500);
     }
-
-    const {
-      maxResults = 10,
-      q = null,
-      labelIds = null,
-      pageToken = null,
-    } = options;
 
     const params: {
       userId: string;
@@ -355,108 +534,51 @@ export class MailService {
     if (pageToken !== null && pageToken !== undefined) params.pageToken = pageToken;
 
     try {
-      const result = await this.gmail.users.threads.list(params);
-      return {
-        threads: result.data.threads || [],
-        nextPageToken: result.data.nextPageToken || null,
-        resultSizeEstimate: result.data.resultSizeEstimate || null,
-      };
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to list threads. Please check your authentication and permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to list threads: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async deleteMessage(messageId: string): Promise<{ success: boolean }> {
-    await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
-
-    try {
-      await this.gmail.users.messages.delete({
-        userId: "me",
-        id: messageId,
-      });
-      return { success: true };
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Message not found: ${messageId}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to delete message ${messageId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to delete message: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async modifyMessage(
-    messageId: string,
-    addLabelIds: string[] = [],
-    removeLabelIds: string[] = []
-  ): Promise<Message> {
-    await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
-
-    try {
-      const result = await this.gmail.users.messages.modify({
-        userId: "me",
-        id: messageId,
-        requestBody: {
-          addLabelIds,
-          removeLabelIds,
+      return await withRetry(
+        async () => {
+          const result = await this.gmail!.users.threads.list(params);
+          return {
+            threads: result.data.threads || [],
+            nextPageToken: result.data.nextPageToken || null,
+            resultSizeEstimate: result.data.resultSizeEstimate || null,
+          };
         },
-      });
-      if (!result.data) {
-        throw new Error("No message data returned");
-      }
-      return result.data;
+        { maxRetries: 3 }
+      );
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Message not found: ${messageId}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to modify message ${messageId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to modify message: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "list threads");
     }
   }
 
-  async archiveMessage(messageId: string): Promise<Message> {
-    // Archive = remove INBOX label
-    return await this.modifyMessage(messageId, [], ["INBOX"]);
-  }
+  // ============= ATTACHMENT OPERATIONS =============
 
-  async unarchiveMessage(messageId: string): Promise<Message> {
-    // Unarchive = add INBOX label
-    return await this.modifyMessage(messageId, ["INBOX"], []);
-  }
-
-  async getAttachment(messageId: string, attachmentId: string): Promise<gmail_v1.Schema$MessagePartBody> {
+  /**
+   * Gets an attachment from a message.
+   *
+   * @param messageId - ID of message containing attachment
+   * @param attachmentId - ID of attachment to retrieve
+   * @returns Attachment data with body (base64 encoded)
+   * @throws {NotFoundError} If attachment not found
+   * @throws {PermissionDeniedError} If user lacks access
+   * @throws {ValidationError} If IDs are invalid
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const attachment = await mail.getAttachment("msg123", "att456");
+   * ```
+   */
+  async getAttachment(
+    messageId: string,
+    attachmentId: string
+  ): Promise<gmail_v1.Schema$MessagePartBody> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
+    validateResourceId(messageId, "messageId");
+    validateResourceId(attachmentId, "attachmentId");
 
     try {
-      const result = await this.gmail.users.messages.attachments.get({
+      const result = await this.gmail!.users.messages.attachments.get({
         userId: "me",
         messageId,
         id: attachmentId,
@@ -466,85 +588,31 @@ export class MailService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(
-          `Attachment not found: ${attachmentId} in message ${messageId}`
-        );
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to attachment ${attachmentId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get attachment: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get attachment");
     }
   }
 
-  async createLabel(labelData: Partial<Label>): Promise<Label> {
-    await this.initialize();
+  // ============= PROFILE OPERATIONS =============
 
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
-
-    try {
-      const result = await this.gmail.users.labels.create({
-        userId: "me",
-        requestBody: labelData,
-      });
-      if (!result.data) {
-        throw new Error("No label data returned");
-      }
-      return result.data;
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to create label. Please check your permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to create label: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async deleteLabel(labelId: string): Promise<{ success: boolean }> {
-    await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
-
-    try {
-      await this.gmail.users.labels.delete({
-        userId: "me",
-        id: labelId,
-      });
-      return { success: true };
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 404) {
-        throw new Error(`Label not found: ${labelId}`);
-      } else if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: You don't have access to delete label ${labelId}`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to delete label: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
+  /**
+   * Gets the user's Gmail profile information.
+   *
+   * @returns Profile object with messages/threads counts and history ID
+   * @throws {PermissionDeniedError} If user lacks permissions
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const profile = await mail.getProfile();
+   * console.log(`You have ${profile.messagesTotal} total messages`);
+   * ```
+   */
   async getProfile(): Promise<Profile> {
     await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
+    this.ensureInitialized();
 
     try {
-      const result = await this.gmail.users.getProfile({
+      const result = await this.gmail!.users.getProfile({
         userId: "me",
       });
       if (!result.data) {
@@ -552,42 +620,7 @@ export class MailService {
       }
       return result.data;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to get profile. Please check your authentication and permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to get profile: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  async batchDeleteMessages(messageIds: string[]): Promise<{ success: boolean; count: number }> {
-    await this.initialize();
-
-    if (!this.gmail) {
-      throw new Error("Gmail service not initialized");
-    }
-
-    try {
-      await this.gmail.users.messages.batchDelete({
-        userId: "me",
-        requestBody: {
-          ids: messageIds,
-        },
-      });
-      return { success: true, count: messageIds.length };
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === 403) {
-        throw new Error(
-          `Permission denied: Unable to delete messages. Please check your permissions.`
-        );
-      } else if (error instanceof Error) {
-        throw new Error(`Failed to batch delete messages: ${error.message}`);
-      }
-      throw error;
+      handleGoogleApiError(error, "get profile");
     }
   }
 }
-
