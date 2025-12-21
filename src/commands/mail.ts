@@ -3,6 +3,15 @@ import ora from "ora";
 import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import fs from "node:fs";
+import {
+  ServiceError,
+  NotFoundError,
+  PermissionDeniedError,
+  RateLimitError,
+  ServiceUnavailableError,
+  InitializationError,
+  ValidationError,
+} from "../services/errors.ts";
 
 // Module-level service instance (set by handleMailCommand)
 let mailService: MailService;
@@ -12,6 +21,42 @@ type EmailBodyFormat = "plain" | "html" | "auto";
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await mailService.initialize();
+}
+
+// Helper to handle service errors with appropriate user-friendly messages
+function handleServiceError(error: unknown): never {
+  if (error instanceof NotFoundError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof PermissionDeniedError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please check your authentication and permissions."));
+    process.exit(1);
+  } else if (error instanceof RateLimitError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please wait a moment and try again."));
+    process.exit(1);
+  } else if (error instanceof ServiceUnavailableError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("The service is temporarily unavailable. Please try again later."));
+    process.exit(1);
+  } else if (error instanceof InitializationError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please run the setup guide to configure your credentials."));
+    process.exit(1);
+  } else if (error instanceof ValidationError) {
+    console.error(chalk.red("Validation Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof ServiceError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof Error) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else {
+    console.error(chalk.red("Error:"), "Unknown error occurred");
+    process.exit(1);
+  }
 }
 
 function decodeBase64(data: string): string {
@@ -318,9 +363,7 @@ async function listLabels(_args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch labels");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -381,9 +424,7 @@ async function listMessages(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -429,9 +470,7 @@ async function getMessage(messageId: string, args: string[] = []) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -481,9 +520,7 @@ async function searchMessages(query: string, extraArgs: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -520,9 +557,7 @@ async function getStats() {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch statistics");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -556,9 +591,7 @@ async function listThreads(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch threads");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -622,9 +655,7 @@ async function getThread(threadId: string, args: string[] = []) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch thread");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -671,9 +702,7 @@ async function listAttachments(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch attachments");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -690,9 +719,7 @@ async function downloadAttachment(messageId: string, attachmentId: string, filen
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to download attachment");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -705,9 +732,7 @@ async function deleteMessage(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -733,9 +758,7 @@ async function deleteQuery(query: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -748,9 +771,7 @@ async function archiveMessage(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -772,9 +793,7 @@ async function archiveQuery(query: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -788,9 +807,7 @@ async function archiveMany(messageIds: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -803,9 +820,7 @@ async function unarchiveMessage(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -827,9 +842,7 @@ async function unarchiveQuery(query: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -843,9 +856,7 @@ async function unarchiveMany(messageIds: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive messages");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -868,9 +879,7 @@ async function addLabel(messageId: string, labelName: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to add label");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -892,9 +901,7 @@ async function removeLabel(messageId: string, labelName: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to remove label");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -907,9 +914,7 @@ async function markRead(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as read");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -922,9 +927,7 @@ async function markUnread(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as unread");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -937,9 +940,7 @@ async function starMessage(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to star message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -952,9 +953,7 @@ async function unstarMessage(messageId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unstar message");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -988,9 +987,7 @@ async function createLabel(labelName: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create label");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1003,8 +1000,6 @@ async function deleteLabel(labelId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete label");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }

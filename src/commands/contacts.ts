@@ -2,6 +2,15 @@ import chalk from "chalk";
 import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
+import {
+  ServiceError,
+  NotFoundError,
+  PermissionDeniedError,
+  RateLimitError,
+  ServiceUnavailableError,
+  InitializationError,
+  ValidationError,
+} from "../services/errors.ts";
 
 // Module-level service instance (set by handleContactsCommand)
 let contactsService: ContactsService;
@@ -9,6 +18,42 @@ let contactsService: ContactsService;
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await contactsService.initialize();
+}
+
+// Helper to handle service errors with appropriate user-friendly messages
+function handleServiceError(error: unknown): never {
+  if (error instanceof NotFoundError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof PermissionDeniedError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please check your authentication and permissions."));
+    process.exit(1);
+  } else if (error instanceof RateLimitError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please wait a moment and try again."));
+    process.exit(1);
+  } else if (error instanceof ServiceUnavailableError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("The service is temporarily unavailable. Please try again later."));
+    process.exit(1);
+  } else if (error instanceof InitializationError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please run the setup guide to configure your credentials."));
+    process.exit(1);
+  } else if (error instanceof ValidationError) {
+    console.error(chalk.red("Validation Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof ServiceError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof Error) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else {
+    console.error(chalk.red("Error:"), "Unknown error occurred");
+    process.exit(1);
+  }
 }
 
 export async function handleContactsCommand(
@@ -230,9 +275,7 @@ async function listContacts(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -305,9 +348,7 @@ async function getContact(resourceName: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -357,9 +398,7 @@ async function searchContacts(query: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -393,9 +432,7 @@ async function findContactByEmail(email: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -432,9 +469,7 @@ async function findContactByName(name: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -501,9 +536,7 @@ async function createContact(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -564,9 +597,7 @@ async function updateContact(resourceName: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -588,9 +619,7 @@ async function deleteContact(resourceName: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete contact");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -636,9 +665,7 @@ async function listGroups(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contact groups");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -664,9 +691,7 @@ async function createGroup(name: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create contact group");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -688,9 +713,7 @@ async function deleteGroup(resourceName: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete contact group");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -719,9 +742,7 @@ async function getContactsInGroup(groupResourceName: string, _args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contacts in group");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -743,9 +764,7 @@ async function addToGroup(groupResourceName: string, contactResourceNames: strin
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to add contacts to group");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -767,9 +786,7 @@ async function removeFromGroup(groupResourceName: string, contactResourceNames: 
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to remove contacts from group");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -804,9 +821,7 @@ async function batchCreateContacts(jsonFile: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch create contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -830,9 +845,7 @@ async function batchDeleteContacts(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch delete contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -883,9 +896,7 @@ async function getProfile(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch profile");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -918,9 +929,7 @@ async function getStats(_args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch statistics");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -961,9 +970,7 @@ async function mergeContacts(targetResourceName: string, sourceResourceNames: st
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to merge contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1057,9 +1064,7 @@ async function autoMergeContacts(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to auto-merge contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1192,9 +1197,7 @@ async function findDuplicates(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to search for duplicates");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1265,9 +1268,7 @@ async function findMissingNames(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find missing names");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1338,9 +1339,7 @@ async function analyzeGenericNames(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze generic names");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1421,9 +1420,7 @@ async function analyzeImportedContacts(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze imported contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1556,8 +1553,6 @@ async function detectMarketing(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to detect marketing contacts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }

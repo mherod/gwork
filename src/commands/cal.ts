@@ -4,6 +4,15 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import { CalendarService } from "../services/calendar-service.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
+import {
+  ServiceError,
+  NotFoundError,
+  PermissionDeniedError,
+  RateLimitError,
+  ServiceUnavailableError,
+  InitializationError,
+  ValidationError,
+} from "../services/errors.ts";
 
 // Module-level service instance (set by handleCalCommand)
 let calendarService: CalendarService;
@@ -11,6 +20,42 @@ let calendarService: CalendarService;
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await calendarService.initialize();
+}
+
+// Helper to handle service errors with appropriate user-friendly messages
+function handleServiceError(error: unknown): never {
+  if (error instanceof NotFoundError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof PermissionDeniedError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please check your authentication and permissions."));
+    process.exit(1);
+  } else if (error instanceof RateLimitError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please wait a moment and try again."));
+    process.exit(1);
+  } else if (error instanceof ServiceUnavailableError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("The service is temporarily unavailable. Please try again later."));
+    process.exit(1);
+  } else if (error instanceof InitializationError) {
+    console.error(chalk.red("Error:"), error.message);
+    console.error(chalk.yellow("Please run the setup guide to configure your credentials."));
+    process.exit(1);
+  } else if (error instanceof ValidationError) {
+    console.error(chalk.red("Validation Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof ServiceError) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else if (error instanceof Error) {
+    console.error(chalk.red("Error:"), error.message);
+    process.exit(1);
+  } else {
+    console.error(chalk.red("Error:"), "Unknown error occurred");
+    process.exit(1);
+  }
 }
 
 export async function handleCalCommand(subcommand: string, args: string[], account: string = "default") {
@@ -244,7 +289,7 @@ async function listEvents(args: string[]) {
       }
     }
 
-    let events;
+    let events: Event[];
     let timeRange = null;
 
     if (options.range) {
@@ -277,12 +322,13 @@ async function listEvents(args: string[]) {
         today.getMonth(),
         today.getDate() + 1
       );
-      events = await calendarService.listEvents(options.calendar, {
+      const result = await calendarService.listEvents(options.calendar, {
         timeMin: timeMin.toISOString(),
         timeMax: timeMax.toISOString(),
         maxResults: 50,
         ...todayOptions,
       });
+      events = result.events;
     } else if (options.upcoming) {
       const timeMin = new Date();
       const timeMax = new Date();
@@ -300,7 +346,8 @@ async function listEvents(args: string[]) {
       if (options.query) {
         upcomingOptions.q = options.query;
       }
-      events = await calendarService.listEvents(options.calendar, upcomingOptions);
+      const result = await calendarService.listEvents(options.calendar, upcomingOptions);
+      events = result.events;
     } else if (timeRange) {
       const listOptions: {
         maxResults: number;
@@ -317,7 +364,8 @@ async function listEvents(args: string[]) {
         listOptions.q = options.query;
       }
 
-      events = await calendarService.listEvents(options.calendar, listOptions);
+      const result = await calendarService.listEvents(options.calendar, listOptions);
+      events = result.events;
     } else {
       const timeMin = new Date();
       const timeMax = new Date();
@@ -338,7 +386,8 @@ async function listEvents(args: string[]) {
         listOptions.q = options.query;
       }
 
-      events = await calendarService.listEvents(options.calendar, listOptions);
+      const result = await calendarService.listEvents(options.calendar, listOptions);
+      events = result.events;
     }
 
     // Apply filters
@@ -407,9 +456,7 @@ async function listEvents(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch events");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -466,9 +513,7 @@ async function listCalendars(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch calendars");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -515,9 +560,7 @@ async function getEvent(calendarId: string, eventId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch event details");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -629,9 +672,7 @@ async function createEvent(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -691,9 +732,7 @@ async function updateEvent(
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -719,9 +758,7 @@ async function deleteEvent(
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -806,9 +843,7 @@ async function searchEvents(query: string, extraArgs: string[] = []) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -859,9 +894,7 @@ async function getFreeBusy(start: string, end: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch free/busy information");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -883,9 +916,7 @@ async function createCalendar(title: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create calendar");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -914,11 +945,12 @@ async function getStats(args: string[]) {
     const timeMax = new Date();
     timeMax.setDate(timeMax.getDate() + parseInt(options.days));
 
-    const events = await calendarService.listEvents(options.calendar, {
+    const result = await calendarService.listEvents(options.calendar, {
       maxResults: 2500,
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
     });
+    const events = result.events;
 
     spinner.succeed(`Analyzed ${events.length} event(s)`);
 
@@ -1000,9 +1032,7 @@ async function getStats(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze calendar");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1083,9 +1113,7 @@ async function duplicateEvent(calendarId: string, eventId: string, args: string[
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to duplicate event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1167,9 +1195,7 @@ async function quickAction(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create quick event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1204,11 +1230,12 @@ async function exportEvents(calendarId: string, args: string[]) {
       }
     }
 
-    const events = await calendarService.listEvents(calendarId, {
+    const result = await calendarService.listEvents(calendarId, {
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       maxResults: 2500,
     });
+    const events = result.events;
 
     let output = "";
 
@@ -1277,9 +1304,7 @@ async function exportEvents(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to export events");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1405,9 +1430,7 @@ async function manageReminders(
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to manage reminders");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1459,11 +1482,12 @@ async function bulkUpdateEvents(calendarId: string, args: string[]) {
         }
       );
     } else {
-      events = await calendarService.listEvents(calendarId, {
+      const result = await calendarService.listEvents(calendarId, {
         timeMin: timeMin.toISOString(),
         timeMax: timeMax.toISOString(),
         maxResults: 2500,
       });
+      events = result.events;
     }
 
     spinner.succeed(`Found ${events.length} event(s) to update`);
@@ -1520,9 +1544,7 @@ async function bulkUpdateEvents(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to bulk update events");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1628,8 +1650,8 @@ async function batchCreateEvents(calendarId: string, args: string[]) {
         await calendarService.createEvent(calendarId, eventData);
         created++;
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error(chalk.red(`Failed to create event: ${eventData.summary || "Unknown"}`), message);
+        console.error(chalk.red(`Failed to create event: ${eventData.summary || "Unknown"}`));
+        // Continue with other events even if one fails
       }
     }
 
@@ -1637,9 +1659,7 @@ async function batchCreateEvents(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch create events");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1717,9 +1737,7 @@ async function checkConflict(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to check conflicts");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1750,7 +1768,7 @@ async function compareCalendars(calendarId1: string, calendarId2: string, args: 
       }
     }
 
-    const [events1, events2] = await Promise.all([
+    const [result1, result2] = await Promise.all([
       calendarService.listEvents(calendarId1, {
         timeMin: timeMin.toISOString(),
         timeMax: timeMax.toISOString(),
@@ -1762,6 +1780,8 @@ async function compareCalendars(calendarId1: string, calendarId2: string, args: 
         maxResults: 2500,
       }),
     ]);
+    const events1 = result1.events;
+    const events2 = result2.events;
 
     spinner.succeed("Calendars compared");
 
@@ -1853,9 +1873,7 @@ async function compareCalendars(calendarId1: string, calendarId2: string, args: 
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to compare calendars");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -1902,12 +1920,13 @@ async function updateRecurringEvent(calendarId: string, eventId: string, args: s
     const timeMax = new Date();
     timeMax.setFullYear(timeMax.getFullYear() + 1);
 
-    const instances = await calendarService.listEvents(calendarId, {
+    const result = await calendarService.listEvents(calendarId, {
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
       maxResults: 2500,
       q: originalEvent.summary || "",
     });
+    const instances = result.events;
 
     const recurringInstances = instances.filter((e: any) => {
       return e.recurringEventId === eventId || e.id === eventId;
@@ -1950,9 +1969,7 @@ async function updateRecurringEvent(calendarId: string, eventId: string, args: s
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update recurring event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -2024,9 +2041,7 @@ async function manageColor(args: string[]) {
     }
   } catch (error: unknown) {
     spinner.fail("Failed to manage color");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -2095,9 +2110,7 @@ async function workWithRecurrence(args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to work with recurrence");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -2204,9 +2217,7 @@ async function createRecurringEvent(calendarId: string, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create recurring event");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -2252,9 +2263,7 @@ async function showRecurrenceInfo(calendarId: string, eventId: string) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to get recurrence info");
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
 
@@ -2354,8 +2363,6 @@ async function dateUtilities(args: string[]) {
     }
     process.exit(0);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(chalk.red("Error:"), message);
-    process.exit(1);
+    handleServiceError(error);
   }
 }
