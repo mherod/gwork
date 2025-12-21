@@ -1,6 +1,8 @@
 import path from "node:path";
 import os from "node:os";
 import { Database } from "../utils/sqlite-wrapper.ts";
+import { withDbRetrySync } from "../utils/db-retry.ts";
+import { defaultLogger } from "./logger.ts";
 
 export interface TokenData {
   service: string;
@@ -21,8 +23,15 @@ export class TokenStore {
     const dbPath = path.join(os.homedir(), ".gwork_tokens.db");
     this.db = new Database(dbPath, { create: true });
 
-    // Enable WAL mode for better performance
-    this.db.pragma("journal_mode", "WAL");
+    // Enable WAL mode for better performance and concurrent access
+    withDbRetrySync(
+      () => {
+        this.db.pragma("journal_mode", "WAL");
+        // Set busy timeout to 5 seconds for better lock handling
+        this.db.pragma("busy_timeout", 5000);
+      },
+      { logger: defaultLogger }
+    );
 
     this.initializeSchema();
   }
@@ -35,78 +44,98 @@ export class TokenStore {
   }
 
   private initializeSchema() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS tokens (
-        service TEXT NOT NULL,
-        account TEXT NOT NULL,
-        access_token TEXT NOT NULL,
-        refresh_token TEXT NOT NULL,
-        expiry_date INTEGER NOT NULL,
-        scopes TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (service, account)
-      )
-    `);
+    withDbRetrySync(
+      () => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS tokens (
+            service TEXT NOT NULL,
+            account TEXT NOT NULL,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expiry_date INTEGER NOT NULL,
+            scopes TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (service, account)
+          )
+        `);
+      },
+      { logger: defaultLogger }
+    );
 
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_service
-      ON tokens(service)
-    `);
+    withDbRetrySync(
+      () => {
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_service
+          ON tokens(service)
+        `);
+      },
+      { logger: defaultLogger }
+    );
   }
 
   saveToken(data: Omit<TokenData, "created_at" | "updated_at">): void {
-    const now = Date.now();
-    const scopesJson = JSON.stringify(data.scopes);
+    withDbRetrySync(
+      () => {
+        const now = Date.now();
+        const scopesJson = JSON.stringify(data.scopes);
 
-    const stmt = this.db.prepare(`
-      INSERT INTO tokens (
-        service, account, access_token, refresh_token,
-        expiry_date, scopes, created_at, updated_at
-      ) VALUES (
-        @service, @account, @access_token, @refresh_token,
-        @expiry_date, @scopes, @created_at, @updated_at
-      )
-      ON CONFLICT(service, account) DO UPDATE SET
-        access_token = @access_token,
-        refresh_token = @refresh_token,
-        expiry_date = @expiry_date,
-        scopes = @scopes,
-        updated_at = @updated_at
-    `);
+        const stmt = this.db.prepare(`
+          INSERT INTO tokens (
+            service, account, access_token, refresh_token,
+            expiry_date, scopes, created_at, updated_at
+          ) VALUES (
+            @service, @account, @access_token, @refresh_token,
+            @expiry_date, @scopes, @created_at, @updated_at
+          )
+          ON CONFLICT(service, account) DO UPDATE SET
+            access_token = @access_token,
+            refresh_token = @refresh_token,
+            expiry_date = @expiry_date,
+            scopes = @scopes,
+            updated_at = @updated_at
+        `);
 
-    stmt.run({
-      service: data.service,
-      account: data.account,
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expiry_date: data.expiry_date,
-      scopes: scopesJson,
-      created_at: now,
-      updated_at: now,
-    });
+        stmt.run({
+          service: data.service,
+          account: data.account,
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          expiry_date: data.expiry_date,
+          scopes: scopesJson,
+          created_at: now,
+          updated_at: now,
+        });
+      },
+      { logger: defaultLogger }
+    );
   }
 
   getToken(service: string, account: string = "default"): TokenData | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM tokens
-      WHERE service = @service AND account = @account
-    `);
+    return withDbRetrySync(
+      () => {
+        const stmt = this.db.prepare(`
+          SELECT * FROM tokens
+          WHERE service = @service AND account = @account
+        `);
 
-    const row: any = stmt.get({ service, account });
+        const row: any = stmt.get({ service, account });
 
-    if (!row) return null;
+        if (!row) return null;
 
-    return {
-      service: row.service,
-      account: row.account,
-      access_token: row.access_token,
-      refresh_token: row.refresh_token,
-      expiry_date: row.expiry_date,
-      scopes: JSON.parse(row.scopes),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
+        return {
+          service: row.service,
+          account: row.account,
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          expiry_date: row.expiry_date,
+          scopes: JSON.parse(row.scopes),
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+      },
+      { logger: defaultLogger }
+    );
   }
 
   getDefaultToken(service: string): TokenData | null {
@@ -114,45 +143,55 @@ export class TokenStore {
   }
 
   listTokens(service?: string): TokenData[] {
-    let stmt;
-    let rows: any[];
+    return withDbRetrySync(
+      () => {
+        let stmt;
+        let rows: any[];
 
-    if (service) {
-      stmt = this.db.prepare(`
-        SELECT * FROM tokens
-        WHERE service = @service
-        ORDER BY account
-      `);
-      rows = stmt.all({ service });
-    } else {
-      stmt = this.db.prepare(`
-        SELECT * FROM tokens
-        ORDER BY service, account
-      `);
-      rows = stmt.all();
-    }
+        if (service) {
+          stmt = this.db.prepare(`
+            SELECT * FROM tokens
+            WHERE service = @service
+            ORDER BY account
+          `);
+          rows = stmt.all({ service });
+        } else {
+          stmt = this.db.prepare(`
+            SELECT * FROM tokens
+            ORDER BY service, account
+          `);
+          rows = stmt.all();
+        }
 
-    return rows.map(row => ({
-      service: row.service,
-      account: row.account,
-      access_token: row.access_token,
-      refresh_token: row.refresh_token,
-      expiry_date: row.expiry_date,
-      scopes: JSON.parse(row.scopes),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }));
+        return rows.map(row => ({
+          service: row.service,
+          account: row.account,
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          expiry_date: row.expiry_date,
+          scopes: JSON.parse(row.scopes),
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }));
+      },
+      { logger: defaultLogger }
+    );
   }
 
   deleteToken(service: string, account: string = "default"): boolean {
-    const stmt = this.db.prepare(`
-      DELETE FROM tokens
-      WHERE service = @service AND account = @account
-    `);
+    return withDbRetrySync(
+      () => {
+        const stmt = this.db.prepare(`
+          DELETE FROM tokens
+          WHERE service = @service AND account = @account
+        `);
 
-    const result = stmt.run({ service, account });
+        const result = stmt.run({ service, account });
 
-    return result.changes > 0;
+        return result.changes > 0;
+      },
+      { logger: defaultLogger }
+    );
   }
 
   hasValidScopes(service: string, requiredScopes: string[], account: string = "default"): boolean {
