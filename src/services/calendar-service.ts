@@ -48,11 +48,11 @@ export class CalendarService extends BaseService {
    *
    * @throws {InitializationError} If credentials missing or authentication fails
    */
-  async initialize(): Promise<void> {
+  override async initialize(): Promise<void> {
     await super.initialize();
     this.ensureInitialized();
-    // Initialize Calendar API client
-    this.calendar = google.calendar({ version: "v3", auth: this.auth });
+    // Initialize Calendar API client - auth is guaranteed non-null after ensureInitialized()
+    this.calendar = google.calendar({ version: "v3", auth: this.getAuth() });
   }
 
   // ============= EVENT OPERATIONS =============

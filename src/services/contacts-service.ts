@@ -58,11 +58,11 @@ export class ContactsService extends BaseService {
    *
    * @throws {InitializationError} If credentials missing or authentication fails
    */
-  async initialize(): Promise<void> {
+  override async initialize(): Promise<void> {
     await super.initialize();
     this.ensureInitialized();
-    // Initialize People API client
-    this.people = google.people({ version: "v1", auth: this.auth });
+    // Initialize People API client - auth is guaranteed non-null after ensureInitialized()
+    this.people = google.people({ version: "v1", auth: this.getAuth() });
   }
 
   /**
@@ -359,10 +359,11 @@ export class ContactsService extends BaseService {
 
     try {
       const result = await this.people!.people.createContact({
-        requestBody: { person },
+        requestBody: person as people_v1.Schema$Person,
       });
 
-      if (!result.data) {
+      // Handle the union return type - result could be void or response
+      if (!result || typeof result !== "object" || !("data" in result) || !result.data) {
         throw new Error("No contact data returned");
       }
       return result.data;
@@ -450,11 +451,12 @@ export class ContactsService extends BaseService {
     try {
       const result = await this.people!.people.updateContact({
         resourceName: fullResourceName,
-        requestBody: { person },
+        requestBody: person as people_v1.Schema$Person,
         updatePersonFields: this.DEFAULT_PERSON_FIELDS,
       });
 
-      if (!result.data) {
+      // Handle the union return type - result could be void or response
+      if (!result || typeof result !== "object" || !("data" in result) || !result.data) {
         throw new Error("No contact data returned");
       }
       return result.data;

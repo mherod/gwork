@@ -7,7 +7,7 @@ import { google } from "googleapis";
 import { BaseService } from "./base-service.ts";
 import { handleGoogleApiError } from "./error-handler.ts";
 import { withRetry } from "./retry.ts";
-import { validatePageSize, validateResourceId, validateMaxResults } from "./validators.ts";
+import { validateResourceId, validateMaxResults } from "./validators.ts";
 import type { gmail_v1 } from "googleapis";
 import type {
   GmailClient,
@@ -37,11 +37,11 @@ export class MailService extends BaseService {
     );
   }
 
-  async initialize(): Promise<void> {
+  override async initialize(): Promise<void> {
     await super.initialize();
     this.ensureInitialized();
-    // Initialize Gmail client
-    this.gmail = google.gmail({ version: "v1", auth: this.auth });
+    // Initialize Gmail client - auth is guaranteed non-null after ensureInitialized()
+    this.gmail = google.gmail({ version: "v1", auth: this.getAuth() });
   }
 
   // ============= LABEL OPERATIONS =============

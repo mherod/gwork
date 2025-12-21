@@ -103,7 +103,8 @@
  * @see {@link TokenStore} for usage examples
  */
 
-import { Logger, defaultLogger } from "../services/logger.ts";
+import { defaultLogger } from "../services/logger.ts";
+import type { Logger } from "../services/logger.ts";
 
 export interface DbRetryOptions {
   maxRetries?: number;

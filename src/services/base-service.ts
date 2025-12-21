@@ -8,7 +8,8 @@ import { authenticate } from "@google-cloud/local-auth";
 import { TokenStore } from "./token-store.ts";
 import { ensureCredentialsExist } from "../utils/setup-guide.ts";
 import { InitializationError } from "./errors.ts";
-import { Logger, defaultLogger } from "./logger.ts";
+import { defaultLogger } from "./logger.ts";
+import type { Logger } from "./logger.ts";
 import type { AuthClient } from "../types/google-apis.ts";
 import * as path from "path";
 import * as os from "os";
@@ -135,10 +136,13 @@ export abstract class BaseService {
     const accessToken = await auth.getAccessToken();
     
     // Try to get credentials, but handle cases where it might not be available
+    // OAuth2Client may not have getCredentials() method in all versions
     let credentials: any = {};
     try {
-      if (typeof auth.getCredentials === "function") {
-        credentials = await auth.getCredentials();
+      // Check if getCredentials exists and is callable
+      const getCredentialsMethod = (auth as any).getCredentials;
+      if (typeof getCredentialsMethod === "function") {
+        credentials = await getCredentialsMethod.call(auth);
       } else {
         // Fallback: extract from internal credentials if available
         credentials = (auth as any).credentials || {};
@@ -149,7 +153,9 @@ export abstract class BaseService {
       credentials = {};
     }
 
-    this.tokenStore.saveToken(this.serviceName.toLowerCase(), this.account, {
+    this.tokenStore.saveToken({
+      service: this.serviceName.toLowerCase(),
+      account: this.account,
       access_token: accessToken.token || credentials.access_token || "",
       refresh_token: credentials.refresh_token || "",
       scopes: this.SCOPES,
@@ -167,5 +173,20 @@ export abstract class BaseService {
     if (!this.initialized || !this.auth) {
       throw new InitializationError(this.serviceName);
     }
+  }
+
+  /**
+   * Gets the authenticated auth client, ensuring it's not null.
+   * Throws if service is not initialized.
+   * 
+   * @returns Non-null AuthClient
+   * @throws {InitializationError} If service not initialized
+   * @protected
+   */
+  protected getAuth(): AuthClient {
+    if (!this.initialized || !this.auth) {
+      throw new InitializationError(this.serviceName);
+    }
+    return this.auth;
   }
 }

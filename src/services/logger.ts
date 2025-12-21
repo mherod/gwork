@@ -40,7 +40,7 @@ export class ConsoleLogger implements Logger {
   }
 
   debug(message: string, meta?: any): void {
-    if (process.env.DEBUG) {
+    if (process.env["DEBUG"]) {
       if (meta) {
         console.debug(message, JSON.stringify(meta));
       } else {
