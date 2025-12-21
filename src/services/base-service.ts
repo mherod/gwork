@@ -53,23 +53,34 @@ export abstract class BaseService {
     // Clean up any tokens with empty scopes for this service/account
     // This handles old tokens created before scope tracking was implemented
     // Also clean up tokens with empty account strings that might cause confusion
+    // NOTE: Only clean up if token actually has empty scopes - don't delete valid tokens
     const existingToken = this.tokenStore.getToken(this.serviceName.toLowerCase(), this.account);
-    if (existingToken && (!existingToken.scopes || existingToken.scopes.length === 0)) {
-      this.logger.info(
-        `Removing token with empty scopes for ${this.serviceName} (account: ${this.account})`
-      );
-      this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
+    if (existingToken) {
+      // Only delete if scopes are truly empty (not just missing the property)
+      const hasEmptyScopes = !existingToken.scopes || 
+                             (Array.isArray(existingToken.scopes) && existingToken.scopes.length === 0);
+      if (hasEmptyScopes) {
+        this.logger.info(
+          `Removing token with empty scopes for ${this.serviceName} (account: ${this.account})`
+        );
+        this.tokenStore.deleteToken(this.serviceName.toLowerCase(), this.account);
+      }
     }
     
     // Also check for and clean up tokens with empty account strings for this service
     // These are legacy tokens that can cause lookup issues
+    // Only clean up if they have empty scopes (don't delete valid legacy tokens)
     if (this.account === "default") {
       const emptyAccountToken = this.tokenStore.getToken(this.serviceName.toLowerCase(), "");
-      if (emptyAccountToken && (!emptyAccountToken.scopes || emptyAccountToken.scopes.length === 0)) {
-        this.logger.info(
-          `Removing legacy token with empty account string for ${this.serviceName}`
-        );
-        this.tokenStore.deleteToken(this.serviceName.toLowerCase(), "");
+      if (emptyAccountToken) {
+        const hasEmptyScopes = !emptyAccountToken.scopes || 
+                               (Array.isArray(emptyAccountToken.scopes) && emptyAccountToken.scopes.length === 0);
+        if (hasEmptyScopes) {
+          this.logger.info(
+            `Removing legacy token with empty account string for ${this.serviceName}`
+          );
+          this.tokenStore.deleteToken(this.serviceName.toLowerCase(), "");
+        }
       }
     }
 
@@ -91,17 +102,26 @@ export abstract class BaseService {
         auth = newAuth as unknown as AuthClient;
         // Validate the new auth works before saving
         try {
-          const accessToken = await auth.getAccessToken();
-          if (!accessToken.token) {
+          // Validate token works
+          const validationToken = await auth.getAccessToken();
+          if (!validationToken.token) {
             throw new Error("No access token received from authentication");
           }
+          
+          // Save to database (saveAuth() will call getAccessToken() internally)
           await this.saveAuth(auth);
           
-          // CRITICAL: After saving, ensure the auth object has the latest credentials
-          // This ensures the auth object is in sync with what we saved to the database
+          // CRITICAL: After saving, sync the auth object with what we just saved
+          // saveAuth() calls getAccessToken() internally and saves the token to DB
+          // We must ensure the auth object's credentials match what's in the database
+          // Get credentials AFTER saveAuth() to ensure we have the latest state
           const authCredentials = (auth as any).credentials || {};
+          const latestAccessToken = await auth.getAccessToken();
+          
+          // Sync auth object with the credentials that were just saved to the database
+          // This ensures the auth object matches the database state exactly
           auth.setCredentials({
-            access_token: accessToken.token,
+            access_token: latestAccessToken.token || authCredentials.access_token || "",
             refresh_token: authCredentials.refresh_token || "",
             expiry_date: authCredentials.expiry_date || 0,
           });
