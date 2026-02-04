@@ -180,7 +180,7 @@ Examples:
 }
 
 function printVersion() {
-  console.log("gwork version 0.1.0");
+  console.log("gwork version 0.3.0");
 }
 
 async function handleMail(args: string[]) {

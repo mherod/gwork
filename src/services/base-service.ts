@@ -29,7 +29,7 @@ export abstract class BaseService {
   constructor(
     protected serviceName: string,
     scopes: string[],
-    account: string = "default",
+    account = "default",
     logger: Logger = defaultLogger
   ) {
     this.account = account;
