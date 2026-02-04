@@ -58,7 +58,7 @@ function handleServiceError(error: unknown): never {
   }
 }
 
-export async function handleCalCommand(subcommand: string, args: string[], account: string = "default") {
+export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
   calendarService = new CalendarService(account);
 
@@ -104,7 +104,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       }
       await deleteEvent(args[0], args[1], args.slice(2));
       break;
-    case "search":
+    case "search": {
       if (args.length === 0 || !args[0]) {
         console.error("Error: search query is required");
         console.error("Usage: gwork cal search <query> [options]");
@@ -115,6 +115,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       const searchExtraArgs = args.slice(1);
       await searchEvents(searchQuery, searchExtraArgs);
       break;
+    }
     case "freebusy":
       if (args.length < 2 || !args[0] || !args[1]) {
         console.error("Error: start and end times are required");
@@ -394,14 +395,14 @@ async function listEvents(args: string[]) {
     if (options.location) {
       const locationFilter = options.location.toLowerCase();
       events = events.filter((e) =>
-        e.location && e.location.toLowerCase().includes(locationFilter)
+        e.location?.toLowerCase().includes(locationFilter)
       );
     }
     if (options.attendee) {
       const attendeeFilter = options.attendee.toLowerCase();
       events = events.filter((e) =>
-        e.attendees && e.attendees.some((a) =>
-          a.email && a.email.toLowerCase().includes(attendeeFilter)
+        e.attendees?.some((a) =>
+          a.email?.toLowerCase().includes(attendeeFilter)
         )
       );
     }
@@ -879,7 +880,7 @@ async function getFreeBusy(start: string, end: string, args: string[]) {
     Object.entries(freeBusy.calendars || {}).forEach(([calendarId, info]: any) => {
       console.log(`\n${chalk.cyan("Calendar:")} ${calendarId}`);
       if (info.busy && info.busy.length > 0) {
-        console.log(`${chalk.red("Busy times:")}`);
+        console.log(chalk.red("Busy times:"));
         info.busy.forEach((busy: any) => {
           const start = new Date(busy.start);
           const end = new Date(busy.end);
@@ -888,7 +889,7 @@ async function getFreeBusy(start: string, end: string, args: string[]) {
           );
         });
       } else {
-        console.log(`${chalk.green("Free during this time")}`);
+        console.log(chalk.green("Free during this time"));
       }
     });
     process.exit(0);
@@ -1649,7 +1650,7 @@ async function batchCreateEvents(calendarId: string, args: string[]) {
       try {
         await calendarService.createEvent(calendarId, eventData);
         created++;
-      } catch (error: unknown) {
+      } catch (_error: unknown) {
         console.error(chalk.red(`Failed to create event: ${eventData.summary || "Unknown"}`));
         // Continue with other events even if one fails
       }
@@ -2293,7 +2294,7 @@ async function dateUtilities(args: string[]) {
         process.exit(1);
       }
       
-      let date = new Date(args[1]);
+      const date = new Date(args[1]);
       let formatStr = "iso";
 
       for (let i = 2; i < args.length; i++) {
