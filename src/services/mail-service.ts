@@ -25,7 +25,7 @@ import type {
 export class MailService extends BaseService {
   private gmail: GmailClient | null = null;
 
-  constructor(account: string = "default") {
+  constructor(account = "default") {
     super(
       "Gmail",
       [

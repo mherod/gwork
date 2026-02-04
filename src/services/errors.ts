@@ -8,7 +8,7 @@ export class ServiceError extends Error {
     message: string,
     public readonly code: string,
     public readonly httpStatus?: number,
-    public readonly retryable: boolean = false
+    public readonly retryable = false
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -41,14 +41,14 @@ export class PermissionDeniedError extends ServiceError {
 }
 
 export class RateLimitError extends ServiceError {
-  constructor(message: string = "Rate limit exceeded") {
+  constructor(message = "Rate limit exceeded") {
     super(message, "RATE_LIMIT", 429, true);
     Object.setPrototypeOf(this, RateLimitError.prototype);
   }
 }
 
 export class ServiceUnavailableError extends ServiceError {
-  constructor(message: string = "Service temporarily unavailable") {
+  constructor(message = "Service temporarily unavailable") {
     super(message, "SERVICE_UNAVAILABLE", 503, true);
     Object.setPrototypeOf(this, ServiceUnavailableError.prototype);
   }

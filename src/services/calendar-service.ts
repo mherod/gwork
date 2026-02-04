@@ -31,7 +31,7 @@ export interface EventsResponse {
 export class CalendarService extends BaseService {
   private calendar: CalendarClient | null = null;
 
-  constructor(account: string = "default") {
+  constructor(account = "default") {
     super(
       "Calendar",
       [
@@ -672,7 +672,7 @@ export class CalendarService extends BaseService {
     if (calendarIds.length === 0) {
       throw new Error("At least one calendar ID is required");
     }
-    calendarIds.forEach((id) => validateResourceId(id, "calendarId"));
+    calendarIds.forEach((id) => { validateResourceId(id, "calendarId"); });
 
     try {
       const result = await this.calendar!.freebusy.query({
