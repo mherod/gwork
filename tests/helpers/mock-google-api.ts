@@ -8,7 +8,15 @@ export function createMockCalendarAPI() {
   return {
     events: {
       list: mock(
-        async ({ calendarId, timeMin, timeMax, maxResults, singleEvents, orderBy, q }: any) =>
+        async ({
+          calendarId: _calendarId,
+          timeMin: _timeMin,
+          timeMax: _timeMax,
+          maxResults: _maxResults,
+          singleEvents: _singleEvents,
+          orderBy: _orderBy,
+          q: _q,
+        }: any) =>
           Promise.resolve({
             data: {
               items: [],
@@ -17,7 +25,7 @@ export function createMockCalendarAPI() {
           })
       ),
       get: mock(
-        async ({ calendarId, eventId }: any) =>
+        async ({ calendarId: _calendarId, eventId }: any) =>
           Promise.resolve({
             data: {
               id: eventId,
@@ -28,7 +36,7 @@ export function createMockCalendarAPI() {
           })
       ),
       insert: mock(
-        async ({ calendarId, requestBody }: any) =>
+        async ({ calendarId: _calendarId, requestBody }: any) =>
           Promise.resolve({
             data: {
               id: "mock-event-id",
@@ -39,7 +47,7 @@ export function createMockCalendarAPI() {
           })
       ),
       update: mock(
-        async ({ calendarId, eventId, requestBody }: any) =>
+        async ({ calendarId: _calendarId, eventId, requestBody }: any) =>
           Promise.resolve({
             data: {
               id: eventId,
@@ -49,13 +57,13 @@ export function createMockCalendarAPI() {
           })
       ),
       delete: mock(
-        async ({ calendarId, eventId }: any) =>
+        async ({ calendarId: _calendarId, eventId: _eventId }: any) =>
           Promise.resolve({
             data: {},
           })
       ),
       import: mock(
-        async ({ calendarId, requestBody }: any) =>
+        async ({ calendarId: _calendarId, requestBody }: any) =>
           Promise.resolve({
             data: {
               id: "mock-imported-id",
@@ -64,7 +72,7 @@ export function createMockCalendarAPI() {
           })
       ),
       quickAdd: mock(
-        async ({ calendarId, text }: any) =>
+        async ({ calendarId: _calendarId, text }: any) =>
           Promise.resolve({
             data: {
               id: "mock-quick-add-id",
@@ -76,7 +84,7 @@ export function createMockCalendarAPI() {
     },
     calendars: {
       list: mock(
-        async ({ minAccessRole }: any) =>
+        async ({ minAccessRole: _minAccessRole }: any) =>
           Promise.resolve({
             data: {
               items: [],
@@ -105,7 +113,7 @@ export function createMockCalendarAPI() {
           })
       ),
       delete: mock(
-        async ({ calendarId }: any) =>
+        async ({ calendarId: _calendarId }: any) =>
           Promise.resolve({
             data: {},
           })
@@ -154,22 +162,22 @@ export function createMockGmailAPI() {
   return {
     users: {
       messages: {
-        list: mock(
-          async ({ userId, q, maxResults, labelIds }: any) =>
-            Promise.resolve({
-              data: {
-                messages: [],
-                nextPageToken: undefined,
-                resultSizeEstimate: 0,
+      list: mock(
+        async ({ userId: _userId, q: _q, maxResults: _maxResults, labelIds: _labelIds }: any) =>
+          Promise.resolve({
+            data: {
+              messages: [],
+              nextPageToken: undefined,
+              resultSizeEstimate: 0,
               },
             })
-        ),
-        get: mock(
-          async ({ userId, id, format }: any) =>
-            Promise.resolve({
-              data: {
-                id,
-                threadId: "thread-id",
+      ),
+      get: mock(
+        async ({ userId: _userId, id, format: _format }: any) =>
+          Promise.resolve({
+            data: {
+              id,
+              threadId: "thread-id",
                 labelIds: ["INBOX"],
                 snippet: "Test message",
                 payload: {
@@ -186,50 +194,50 @@ export function createMockGmailAPI() {
                 },
               },
             })
-        ),
-        send: mock(
-          async ({ userId, requestBody }: any) =>
-            Promise.resolve({
-              data: {
-                id: "mock-message-id",
-                threadId: "mock-thread-id",
+      ),
+      send: mock(
+        async ({ userId: _userId, requestBody: _requestBody }: any) =>
+          Promise.resolve({
+            data: {
+              id: "mock-message-id",
+              threadId: "mock-thread-id",
                 labelIds: ["SENT"],
               },
             })
-        ),
-        modify: mock(
-          async ({ userId, id, requestBody }: any) =>
-            Promise.resolve({
-              data: {
-                id,
-                threadId: "thread-id",
+      ),
+      modify: mock(
+        async ({ userId: _userId, id, requestBody }: any) =>
+          Promise.resolve({
+            data: {
+              id,
+              threadId: "thread-id",
                 labelIds: requestBody.addLabelIds || [],
               },
             })
-        ),
-        trash: mock(
-          async ({ userId, id }: any) =>
-            Promise.resolve({
-              data: {
-                id,
-                labelIds: ["TRASH"],
+      ),
+      trash: mock(
+        async ({ userId: _userId, id }: any) =>
+          Promise.resolve({
+            data: {
+              id,
+              labelIds: ["TRASH"],
               },
             })
-        ),
-        delete: mock(
-          async ({ userId, id }: any) =>
+      ),
+      delete: mock(
+        async ({ userId: _userId, id: _id }: any) =>
+          Promise.resolve({
+            data: {},
+          })
+      ),
+      batchModify: mock(
+          async ({ userId: _userId, requestBody: _requestBody }: any) =>
             Promise.resolve({
               data: {},
             })
         ),
-        batchModify: mock(
-          async ({ userId, requestBody }: any) =>
-            Promise.resolve({
-              data: {},
-            })
-        ),
-        batchDelete: mock(
-          async ({ userId, requestBody }: any) =>
+      batchDelete: mock(
+          async ({ userId: _userId, requestBody: _requestBody }: any) =>
             Promise.resolve({
               data: {},
             })
@@ -237,7 +245,7 @@ export function createMockGmailAPI() {
       },
       threads: {
         list: mock(
-          async ({ userId, q, maxResults, labelIds }: any) =>
+          async ({ userId: _userId, q: _q, maxResults: _maxResults, labelIds: _labelIds }: any) =>
             Promise.resolve({
               data: {
                 threads: [],
@@ -247,7 +255,7 @@ export function createMockGmailAPI() {
             })
         ),
         get: mock(
-          async ({ userId, id, format }: any) =>
+          async ({ userId: _userId, id, format: _format }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -264,7 +272,7 @@ export function createMockGmailAPI() {
             })
         ),
         trash: mock(
-          async ({ userId, id }: any) =>
+          async ({ userId: _userId, id }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -272,7 +280,7 @@ export function createMockGmailAPI() {
             })
         ),
         untrash: mock(
-          async ({ userId, id }: any) =>
+          async ({ userId: _userId, id }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -282,7 +290,7 @@ export function createMockGmailAPI() {
       },
       labels: {
         list: mock(
-          async ({ userId }: any) =>
+          async ({ userId: _userId }: any) =>
             Promise.resolve({
               data: {
                 labels: [],
@@ -290,7 +298,7 @@ export function createMockGmailAPI() {
             })
         ),
         get: mock(
-          async ({ userId, id }: any) =>
+          async ({ userId: _userId, id }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -300,7 +308,7 @@ export function createMockGmailAPI() {
             })
         ),
         create: mock(
-          async ({ userId, requestBody }: any) =>
+          async ({ userId: _userId, requestBody }: any) =>
             Promise.resolve({
               data: {
                 id: "mock-label-id",
@@ -309,13 +317,13 @@ export function createMockGmailAPI() {
             })
         ),
         delete: mock(
-          async ({ userId, id }: any) =>
+          async ({ userId: _userId, id: _id }: any) =>
             Promise.resolve({
               data: {},
             })
         ),
         update: mock(
-          async ({ userId, id, requestBody }: any) =>
+          async ({ userId: _userId, id, requestBody }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -325,7 +333,7 @@ export function createMockGmailAPI() {
         ),
       },
       getProfile: mock(
-        async ({ userId }: any) =>
+        async ({ userId: _userId }: any) =>
           Promise.resolve({
             data: {
               emailAddress: "test@example.com",
@@ -337,7 +345,7 @@ export function createMockGmailAPI() {
       ),
       drafts: {
         list: mock(
-          async ({ userId }: any) =>
+          async ({ userId: _userId }: any) =>
             Promise.resolve({
               data: {
                 drafts: [],
@@ -345,7 +353,7 @@ export function createMockGmailAPI() {
             })
         ),
         get: mock(
-          async ({ userId, id }: any) =>
+          async ({ userId: _userId, id }: any) =>
             Promise.resolve({
               data: {
                 id,
@@ -359,7 +367,7 @@ export function createMockGmailAPI() {
         ),
       },
       watch: mock(
-        async ({ userId, requestBody }: any) =>
+        async ({ userId: _userId, requestBody: _requestBody }: any) =>
           Promise.resolve({
             data: {
               historyId: "1234567890",
@@ -380,7 +388,12 @@ export function createMockPeopleAPI() {
     people: {
       connections: {
         list: mock(
-          async ({ resourceName, pageSize, sortOrder, personFields }: any) =>
+          async ({
+            resourceName: _resourceName,
+            pageSize: _pageSize,
+            sortOrder: _sortOrder,
+            personFields: _personFields,
+          }: any) =>
             Promise.resolve({
               data: {
                 connections: [],
@@ -389,7 +402,7 @@ export function createMockPeopleAPI() {
             })
         ),
         batchGetWithFullNames: mock(
-          async ({ resourceNames, personFields }: any) =>
+          async ({ resourceNames: _resourceNames, personFields: _personFields }: any) =>
             Promise.resolve({
               data: {
                 responses: [],
@@ -398,7 +411,7 @@ export function createMockPeopleAPI() {
         ),
       },
       batchGetContacts: mock(
-        async ({ resourceNames, personFields }: any) =>
+        async ({ resourceNames: _resourceNames, personFields: _personFields }: any) =>
           Promise.resolve({
             data: {
               responses: [],
@@ -416,7 +429,11 @@ export function createMockPeopleAPI() {
           })
       ),
       updateContact: mock(
-        async ({ resourceName, updatePersonFields, requestBody }: any) =>
+        async ({
+          resourceName,
+          updatePersonFields: _updatePersonFields,
+          requestBody,
+        }: any) =>
           Promise.resolve({
             data: {
               resourceName,
@@ -426,13 +443,13 @@ export function createMockPeopleAPI() {
           })
       ),
       deleteContact: mock(
-        async ({ resourceName }: any) =>
+        async ({ resourceName: _resourceName }: any) =>
           Promise.resolve({
             data: {},
           })
       ),
       searchContacts: mock(
-        async ({ query, pageSize, readMask }: any) =>
+        async ({ query: _query, pageSize: _pageSize, readMask: _readMask }: any) =>
           Promise.resolve({
             data: {
               results: [],
@@ -441,7 +458,7 @@ export function createMockPeopleAPI() {
           })
       ),
       searchDirectoryPeople: mock(
-        async ({ query, pageSize, readMask }: any) =>
+        async ({ query: _query, pageSize: _pageSize, readMask: _readMask }: any) =>
           Promise.resolve({
             data: {
               people: [],
@@ -450,7 +467,7 @@ export function createMockPeopleAPI() {
           })
       ),
       copyOtherContactToMyContactsGroup: mock(
-        async ({ resourceName, requestBody }: any) =>
+        async ({ resourceName: _resourceName, requestBody: _requestBody }: any) =>
           Promise.resolve({
             data: {
               resourceName: "people/copied-id",
@@ -470,13 +487,13 @@ export function createMockPeopleAPI() {
           })
       ),
       delete: mock(
-        async ({ resourceName }: any) =>
+        async ({ resourceName: _resourceName }: any) =>
           Promise.resolve({
             data: {},
           })
       ),
       get: mock(
-        async ({ resourceName, maxMembers }: any) =>
+        async ({ resourceName, maxMembers: _maxMembers }: any) =>
           Promise.resolve({
             data: {
               resourceName,
@@ -487,7 +504,7 @@ export function createMockPeopleAPI() {
           })
       ),
       list: mock(
-        async ({ pageSize, pageToken }: any) =>
+        async ({ pageSize: _pageSize, pageToken: _pageToken }: any) =>
           Promise.resolve({
             data: {
               contactGroups: [],
@@ -507,7 +524,7 @@ export function createMockPeopleAPI() {
       ),
       members: {
         modify: mock(
-          async ({ resourceName, requestBody }: any) =>
+          async ({ resourceName: _resourceName, requestBody: _requestBody }: any) =>
             Promise.resolve({
               data: {},
             })
@@ -516,7 +533,12 @@ export function createMockPeopleAPI() {
     },
     otherContacts: {
       list: mock(
-        async ({ pageSize, pageToken, readMask, sources }: any) =>
+        async ({
+          pageSize: _pageSize,
+          pageToken: _pageToken,
+          readMask: _readMask,
+          sources: _sources,
+        }: any) =>
           Promise.resolve({
             data: {
               otherContacts: [],
@@ -525,7 +547,7 @@ export function createMockPeopleAPI() {
           })
       ),
       search: mock(
-        async ({ query, pageSize, readMask }: any) =>
+        async ({ query: _query, pageSize: _pageSize, readMask: _readMask }: any) =>
           Promise.resolve({
             data: {
               results: [],

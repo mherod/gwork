@@ -5,7 +5,7 @@ import { TokenStore } from "../../../src/services/token-store.ts";
 import chalk from "chalk";
 
 // Mock ora
-mock.module("ora", () => {
+void mock.module("ora", () => {
   return {
     default: () => ({
       start: () => ({
@@ -51,7 +51,9 @@ describe("handleAccountsCommand", () => {
             if (typeof (TokenStore as any).instance.close === 'function') {
                 (TokenStore as any).instance.close();
             }
-        } catch (e) {}
+        } catch (_error) {
+            void _error;
+        }
     }
     (TokenStore as any).instance = originalTokenStoreInstance;
     TokenStore.getInstance = originalGetInstance;

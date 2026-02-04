@@ -4,7 +4,6 @@ import {
   startOfDay,
   endOfDay,
   addDays,
-  format,
   startOfWeek,
   endOfWeek,
 } from "date-fns";
@@ -286,7 +285,10 @@ describe("parseDateRange", () => {
 
       ranges.forEach((range) => {
         const result = parseDateRange(range);
-        expect(result?.timeMax! > result?.timeMin!).toBe(true);
+        if (!result) {
+          throw new Error("Expected date range result");
+        }
+        expect(result.timeMax > result.timeMin).toBe(true);
       });
     });
   });

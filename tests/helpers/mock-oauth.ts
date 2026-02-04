@@ -56,7 +56,7 @@ export function mockProcessExit() {
  */
 export function createMockAuthenticate() {
   return mock(
-    async ({ scopes, keyfilePath }: any = {}) =>
+    async ({ scopes, keyfilePath: _keyfilePath }: any = {}) =>
       Promise.resolve({
         credentials: {
           access_token: "mock-access-token-123",
@@ -97,9 +97,9 @@ export function createMockOAuth2Client() {
         scope: "https://www.googleapis.com/auth/calendar",
       },
     })),
-    hasScopes: mock((scopes: string[]) => true),
+    hasScopes: mock((_scopes: string[]) => true),
     setDefaultHeaders: mock(() => {}),
-    request: mock(async (options: any) => ({
+    request: mock(async (_options: any) => ({
       status: 200,
       data: {},
     })),
