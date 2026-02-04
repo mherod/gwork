@@ -23,6 +23,10 @@ bun src/cli.ts cal list --today
 bun run dev cal list
 bun run dev mail messages -n 5
 
+# Lint
+bun run lint
+bun run lint:fix
+
 # Build for production (bundles for Node.js)
 bun run build
 
@@ -40,6 +44,7 @@ gwork mail messages -n 5
 src/
 ├── cli.ts                      # Entry point; routes commands to handlers
 ├── commands/
+│   ├── accounts.ts             # Accounts command handler
 │   ├── cal.ts                  # Calendar command dispatcher (24 commands)
 │   └── mail.ts                 # Gmail command dispatcher (30 commands)
 ├── services/
@@ -86,6 +91,15 @@ This abstraction normalizes parameter syntax (`@param` for both, internally conv
 4. **Multi-Account Ready**: TokenStore uses composite key (service, account) for future multi-account support
 5. **Fail-Fast with Guidance**: If credentials missing, show friendly setup guide instead of cryptic errors
 
+## Testing Guidelines
+
+- **Runtime**: Run tests with `bun test`.
+- **Mocking**: Use `bun:test` primitives (`mock`, `spyOn`).
+- **Database in Tests**:
+  - **DON'T** access the real SQLite database in unit tests. It causes "database is locked" errors due to concurrency.
+  - **DO** mock `TokenStore.getInstance()` and its methods (e.g., `listTokens`) to return fixture data.
+  - **DO** restore mocks and singletons in `afterEach` to prevent test pollution.
+
 ## Build & Publishing
 
 ```bash
@@ -101,11 +115,25 @@ bun run build
 # Publish to npm
 npm publish
 # Automatically runs build via prepublishOnly script
+
+# Versioning
+- **DO** update version in `src/cli.ts` (`printVersion` function) to match `package.json` when bumping versions.
+- **DO** use `npm link` to locally test the production build behavior and version output.
 ```
+
+## Git & Contribution
+
+- **Branching**:
+  - **DO** create feature branches for all changes (e.g., `feat/add-accounts`, `fix/token-refresh`).
+  - **DON'T** push directly to `main`. Repository rules block direct pushes.
+- **Pull Requests**:
+  - **DO** use `gh pr create` to submit changes.
+  - **DO** ensure all CI checks pass (`bun test`, `bun run lint`) before merging.
 
 ## Important Notes
 
 - Default to Bun for development; the CLI distributes as a Node.js bundle
+- ESLint uses flat config in `eslint.config.js`; update both `bun.lock` and `package-lock.json` when adding or changing dependencies
 - Don't use better-sqlite3 in Bun scripts (use native `bun:sqlite` via the wrapper)
 - Don't use dotenv; Bun automatically loads `.env` files
 - All sensitive files (`.credentials.json`, `~/.gwork_tokens.db`) are properly ignored in `.gitignore`
