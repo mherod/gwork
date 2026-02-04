@@ -412,7 +412,7 @@ export class AuthManager {
       } else {
         credentials = (auth as any).credentials || {};
       }
-    } catch (error) {
+    } catch (_error) {
       // If getCredentials fails, use available token data
       credentials = {};
     }
