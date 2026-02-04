@@ -71,24 +71,55 @@ describe("Database Retry Utility", () => {
     test("throws non-lock errors immediately", async () => {
       const testError = new Error("Some other error");
 
-      await expect(
-        withDbRetry(async () => {
+      let caught: Error | undefined;
+      try {
+        await withDbRetry(async () => {
           throw testError;
-        })
-      ).rejects.toThrow("Some other error");
+        });
+      } catch (error) {
+        caught = error as Error;
+      }
+      expect(caught).toBe(testError);
     });
 
     test("throws after max retries exhausted", async () => {
-      await expect(
-        withDbRetry(
+      let caught: Error | undefined;
+      try {
+        await withDbRetry(
           async () => {
             const error = new Error("database is locked");
             error.name = "SQLiteError";
             throw error;
           },
           { maxRetries: 2, initialDelay: 10 }
-        )
-      ).rejects.toThrow("database is locked");
+        );
+      } catch (error) {
+        caught = error as Error;
+      }
+      expect(caught).toBeDefined();
+      expect(caught?.message).toBe("database is locked");
+    });
+
+    test("does not retry when maxRetries is zero", async () => {
+      let attempts = 0;
+      let caught: Error | undefined;
+
+      try {
+        await withDbRetry(
+          async () => {
+            attempts++;
+            const error = new Error("database is locked");
+            error.name = "SQLiteError";
+            throw error;
+          },
+          { maxRetries: 0, initialDelay: 10 }
+        );
+      } catch (error) {
+        caught = error as Error;
+      }
+
+      expect(attempts).toBe(1);
+      expect(caught).toBeDefined();
     });
   });
 
@@ -185,6 +216,59 @@ describe("Database Retry Utility", () => {
       expect(attempts).toBe(2);
     });
 
+    test("detects lock errors on plain object message", async () => {
+      let attempts = 0;
+
+      await withDbRetry(
+        async () => {
+          attempts++;
+          if (attempts === 1) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw { message: "database is locked" };
+          }
+          return "success";
+        },
+        { maxRetries: 3, initialDelay: 10 }
+      );
+
+      expect(attempts).toBe(2);
+    });
+
+    test("detects SQLiteError on plain object name", async () => {
+      let attempts = 0;
+
+      await withDbRetry(
+        async () => {
+          attempts++;
+          if (attempts === 1) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw { name: "SQLiteError", message: "Some SQLite error" };
+          }
+          return "success";
+        },
+        { maxRetries: 3, initialDelay: 10 }
+      );
+
+      expect(attempts).toBe(2);
+    });
+
+    test("detects disk full errors by message content", async () => {
+      let attempts = 0;
+
+      await withDbRetry(
+        async () => {
+          attempts++;
+          if (attempts === 1) {
+            throw new Error("database or disk is full");
+          }
+          return "success";
+        },
+        { maxRetries: 3, initialDelay: 10 }
+      );
+
+      expect(attempts).toBe(2);
+    });
+
     test("detects busy errors", async () => {
       let attempts = 0;
 
@@ -237,6 +321,41 @@ describe("Database Retry Utility", () => {
         expect(firstDelay).toBeGreaterThan(40); // Allow for timing variance
         expect(firstDelay).toBeLessThan(200); // Shouldn't be too long
       }
+    });
+
+    test("caps delay to maxDelay", async () => {
+      const delays: number[] = [];
+      const originalSetTimeout = globalThis.setTimeout;
+
+      globalThis.setTimeout = ((handler: any, timeout?: number) => {
+        delays.push(timeout ?? 0);
+        if (typeof handler === "function") {
+          handler();
+        }
+        return 0 as any;
+      }) as any;
+
+      let attempts = 0;
+      try {
+        const result = await withDbRetry(
+          async () => {
+            attempts++;
+            if (attempts <= 3) {
+              const error = new Error("database is locked");
+              error.name = "SQLiteError";
+              throw error;
+            }
+            return "success";
+          },
+          { maxRetries: 3, initialDelay: 100, backoffMultiplier: 10, maxDelay: 150 }
+        );
+
+        expect(result).toBe("success");
+      } finally {
+        globalThis.setTimeout = originalSetTimeout;
+      }
+
+      expect(delays).toEqual([100, 150, 150]);
     });
   });
 });
