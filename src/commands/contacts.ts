@@ -59,7 +59,7 @@ function handleServiceError(error: unknown): never {
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
-  account: string = "default"
+  account = "default"
 ) {
   // Create service instance with the specified account
   contactsService = new ContactsService(account);
@@ -77,7 +77,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts get <resourceName>");
         process.exit(1);
       }
-      await getContact(args[0]!, args.slice(1));
+      await getContact(args[0], args.slice(1));
       break;
     case "search":
       if (args.length === 0 || !args[0]) {
@@ -85,7 +85,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts search <query>");
         process.exit(1);
       }
-      await searchContacts(args[0]!, args.slice(1));
+      await searchContacts(args[0], args.slice(1));
       break;
     case "find-email":
       if (args.length === 0 || !args[0]) {
@@ -93,7 +93,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-email <email>");
         process.exit(1);
       }
-      await findContactByEmail(args[0]!);
+      await findContactByEmail(args[0]);
       break;
     case "find-name":
       if (args.length === 0 || !args[0]) {
@@ -101,7 +101,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-name <name>");
         process.exit(1);
       }
-      await findContactByName(args[0]!);
+      await findContactByName(args[0]);
       break;
     case "create":
       await createContact(args);
@@ -112,7 +112,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts update <resourceName> [options]");
         process.exit(1);
       }
-      await updateContact(args[0]!, args.slice(1));
+      await updateContact(args[0], args.slice(1));
       break;
     case "delete":
       if (args.length === 0 || !args[0]) {
@@ -120,7 +120,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete <resourceName> --confirm");
         process.exit(1);
       }
-      await deleteContact(args[0]!, args.slice(1));
+      await deleteContact(args[0], args.slice(1));
       break;
     case "groups":
       await listGroups(args);
@@ -131,7 +131,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts group-contacts <groupResourceName>");
         process.exit(1);
       }
-      await getContactsInGroup(args[0]!, args.slice(1));
+      await getContactsInGroup(args[0], args.slice(1));
       break;
     case "create-group":
       if (args.length === 0) {
@@ -147,7 +147,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete-group <groupResourceName> --confirm");
         process.exit(1);
       }
-      await deleteGroup(args[0]!, args.slice(1));
+      await deleteGroup(args[0], args.slice(1));
       break;
     case "add-to-group":
       if (args.length < 2) {
@@ -815,7 +815,7 @@ async function batchCreateContacts(jsonFile: string, args: string[]) {
     console.log("─".repeat(80));
     results.forEach((contact) => {
       const name = contact.names?.[0]?.displayName || "No name";
-      console.log(`${chalk.cyan(name)}`);
+      console.log(chalk.cyan(name));
     });
 
     process.exit(0);
