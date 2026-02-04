@@ -54,27 +54,31 @@ export function parseDateRange(range: string) {
   switch (range.toLowerCase()) {
     case "today":
       return { timeMin: today, timeMax: endOfDay(today) };
-    case "tomorrow":
+    case "tomorrow": {
       const tomorrow = addDays(today, 1);
       return { timeMin: tomorrow, timeMax: endOfDay(tomorrow) };
+    }
     case "this-week":
       return { timeMin: startOfWeek(today), timeMax: endOfWeek(today) };
-    case "next-week":
+    case "next-week": {
       const nextWeek = addWeeks(today, 1);
       return { timeMin: startOfWeek(nextWeek), timeMax: endOfWeek(nextWeek) };
+    }
     case "this-month":
       return { timeMin: startOfMonth(today), timeMax: endOfMonth(today) };
-    case "next-month":
+    case "next-month": {
       const nextMonth = addMonths(today, 1);
       return {
         timeMin: startOfMonth(nextMonth),
         timeMax: endOfMonth(nextMonth),
       };
+    }
     case "this-year":
       return { timeMin: startOfYear(today), timeMax: endOfYear(today) };
-    case "next-year":
+    case "next-year": {
       const nextYear = addYears(today, 1);
       return { timeMin: startOfYear(nextYear), timeMax: endOfYear(nextYear) };
+    }
     default:
       return null;
   }

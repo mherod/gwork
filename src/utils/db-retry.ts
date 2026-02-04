@@ -137,9 +137,20 @@ const DEFAULT_OPTIONS: Required<Omit<DbRetryOptions, "logger">> = {
  */
 function isDatabaseLockError(error: unknown): boolean {
   if (!error) return false;
-  
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const errorName = error instanceof Error ? error.name : "";
+  const hasMessage =
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error;
+  const hasName =
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error;
+  const errorMessage = error instanceof Error
+    ? error.message
+    : String(hasMessage ? (error as { message: unknown }).message : error);
+  const errorName = error instanceof Error
+    ? error.name
+    : String(hasName ? (error as { name: unknown }).name : "");
   
   // Check for SQLite lock errors
   return (
