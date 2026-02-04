@@ -15,6 +15,8 @@
   "scripts": {
     "build": "bun build src/cli.ts --outfile=dist/cli.js --target=node --minify --external better-sqlite3",
     "dev": "bun src/cli.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -51,9 +53,14 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
-    "@types/lodash-es": "^4.17.12"
+    "@types/lodash-es": "^4.17.12",
+    "eslint": "^9.39.2",
+    "globals": "^17.3.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0"
   },
   "peerDependencies": {
     "typescript": "^5"
