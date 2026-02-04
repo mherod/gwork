@@ -3,6 +3,7 @@
 import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
 import { handleContactsCommand } from "./commands/contacts.ts";
+import { handleAccountsCommand } from "./commands/accounts.ts";
 import { parseAccount } from "./utils/args.ts";
 
 function printHelp() {
@@ -16,6 +17,7 @@ Commands:
   mail           Gmail operations
   cal            Google Calendar operations
   contacts       Google Contacts operations
+  accounts       List configured Google accounts
 
 Options:
   -h, --help              Show this help message
@@ -269,6 +271,9 @@ async function main() {
       break;
     case "contacts":
       await handleContacts(commandArgs);
+      break;
+    case "accounts":
+      await handleAccountsCommand(commandArgs);
       break;
     default:
       console.error(`Unknown command: ${command}`);
