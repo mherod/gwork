@@ -327,7 +327,7 @@ export class TokenStore {
    * }
    * ```
    */
-  getToken(service: string, account: string = "default"): TokenData | null {
+  getToken(service: string, account = "default"): TokenData | null {
     return withDbRetrySync(
       () => {
         const stmt = this.db.prepare(`
@@ -475,7 +475,7 @@ export class TokenStore {
    * }
    * ```
    */
-  deleteToken(service: string, account: string = "default"): boolean {
+  deleteToken(service: string, account = "default"): boolean {
     return withDbRetrySync(
       () => {
         const stmt = this.db.prepare(`
@@ -491,7 +491,7 @@ export class TokenStore {
     );
   }
 
-  hasValidScopes(service: string, requiredScopes: string[], account: string = "default"): boolean {
+  hasValidScopes(service: string, requiredScopes: string[], account = "default"): boolean {
     const token = this.getToken(service, account);
     if (!token) return false;
 
@@ -544,7 +544,7 @@ export class TokenStore {
   findTokenWithScopes(
     service: string,
     requiredScopes: string[],
-    account: string = "default"
+    account = "default"
   ): TokenData | null {
     const token = this.getToken(service, account);
     if (!token) return null;

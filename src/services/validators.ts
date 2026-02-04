@@ -25,7 +25,7 @@ export function validateEmail(email: string): void {
  * @param max - Maximum allowed page size (default: 2500)
  * @throws {ValidationError} If pageSize is out of bounds
  */
-export function validatePageSize(pageSize: number, max: number = 2500): void {
+export function validatePageSize(pageSize: number, max = 2500): void {
   if (pageSize < 1 || pageSize > max) {
     throw new ValidationError("pageSize", `Must be between 1 and ${max}`);
   }
@@ -65,7 +65,7 @@ export function validateDateString(date: string, fieldName: string): void {
  * @param min - Minimum allowed value (default: 1)
  * @throws {ValidationError} If out of bounds
  */
-export function validateMaxResults(maxResults: number, max: number, min: number = 1): void {
+export function validateMaxResults(maxResults: number, max: number, min = 1): void {
   if (maxResults < min || maxResults > max) {
     throw new ValidationError(
       "maxResults",

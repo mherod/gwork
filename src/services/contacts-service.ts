@@ -40,7 +40,7 @@ export class ContactsService extends BaseService {
     "metadata",
   ].join(",");
 
-  constructor(account: string = "default") {
+  constructor(account = "default") {
     super(
       "Contacts",
       [
@@ -211,7 +211,7 @@ export class ContactsService extends BaseService {
           });
 
           return (
-            result.data.results?.map((r) => r.person).filter((p) => p !== undefined) as Person[] || []
+            result.data.results?.map((r) => r.person).filter((p): p is Person => p !== undefined) || []
           );
         },
         { maxRetries: 3 }
@@ -793,7 +793,7 @@ export class ContactsService extends BaseService {
         batch.map((data) => this.createContact(data).catch(() => null))
       );
 
-      created.push(...results.filter((r) => r !== null) as Person[]);
+      created.push(...results.filter((r) => r !== null));
 
       if (i + BATCH_SIZE < contactsData.length) {
         await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
@@ -996,12 +996,12 @@ export class ContactsService extends BaseService {
     threshold?: number;
     maxResults?: number;
   }): Promise<{
-    duplicates: Array<{
+    duplicates: {
       type: string;
       value: string;
       confidence: number;
       contacts: Person[];
-    }>;
+    }[];
     totalDuplicates: number;
     totalContacts: number;
   }> {
@@ -1032,12 +1032,12 @@ export class ContactsService extends BaseService {
       };
     }
 
-    const duplicateGroups: Array<{
+    const duplicateGroups: {
       type: string;
       value: string;
       confidence: number;
       contacts: Person[];
-    }> = [];
+    }[] = [];
 
     const processedPairs = new Set<string>();
 
@@ -1315,12 +1315,12 @@ export class ContactsService extends BaseService {
     dryRun?: boolean;
   }): Promise<{
     mergeOperations: number;
-    results?: Array<{
+    results?: {
       target: string;
       sources: string[];
       success: boolean;
       error?: string;
-    }>;
+    }[];
   }> {
     const {
       criteria = ["email"],
@@ -1335,12 +1335,12 @@ export class ContactsService extends BaseService {
       maxResults,
     });
 
-    const results: Array<{
+    const results: {
       target: string;
       sources: string[];
       success: boolean;
       error?: string;
-    }> = [];
+    }[] = [];
 
     let mergeCount = 0;
 
@@ -1360,18 +1360,18 @@ export class ContactsService extends BaseService {
 
       if (!dryRun) {
         try {
-          await this.mergeContacts(sourceNames, target.resourceName!, {
+          await this.mergeContacts(sourceNames, target.resourceName, {
             deleteAfterMerge: true,
           });
           results.push({
-            target: target.resourceName!,
+            target: target.resourceName,
             sources: sourceNames,
             success: true,
           });
           mergeCount++;
         } catch (error) {
           results.push({
-            target: target.resourceName!,
+            target: target.resourceName,
             sources: sourceNames,
             success: false,
             error: error instanceof Error ? error.message : "Unknown error",
@@ -1534,7 +1534,7 @@ export class ContactsService extends BaseService {
   async findContactsWithMissingNames(options: {
     pageSize?: number;
   }): Promise<{
-    contacts: Array<{
+    contacts: {
       resourceName: string;
       displayName: string;
       email?: string;
@@ -1542,7 +1542,7 @@ export class ContactsService extends BaseService {
       organization?: string;
       issueType: string;
       surnameHints: string[];
-    }>;
+    }[];
     totalContacts: number;
     contactsWithIssues: number;
   }> {
@@ -1552,7 +1552,7 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const contactsWithIssues: Array<{
+    const contactsWithIssues: {
       resourceName: string;
       displayName: string;
       email?: string;
@@ -1560,7 +1560,7 @@ export class ContactsService extends BaseService {
       organization?: string;
       issueType: string;
       surnameHints: string[];
-    }> = [];
+    }[] = [];
 
     contacts.forEach((contact) => {
       const displayName = contact.names?.[0]?.displayName || "Unknown";
@@ -1618,14 +1618,14 @@ export class ContactsService extends BaseService {
   async findContactsWithGenericNames(options: {
     pageSize?: number;
   }): Promise<{
-    contacts: Array<{
+    contacts: {
       resourceName: string;
       displayName: string;
       email?: string;
       phone?: string;
       organization?: string;
       surnameHints: string[];
-    }>;
+    }[];
     totalContacts: number;
     contactsWithGenericNames: number;
   }> {
@@ -1635,14 +1635,14 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const contactsWithGenericNames: Array<{
+    const contactsWithGenericNames: {
       resourceName: string;
       displayName: string;
       email?: string;
       phone?: string;
       organization?: string;
       surnameHints: string[];
-    }> = [];
+    }[] = [];
 
     contacts.forEach((contact) => {
       const displayName = contact.names?.[0]?.displayName || "Unknown";
@@ -1700,7 +1700,7 @@ export class ContactsService extends BaseService {
   async analyzeImportedContacts(options: {
     pageSize?: number;
   }): Promise<{
-    contacts: Array<{
+    contacts: {
       resourceName: string;
       displayName: string;
       email?: string;
@@ -1708,7 +1708,7 @@ export class ContactsService extends BaseService {
       organization?: string;
       issueType: string;
       confidence: number;
-    }>;
+    }[];
     totalContacts: number;
     importedContacts: number;
   }> {
@@ -1718,7 +1718,7 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const importedContacts: Array<{
+    const importedContacts: {
       resourceName: string;
       displayName: string;
       email?: string;
@@ -1726,7 +1726,7 @@ export class ContactsService extends BaseService {
       organization?: string;
       issueType: string;
       confidence: number;
-    }> = [];
+    }[] = [];
 
     contacts.forEach((contact) => {
       const displayName = contact.names?.[0]?.displayName || "Unknown";
@@ -1750,13 +1750,13 @@ export class ContactsService extends BaseService {
           issueType = "Test contact";
           confidence = 85;
         } else if (
-          name.toLowerCase().match(/noreply|donotreply|mailer|notification/i)
+          /noreply|donotreply|mailer|notification/i.exec(name.toLowerCase())
         ) {
           issueType = "System-generated contact";
           confidence = 80;
         } else if (
           email &&
-          email.match(/^[a-z0-9]+\+[a-z0-9]+@/i)
+          (/^[a-z0-9]+\+[a-z0-9]+@/i.exec(email))
         ) {
           issueType = "Email alias (potential import artifact)";
           confidence = 60;
@@ -2064,13 +2064,13 @@ export class ContactsService extends BaseService {
   async detectMarketingContacts(options: {
     pageSize?: number;
   }): Promise<{
-    contacts: Array<{
+    contacts: {
       resourceName: string;
       displayName: string;
       email?: string;
       detectionReasons: string[];
       confidence: number;
-    }>;
+    }[];
     totalContacts: number;
     marketingContacts: number;
   }> {
@@ -2080,13 +2080,13 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const marketingContacts: Array<{
+    const marketingContacts: {
       resourceName: string;
       displayName: string;
       email?: string;
       detectionReasons: string[];
       confidence: number;
-    }> = [];
+    }[] = [];
 
     contacts.forEach((contact) => {
       const analysis = this.isMarketingContact(contact);
@@ -2127,15 +2127,15 @@ export class ContactsService extends BaseService {
    * ```
    */
   async cleanupMarketingContacts(
-    contacts: Array<{ resourceName: string }>
+    contacts: { resourceName: string }[]
   ): Promise<{
     deleted: number;
     failed: number;
-    failedContacts: Array<{ resourceName: string; error: string }>;
+    failedContacts: { resourceName: string; error: string }[];
   }> {
     let deleted = 0;
     let failed = 0;
-    const failedContacts: Array<{ resourceName: string; error: string }> = [];
+    const failedContacts: { resourceName: string; error: string }[] = [];
 
     for (const contact of contacts) {
       try {
