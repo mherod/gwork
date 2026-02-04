@@ -63,7 +63,7 @@ function decodeBase64(data: string): string {
   return Buffer.from(data, "base64").toString("utf-8");
 }
 
-function getHeader(headers: Array<{ name?: string | null; value?: string | null }>, name: string): string {
+function getHeader(headers: { name?: string | null; value?: string | null }[], name: string): string {
   const header = find(headers, (h) => h.name?.toLowerCase() === name.toLowerCase());
   return header?.value || "";
 }
@@ -82,15 +82,17 @@ function formatMessage(message: any, format: EmailBodyFormat = "auto"): string {
     const parts = message.payload.parts;
 
     switch (format) {
-      case "plain":
+      case "plain": {
         const plainPart = parts.find((p: any) => p.mimeType === "text/plain" && p.body?.data);
         if (plainPart) body = decodeBase64(plainPart.body.data);
         break;
+      }
 
-      case "html":
+      case "html": {
         const htmlPart = parts.find((p: any) => p.mimeType === "text/html" && p.body?.data);
         if (htmlPart) body = decodeBase64(htmlPart.body.data);
         break;
+      }
 
       case "auto":
       default:
@@ -119,7 +121,7 @@ Date: ${date}
 ${body}`;
 }
 
-export async function handleMailCommand(subcommand: string, args: string[], account: string = "default") {
+export async function handleMailCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
   mailService = new MailService(account);
 
@@ -141,7 +143,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       }
       await getMessage(args[0]!, args.slice(1));
       break;
-    case "search":
+    case "search": {
       if (args.length === 0) {
         console.error("Error: search query is required");
         console.error("Usage: gwork mail search <query>");
@@ -152,6 +154,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       const searchOptions = args.slice(1);
       await searchMessages(query, searchOptions);
       break;
+    }
     case "stats":
       await getStats();
       break;
@@ -208,7 +211,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete-query <query>");
         process.exit(1);
       }
-      await deleteQuery(args.join(" ")!);
+      await deleteQuery(args.join(" "));
       break;
     case "archive":
       if (args.length === 0) {
@@ -224,7 +227,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive-query <query>");
         process.exit(1);
       }
-      await archiveQuery(args.join(" ")!);
+      await archiveQuery(args.join(" "));
       break;
     case "archive-many":
       if (args.length === 0) {
@@ -248,7 +251,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive-query <query>");
         process.exit(1);
       }
-      await unarchiveQuery(args.join(" ")!);
+      await unarchiveQuery(args.join(" "));
       break;
     case "unarchive-many":
       if (args.length === 0) {
@@ -379,7 +382,7 @@ async function listMessages(args: string[]) {
         }
       } else if (args[i] === "--query" || args[i] === "-q") {
         if (i + 1 < args.length) {
-          options.q = args[++i]!!;
+          options.q = args[++i]!;
         }
       } else if (args[i] === "--label" || args[i] === "-l") {
         if (i + 1 < args.length) {
@@ -867,7 +870,7 @@ async function addLabel(messageId: string, labelName: string) {
     const labels = await mailService.listLabels();
     const label = find(labels, (l) => l.name === labelName || l.id === labelName);
 
-    if (!label || !label.id) {
+    if (!label?.id) {
       spinner.fail("Label not found");
       console.error(chalk.red(`Label "${labelName}" not found`));
       process.exit(1);
@@ -889,7 +892,7 @@ async function removeLabel(messageId: string, labelName: string) {
     const labels = await mailService.listLabels();
     const label = find(labels, (l) => l.name === labelName || l.id === labelName);
 
-    if (!label || !label.id) {
+    if (!label?.id) {
       spinner.fail("Label not found");
       console.error(chalk.red(`Label "${labelName}" not found`));
       process.exit(1);
