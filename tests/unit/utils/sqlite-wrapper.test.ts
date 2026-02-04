@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { Database } from "../../../src/utils/sqlite-wrapper.ts";
+import type { Database } from "../../../src/utils/sqlite-wrapper.ts";
 import { createTestDatabase, createTestDatabaseFile } from "../../helpers/test-database.ts";
 
 describe("SQLite Database Wrapper", () => {

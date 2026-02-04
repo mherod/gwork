@@ -27,9 +27,9 @@ describe("AuthManager", () => {
   let mockLogger: Logger;
   let authManager: AuthManager;
   let credentialsPath: string;
-  let originalFsReadFile: typeof fs.readFile;
-  let originalOAuth2: typeof google.auth.OAuth2;
-  let originalAuthenticate: typeof authenticate;
+  let _originalFsReadFile: typeof fs.readFile;
+  let _originalOAuth2: typeof google.auth.OAuth2;
+  let _originalAuthenticate: typeof authenticate;
 
   beforeEach(() => {
     // Create mocks
@@ -55,9 +55,9 @@ describe("AuthManager", () => {
     credentialsPath = createMockCredentials();
 
     // Save original implementations
-    originalFsReadFile = fs.readFile;
-    originalOAuth2 = google.auth.OAuth2;
-    originalAuthenticate = localAuth.authenticate;
+    _originalFsReadFile = fs.readFile;
+    _originalOAuth2 = google.auth.OAuth2;
+    _originalAuthenticate = localAuth.authenticate;
 
     // CRITICAL: Mock authenticate to prevent browser launch
     // Use spyOn to mock the module export
@@ -189,7 +189,7 @@ describe("AuthManager", () => {
       } as unknown as AuthClient;
 
       // Mock google.auth.OAuth2 constructor
-      const OAuth2Original = google.auth.OAuth2;
+      const _OAuth2Original = google.auth.OAuth2;
       google.auth.OAuth2 = function OAuth2Mock() {
         return mockAuthClient;
       } as any;
@@ -277,11 +277,11 @@ describe("AuthManager", () => {
       // Mock google.auth.OAuth2 constructor to return our mock client
       // IMPORTANT: When using 'new', the constructor function's return value is used
       // We need to ensure the returned object has the same reference to our mocks
-      const OAuth2Original = google.auth.OAuth2;
+      const _OAuth2Original = google.auth.OAuth2;
       google.auth.OAuth2 = function OAuth2Mock(
-        clientId?: string,
-        clientSecret?: string,
-        redirectUri?: string
+        _clientId?: string,
+        _clientSecret?: string,
+        _redirectUri?: string
       ) {
         // Return the exact mock client object with tracked mocks
         return mockAuthClient;
@@ -401,7 +401,7 @@ describe("AuthManager", () => {
       } as unknown as AuthClient;
 
       // Mock google.auth.OAuth2 constructor
-      const OAuth2Original = google.auth.OAuth2;
+      const _OAuth2Original = google.auth.OAuth2;
       google.auth.OAuth2 = function OAuth2Mock() {
         return mockAuthClient;
       } as any;

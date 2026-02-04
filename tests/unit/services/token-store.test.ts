@@ -1,8 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { TokenStore, TokenData } from "../../../src/services/token-store.ts";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { unlinkSync, existsSync } from "node:fs";
+import type { TokenData } from "../../../src/services/token-store.ts";
+import { TokenStore } from "../../../src/services/token-store.ts";
 
 describe("TokenStore", () => {
   let originalInstance: any;
@@ -21,7 +19,9 @@ describe("TokenStore", () => {
     if (instance) {
       try {
         instance.close();
-      } catch (e) {}
+      } catch (_error) {
+        void _error;
+      }
     }
 
     // Restore singleton
@@ -280,7 +280,6 @@ describe("TokenStore", () => {
     });
 
     test("preserves created_at on update", () => {
-      const firstSave = Date.now();
       store.saveToken({
         service: "calendar",
         account: "default",
