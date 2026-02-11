@@ -4,15 +4,7 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import { CalendarService } from "../services/calendar-service.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
-import {
-  ServiceError,
-  NotFoundError,
-  PermissionDeniedError,
-  RateLimitError,
-  ServiceUnavailableError,
-  InitializationError,
-  ValidationError,
-} from "../services/errors.ts";
+import { handleServiceError } from "../utils/command-error-handler.ts";
 
 // Module-level service instance (set by handleCalCommand)
 let calendarService: CalendarService;
@@ -22,41 +14,6 @@ async function ensureInitialized() {
   await calendarService.initialize();
 }
 
-// Helper to handle service errors with appropriate user-friendly messages
-function handleServiceError(error: unknown): never {
-  if (error instanceof NotFoundError) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof PermissionDeniedError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please check your authentication and permissions."));
-    process.exit(1);
-  } else if (error instanceof RateLimitError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please wait a moment and try again."));
-    process.exit(1);
-  } else if (error instanceof ServiceUnavailableError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("The service is temporarily unavailable. Please try again later."));
-    process.exit(1);
-  } else if (error instanceof InitializationError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please run the setup guide to configure your credentials."));
-    process.exit(1);
-  } else if (error instanceof ValidationError) {
-    console.error(chalk.red("Validation Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof ServiceError) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof Error) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else {
-    console.error(chalk.red("Error:"), "Unknown error occurred");
-    process.exit(1);
-  }
-}
 
 export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account

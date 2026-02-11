@@ -2,16 +2,8 @@ import chalk from "chalk";
 import ora from "ora";
 import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
+import { handleServiceError } from "../utils/command-error-handler.ts";
 import fs from "node:fs";
-import {
-  ServiceError,
-  NotFoundError,
-  PermissionDeniedError,
-  RateLimitError,
-  ServiceUnavailableError,
-  InitializationError,
-  ValidationError,
-} from "../services/errors.ts";
 
 // Module-level service instance (set by handleMailCommand)
 let mailService: MailService;
@@ -21,42 +13,6 @@ type EmailBodyFormat = "plain" | "html" | "auto";
 // Helper to ensure service is initialized (checks credentials)
 async function ensureInitialized() {
   await mailService.initialize();
-}
-
-// Helper to handle service errors with appropriate user-friendly messages
-function handleServiceError(error: unknown): never {
-  if (error instanceof NotFoundError) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof PermissionDeniedError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please check your authentication and permissions."));
-    process.exit(1);
-  } else if (error instanceof RateLimitError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please wait a moment and try again."));
-    process.exit(1);
-  } else if (error instanceof ServiceUnavailableError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("The service is temporarily unavailable. Please try again later."));
-    process.exit(1);
-  } else if (error instanceof InitializationError) {
-    console.error(chalk.red("Error:"), error.message);
-    console.error(chalk.yellow("Please run the setup guide to configure your credentials."));
-    process.exit(1);
-  } else if (error instanceof ValidationError) {
-    console.error(chalk.red("Validation Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof ServiceError) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else if (error instanceof Error) {
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
-  } else {
-    console.error(chalk.red("Error:"), "Unknown error occurred");
-    process.exit(1);
-  }
 }
 
 function decodeBase64(data: string): string {
