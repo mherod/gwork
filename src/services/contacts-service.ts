@@ -12,9 +12,10 @@ import {
   validateEmail,
   validatePageSize,
   validateResourceId,
-  validateMaxResults,
-  validateConfidenceScore,
 } from "./validators.ts";
+import { ContactMatcher } from "./contact-matcher.ts";
+import { ContactAnalyzer } from "./contact-analyzer.ts";
+import { ContactGroupManager } from "./contact-group-manager.ts";
 import type {
   PeopleClient,
   Person,
@@ -40,6 +41,11 @@ export class ContactsService extends BaseService {
     "metadata",
   ].join(",");
 
+  // Composed service instances
+  private matcher: ContactMatcher | null = null;
+  private analyzer: ContactAnalyzer | null = null;
+  private groupManager: ContactGroupManager | null = null;
+
   constructor(account = "default") {
     super(
       "Contacts",
@@ -63,6 +69,11 @@ export class ContactsService extends BaseService {
     this.ensureInitialized();
     // Initialize People API client - auth is guaranteed non-null after ensureInitialized()
     this.people = google.people({ version: "v1", auth: this.getAuth() });
+
+    // Initialize composed services
+    this.matcher = new ContactMatcher();
+    this.analyzer = new ContactAnalyzer();
+    this.groupManager = new ContactGroupManager(this.people, (rn) => this.getContact(rn));
   }
 
   /**
@@ -514,13 +525,7 @@ export class ContactsService extends BaseService {
   async getContactGroups(): Promise<ContactGroup[]> {
     await this.initialize();
     this.ensureInitialized();
-
-    try {
-      const result = await this.people!.contactGroups.list();
-      return result.data.contactGroups || [];
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "list contact groups");
-    }
+    return this.groupManager!.getContactGroups();
   }
 
   /**
@@ -540,24 +545,7 @@ export class ContactsService extends BaseService {
   async createContactGroup(name: string): Promise<ContactGroup> {
     await this.initialize();
     this.ensureInitialized();
-    validateResourceId(name, "group name");
-
-    try {
-      const result = await this.people!.contactGroups.create({
-        requestBody: {
-          contactGroup: {
-            name,
-          },
-        },
-      });
-
-      if (!result.data) {
-        throw new Error("No contact group data returned");
-      }
-      return result.data;
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "create contact group");
-    }
+    return this.groupManager!.createContactGroup(name);
   }
 
   /**
@@ -578,18 +566,7 @@ export class ContactsService extends BaseService {
   async deleteContactGroup(resourceName: string): Promise<{ success: boolean }> {
     await this.initialize();
     this.ensureInitialized();
-    validateResourceId(resourceName, "resourceName");
-
-    const fullResourceName = this.parseResourceName(resourceName);
-
-    try {
-      await this.people!.contactGroups.delete({
-        resourceName: fullResourceName,
-      });
-      return { success: true };
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "delete contact group");
-    }
+    return this.groupManager!.deleteContactGroup(resourceName);
   }
 
   /**
@@ -617,23 +594,7 @@ export class ContactsService extends BaseService {
   ): Promise<{ addedContacts: number }> {
     await this.initialize();
     this.ensureInitialized();
-    validateResourceId(groupResourceName, "groupResourceName");
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
-    const fullContactNames = contactResourceNames.map((r) => this.parseResourceName(r));
-
-    try {
-      await this.people!.contactGroups.members.modify({
-        resourceName: fullGroupName,
-        requestBody: {
-          resourceNamesToAdd: fullContactNames,
-        },
-      });
-
-      return { addedContacts: fullContactNames.length };
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "add contacts to group");
-    }
+    return this.groupManager!.addContactsToGroup(groupResourceName, contactResourceNames);
   }
 
   /**
@@ -660,23 +621,7 @@ export class ContactsService extends BaseService {
   ): Promise<{ removedContacts: number }> {
     await this.initialize();
     this.ensureInitialized();
-    validateResourceId(groupResourceName, "groupResourceName");
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
-    const fullContactNames = contactResourceNames.map((r) => this.parseResourceName(r));
-
-    try {
-      await this.people!.contactGroups.members.modify({
-        resourceName: fullGroupName,
-        requestBody: {
-          resourceNamesToRemove: fullContactNames,
-        },
-      });
-
-      return { removedContacts: fullContactNames.length };
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "remove contacts from group");
-    }
+    return this.groupManager!.removeContactsFromGroup(groupResourceName, contactResourceNames);
   }
 
   /**
@@ -701,35 +646,8 @@ export class ContactsService extends BaseService {
   ): Promise<{ contacts: Person[] }> {
     await this.initialize();
     this.ensureInitialized();
-    validateResourceId(groupResourceName, "groupResourceName");
-
-    const fullGroupName = this.parseResourceName(groupResourceName);
     const { pageSize = 50 } = options;
-
-    try {
-      const result = await this.people!.contactGroups.get({
-        resourceName: fullGroupName,
-        maxMembers: pageSize,
-      });
-
-      const memberResourceNames = result.data.memberResourceNames || [];
-
-      // Fetch contact details for each member
-      const contacts: Person[] = [];
-      for (const resourceName of memberResourceNames) {
-        try {
-          const contact = await this.getContact(resourceName);
-          contacts.push(contact);
-        } catch (error) {
-          // Silently skip contacts that can't be fetched
-          this.logger.debug(`Failed to fetch contact ${resourceName}`, { error });
-        }
-      }
-
-      return { contacts };
-    } catch (error: unknown) {
-      handleGoogleApiError(error, "get contacts in group");
-    }
+    return this.groupManager!.getContactsInGroup(groupResourceName, pageSize);
   }
 
   // ============= PROFILE & BATCH OPERATIONS =============
@@ -850,112 +768,6 @@ export class ContactsService extends BaseService {
   // ============= DUPLICATE DETECTION =============
 
   /**
-   * Calculates Levenshtein distance between two strings.
-   * Used for fuzzy name matching in duplicate detection.
-   *
-   * @param str1 - First string
-   * @param str2 - Second string
-   * @returns Edit distance (0 = identical, higher = more different)
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= len2; i++) {
-      matrix[i] = [i];
-    }
-
-    for (let j = 0; j <= len1; j++) {
-      matrix[0]![j] = j;
-    }
-
-    for (let i = 1; i <= len2; i++) {
-      for (let j = 1; j <= len1; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i]![j] = matrix[i - 1]![j - 1]!;
-        } else {
-          matrix[i]![j] = Math.min(
-            matrix[i - 1]![j - 1]! + 1,
-            matrix[i]![j - 1]! + 1,
-            matrix[i - 1]![j]! + 1
-          );
-        }
-      }
-    }
-
-    return matrix[len2]![len1]!;
-  }
-
-  /**
-   * Normalizes name for comparison (lowercase, trim, remove special chars).
-   *
-   * @param name - Name to normalize
-   * @returns Normalized name string
-   */
-  private normalizeName(name: string): string {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, " ")
-      .replace(/[^\w\s]/g, "");
-  }
-
-  /**
-   * Calculates name similarity percentage (0-100).
-   *
-   * @param name1 - First name
-   * @param name2 - Second name
-   * @returns Similarity percentage (100 = identical)
-   */
-  private calculateNameSimilarity(name1: string, name2: string): number {
-    const normalized1 = this.normalizeName(name1);
-    const normalized2 = this.normalizeName(name2);
-
-    if (normalized1 === normalized2) {
-      return 100;
-    }
-
-    const maxLen = Math.max(normalized1.length, normalized2.length);
-    if (maxLen === 0) return 0;
-
-    const distance = this.levenshteinDistance(normalized1, normalized2);
-    const similarity = ((maxLen - distance) / maxLen) * 100;
-
-    return Math.round(similarity);
-  }
-
-  /**
-   * Extracts primary email from contact.
-   *
-   * @param contact - Person object
-   * @returns Email address (lowercase) or null
-   */
-  private getContactEmail(contact: Person): string | null {
-    return contact.emailAddresses?.[0]?.value?.toLowerCase() || null;
-  }
-
-  /**
-   * Extracts primary phone from contact (digits only).
-   *
-   * @param contact - Person object
-   * @returns Phone number (digits only) or null
-   */
-  private getContactPhone(contact: Person): string | null {
-    return contact.phoneNumbers?.[0]?.value?.replace(/\D/g, "") || null;
-  }
-
-  /**
-   * Extracts display name from contact.
-   *
-   * @param contact - Person object
-   * @returns Display name or null
-   */
-  private getContactName(contact: Person): string | null {
-    return contact.names?.[0]?.displayName || null;
-  }
-
-  /**
    * Finds duplicate contacts using multiple detection strategies.
    *
    * Uses three-phase detection:
@@ -1007,145 +819,15 @@ export class ContactsService extends BaseService {
   }> {
     await this.initialize();
 
-    const {
-      criteria = ["email", "phone", "name"],
-      threshold = 80,
-      maxResults = 1000,
-    } = options;
-
-    // Validate inputs
-    if (threshold < 0 || threshold > 100) {
-      validateConfidenceScore(threshold);
-    }
-    if (maxResults > 0) {
-      validateMaxResults(maxResults, 10000, 1);
-    }
+    const { maxResults = 1000 } = options;
 
     // Fetch contacts
     const contacts = await this.listContacts({ pageSize: maxResults });
 
-    if (contacts.length === 0) {
-      return {
-        duplicates: [],
-        totalDuplicates: 0,
-        totalContacts: 0,
-      };
-    }
-
-    const duplicateGroups: {
-      type: string;
-      value: string;
-      confidence: number;
-      contacts: Person[];
-    }[] = [];
-
-    const processedPairs = new Set<string>();
-
-    // Phase 1: Exact email matches (100% confidence)
-    if (criteria.includes("email")) {
-      const emailMap = new Map<string, Person[]>();
-
-      contacts.forEach((contact) => {
-        const email = this.getContactEmail(contact);
-        if (email) {
-          if (!emailMap.has(email)) {
-            emailMap.set(email, []);
-          }
-          emailMap.get(email)!.push(contact);
-        }
-      });
-
-      emailMap.forEach((emailContacts, email) => {
-        if (emailContacts.length > 1) {
-          const key = emailContacts.map((c) => c.resourceName).sort().join("|");
-          if (!processedPairs.has(key)) {
-            duplicateGroups.push({
-              type: "email",
-              value: email,
-              confidence: 100,
-              contacts: emailContacts,
-            });
-            processedPairs.add(key);
-          }
-        }
-      });
-    }
-
-    // Phase 2: Exact phone matches (100% confidence)
-    if (criteria.includes("phone")) {
-      const phoneMap = new Map<string, Person[]>();
-
-      contacts.forEach((contact) => {
-        const phone = this.getContactPhone(contact);
-        if (phone && phone.length >= 7) {
-          if (!phoneMap.has(phone)) {
-            phoneMap.set(phone, []);
-          }
-          phoneMap.get(phone)!.push(contact);
-        }
-      });
-
-      phoneMap.forEach((phoneContacts, phone) => {
-        if (phoneContacts.length > 1) {
-          const key = phoneContacts.map((c) => c.resourceName).sort().join("|");
-          if (!processedPairs.has(key)) {
-            duplicateGroups.push({
-              type: "phone",
-              value: phone,
-              confidence: 100,
-              contacts: phoneContacts,
-            });
-            processedPairs.add(key);
-          }
-        }
-      });
-    }
-
-    // Phase 3: Fuzzy name matching
-    if (criteria.includes("name")) {
-      for (let i = 0; i < contacts.length; i++) {
-        for (let j = i + 1; j < contacts.length; j++) {
-          const contact1 = contacts[i]!;
-          const contact2 = contacts[j]!;
-
-          const key = [contact1.resourceName, contact2.resourceName]
-            .sort()
-            .join("|");
-          if (processedPairs.has(key)) {
-            continue;
-          }
-
-          const name1 = this.getContactName(contact1);
-          const name2 = this.getContactName(contact2);
-
-          if (name1 && name2) {
-            const similarity = this.calculateNameSimilarity(name1, name2);
-
-            if (similarity >= threshold) {
-              const group = [contact1, contact2];
-              const confidence = similarity;
-
-              duplicateGroups.push({
-                type: "name",
-                value: name1,
-                confidence: Math.round(confidence),
-                contacts: group,
-              });
-              processedPairs.add(key);
-            }
-          }
-        }
-      }
-    }
-
-    // Sort by confidence (descending)
-    duplicateGroups.sort((a, b) => b.confidence - a.confidence);
-
-    return {
-      duplicates: duplicateGroups,
-      totalDuplicates: duplicateGroups.length,
-      totalContacts: contacts.length,
-    };
+    return this.matcher!.findDuplicates(contacts, {
+      criteria: options.criteria,
+      threshold: options.threshold,
+    });
   }
 
   /**
@@ -1194,68 +876,8 @@ export class ContactsService extends BaseService {
       sourceResourceNames.map((rn) => this.getContact(rn))
     );
 
-    // Merge contact data (typed, no 'as any')
-    const mergedData: Partial<Person> = { ...targetContact };
-
-    // Merge emails
-    const emails = new Set<string>();
-    if (targetContact.emailAddresses) {
-      targetContact.emailAddresses.forEach((e) => {
-        if (e.value) emails.add(e.value);
-      });
-    }
-    sourceContacts.forEach((c) => {
-      c.emailAddresses?.forEach((e) => {
-        if (e.value) emails.add(e.value);
-      });
-    });
-
-    if (emails.size > 0) {
-      mergedData.emailAddresses = Array.from(emails).map((email, idx) => ({
-        value: email,
-        metadata: { primary: idx === 0 },
-      }));
-    }
-
-    // Merge phones
-    const phones = new Set<string>();
-    if (targetContact.phoneNumbers) {
-      targetContact.phoneNumbers.forEach((p) => {
-        if (p.value) phones.add(p.value);
-      });
-    }
-    sourceContacts.forEach((c) => {
-      c.phoneNumbers?.forEach((p) => {
-        if (p.value) phones.add(p.value);
-      });
-    });
-
-    if (phones.size > 0) {
-      mergedData.phoneNumbers = Array.from(phones).map((phone, idx) => ({
-        value: phone,
-        metadata: { primary: idx === 0 },
-      }));
-    }
-
-    // Merge addresses
-    const addresses = new Set<string>();
-    if (targetContact.addresses) {
-      targetContact.addresses.forEach((a) => {
-        if (a.formattedValue) addresses.add(a.formattedValue);
-      });
-    }
-    sourceContacts.forEach((c) => {
-      c.addresses?.forEach((a) => {
-        if (a.formattedValue) addresses.add(a.formattedValue);
-      });
-    });
-
-    if (addresses.size > 0) {
-      mergedData.addresses = Array.from(addresses).map((addr, idx) => ({
-        formattedValue: addr,
-        metadata: { primary: idx === 0 },
-      }));
-    }
+    // Use matcher to prepare merged data
+    const mergedData = this.matcher!.prepareMergeData(targetContact, sourceContacts);
 
     // Update target contact with merged data
     const updated = await this.updateContact(targetResourceName, mergedData as CreateContactOptions);
@@ -1391,133 +1013,6 @@ export class ContactsService extends BaseService {
   // ============= DATA QUALITY ANALYSIS =============
 
   /**
-   * Extracts full name from contact (given + middle + family).
-   *
-   * @param contact - Person object
-   * @returns Full name string or null
-   */
-  private getFullName(contact: Person): string | null {
-    const names = contact.names?.[0];
-    if (!names) return null;
-
-    const parts: string[] = [];
-    if (names.givenName) parts.push(names.givenName);
-    if (names.middleName) parts.push(names.middleName);
-    if (names.familyName) parts.push(names.familyName);
-
-    return parts.length > 0 ? parts.join(" ") : null;
-  }
-
-  /**
-   * Checks if name matches generic patterns (e.g., "Contact", "Home", "Test").
-   *
-   * @param name - Name to check
-   * @returns True if name is generic
-   */
-  private isGenericName(name: string): boolean {
-    const genericPatterns = [
-      /^contact$/i,
-      /^contact \d+$/i,
-      /^home$/i,
-      /^work$/i,
-      /^mobile$/i,
-      /^phone$/i,
-      /^email$/i,
-      /^unknown$/i,
-      /^unnamed$/i,
-      /^noname$/i,
-      /^test$/i,
-      /^\d+$/,
-      /^[a-z0-9]+@[a-z0-9]+\.[a-z]+$/i, // Email as name
-      /^[+]?[\d\s\-()]+$/, // Phone as name
-    ];
-
-    return genericPatterns.some((pattern) => pattern.test(name.trim()));
-  }
-
-  /**
-   * Extracts surname hints from contact metadata (email, organization, phone).
-   *
-   * @param contact - Person object
-   * @returns Array of hint strings
-   */
-  private extractSurnameHints(contact: Person): string[] {
-    const hints: string[] = [];
-
-    // Try to extract surname from email
-    if (contact.emailAddresses?.[0]?.value) {
-      const email = contact.emailAddresses[0].value;
-      const localPart = email.split("@")[0]!;
-      const parts = localPart.split(/[._-]/);
-      if (parts.length >= 2) {
-        hints.push(`From email: ${parts[parts.length - 1]}`);
-      }
-    }
-
-    // Try to extract from organization
-    if (contact.organizations?.[0]?.name) {
-      const org = contact.organizations[0].name;
-      const lastWord = org.split(/\s+/).pop();
-      if (lastWord && lastWord.length > 2) {
-        hints.push(`From organization: ${lastWord}`);
-      }
-    }
-
-    // Try to extract from phone if it looks like it has a name component
-    if (contact.phoneNumbers?.[0]?.value) {
-      const phone = contact.phoneNumbers[0].value;
-      // Only if phone has non-numeric characters that might be a name
-      const nonDigits = phone.replace(/[\d\s\-()]/g, "");
-      if (nonDigits.length > 2) {
-        hints.push(`From phone: ${nonDigits}`);
-      }
-    }
-
-    return hints;
-  }
-
-  /**
-   * Checks if contact appears to be auto-imported (generic patterns).
-   *
-   * @param contact - Person object
-   * @returns True if likely imported
-   */
-  private isLikelyImportedContact(contact: Person): boolean {
-    const name = this.getFullName(contact) || "";
-    const email = contact.emailAddresses?.[0]?.value || "";
-
-    // Auto-generated contact patterns
-    const importedPatterns = [
-      /^contact\d+/i,
-      /^imported_/i,
-      /^sync_/i,
-      /^\d{5,}$/, // Just numbers as name
-      /^test_/i,
-      /^no.?name/i,
-      /^[a-z0-9]+\+[a-z0-9]+@/i, // Gmail aliases
-      /^noreply/i,
-      /^do.?not.?reply/i,
-      /^mailer/i,
-      /^notification/i,
-    ];
-
-    const isAutoGenName = importedPatterns.some((pattern) => pattern.test(name));
-    const isAutoGenEmail = importedPatterns.some((pattern) => pattern.test(email));
-
-    // Check for minimal data
-    const hasMinimalData =
-      !contact.emailAddresses ||
-      (contact.emailAddresses.length === 1 && !contact.phoneNumbers) ||
-      !contact.organizations;
-
-    // Check if name matches email pattern
-    const nameMatchesEmail =
-      name.toLowerCase().replace(/\s/g, "") === email.split("@")[0]!.toLowerCase();
-
-    return isAutoGenName || (isAutoGenEmail && hasMinimalData) || nameMatchesEmail;
-  }
-
-  /**
    * Finds contacts with missing first or last names.
    *
    * @param options - Options
@@ -1552,54 +1047,7 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const contactsWithIssues: {
-      resourceName: string;
-      displayName: string;
-      email?: string;
-      phone?: string;
-      organization?: string;
-      issueType: string;
-      surnameHints: string[];
-    }[] = [];
-
-    contacts.forEach((contact) => {
-      const displayName = contact.names?.[0]?.displayName || "Unknown";
-
-      // Check for missing first name
-      const hasGivenName = !!contact.names?.[0]?.givenName;
-
-      // Check for missing last name
-      const hasFamilyName = !!contact.names?.[0]?.familyName;
-
-      // Determine issue
-      let issueType = "";
-      if (!hasGivenName && !hasFamilyName) {
-        issueType = "No first or last name";
-      } else if (!hasGivenName) {
-        issueType = "Missing first name";
-      } else if (!hasFamilyName) {
-        issueType = "Missing last name";
-      }
-
-      if (issueType) {
-        const hints = this.extractSurnameHints(contact);
-        contactsWithIssues.push({
-          resourceName: contact.resourceName || "",
-          displayName,
-          email: contact.emailAddresses?.[0]?.value ?? undefined,
-          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
-          organization: contact.organizations?.[0]?.name ?? undefined,
-          issueType,
-          surnameHints: hints,
-        });
-      }
-    });
-
-    return {
-      contacts: contactsWithIssues,
-      totalContacts: contacts.length,
-      contactsWithIssues: contactsWithIssues.length,
-    };
+    return this.analyzer!.findContactsWithMissingNames(contacts);
   }
 
   /**
@@ -1635,52 +1083,7 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const contactsWithGenericNames: {
-      resourceName: string;
-      displayName: string;
-      email?: string;
-      phone?: string;
-      organization?: string;
-      surnameHints: string[];
-    }[] = [];
-
-    contacts.forEach((contact) => {
-      const displayName = contact.names?.[0]?.displayName || "Unknown";
-      const familyName = contact.names?.[0]?.familyName || "";
-      const givenName = contact.names?.[0]?.givenName || "";
-
-      // Check if surname is generic
-      if (familyName && this.isGenericName(familyName)) {
-        const hints = this.extractSurnameHints(contact);
-        contactsWithGenericNames.push({
-          resourceName: contact.resourceName || "",
-          displayName,
-          email: contact.emailAddresses?.[0]?.value ?? undefined,
-          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
-          organization: contact.organizations?.[0]?.name ?? undefined,
-          surnameHints: hints,
-        });
-      }
-
-      // Also check if full name is generic (and it's the only name)
-      if (!familyName && this.isGenericName(givenName)) {
-        const hints = this.extractSurnameHints(contact);
-        contactsWithGenericNames.push({
-          resourceName: contact.resourceName || "",
-          displayName,
-          email: contact.emailAddresses?.[0]?.value ?? undefined,
-          phone: contact.phoneNumbers?.[0]?.value ?? undefined,
-          organization: contact.organizations?.[0]?.name ?? undefined,
-          surnameHints: hints,
-        });
-      }
-    });
-
-    return {
-      contacts: contactsWithGenericNames,
-      totalContacts: contacts.length,
-      contactsWithGenericNames: contactsWithGenericNames.length,
-    };
+    return this.analyzer!.findContactsWithGenericNames(contacts);
   }
 
   /**
@@ -1718,331 +1121,10 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const importedContacts: {
-      resourceName: string;
-      displayName: string;
-      email?: string;
-      phone?: string;
-      organization?: string;
-      issueType: string;
-      confidence: number;
-    }[] = [];
-
-    contacts.forEach((contact) => {
-      const displayName = contact.names?.[0]?.displayName || "Unknown";
-
-      // Use isLikelyImportedContact to detect imported contacts
-      if (this.isLikelyImportedContact(contact)) {
-        const name = this.getFullName(contact) || "";
-        const email = contact.emailAddresses?.[0]?.value || "";
-
-        let issueType = "";
-        let confidence = 0;
-
-        // Determine specific type and confidence level
-        if (name.toLowerCase().startsWith("contact")) {
-          issueType = "Auto-generated 'Contact' name";
-          confidence = 95;
-        } else if (/^imported_|^sync_/.test(name.toLowerCase())) {
-          issueType = "Auto-import identifier";
-          confidence = 90;
-        } else if (/^test_/i.test(name)) {
-          issueType = "Test contact";
-          confidence = 85;
-        } else if (
-          /noreply|donotreply|mailer|notification/i.exec(name.toLowerCase())
-        ) {
-          issueType = "System-generated contact";
-          confidence = 80;
-        } else if (
-          email &&
-          (/^[a-z0-9]+\+[a-z0-9]+@/i.exec(email))
-        ) {
-          issueType = "Email alias (potential import artifact)";
-          confidence = 60;
-        } else {
-          issueType = "Likely imported contact";
-          confidence = 50;
-        }
-
-        if (confidence > 0) {
-          importedContacts.push({
-            resourceName: contact.resourceName || "",
-            displayName,
-            email: contact.emailAddresses?.[0]?.value ?? undefined,
-            phone: contact.phoneNumbers?.[0]?.value ?? undefined,
-            organization: contact.organizations?.[0]?.name ?? undefined,
-            issueType,
-            confidence,
-          });
-        }
-      }
-    });
-
-    // Sort by confidence descending
-    importedContacts.sort((a, b) => b.confidence - a.confidence);
-
-    return {
-      contacts: importedContacts,
-      totalContacts: contacts.length,
-      importedContacts: importedContacts.length,
-    };
+    return this.analyzer!.analyzeImportedContacts(contacts);
   }
 
   // ============= MARKETING DETECTION =============
-
-  /**
-   * Analyzes email address for marketing patterns.
-   *
-   * @param email - Email address to analyze
-   * @returns Object with isMarketing flag, confidence score, and reasons
-   */
-  private isMarketingEmail(email: string): {
-    isMarketing: boolean;
-    confidence: number;
-    reasons: string[];
-  } {
-    const reasons: string[] = [];
-    let confidence = 0;
-
-    // Marketing service prefixes
-    const marketingPrefixes = [
-      "noreply",
-      "no-reply",
-      "do-not-reply",
-      "donotreply",
-      "marketing",
-      "newsletter",
-      "notifications",
-      "notification",
-      "noticias",
-      "promo",
-      "promotion",
-      "promotional",
-      "unsubscribe",
-      "sales",
-      "support",
-      "help",
-      "info",
-      "contact",
-      "hello",
-      "team",
-      "no.reply",
-      "postmaster",
-      "mailer",
-      "mailbox",
-      "bounce",
-      "automated",
-      "admin",
-      "webmaster",
-    ];
-
-    // Marketing domains
-    const marketingDomains = [
-      "mailchimp.com",
-      "sendgrid.net",
-      "constantcontact.com",
-      "aweber.com",
-      "icontact.com",
-      "getresponse.com",
-      "convertkit.com",
-      "klaviyo.com",
-      "substack.com",
-      "brevo.com",
-      "sendpulse.com",
-      "mailgun.org",
-      "postmark.com",
-      "sendwithus.com",
-      "mandrill.com",
-      "sparkpost.com",
-      "elasticemail.com",
-      "pepipost.com",
-      "zoho.com",
-      "mailblaze.com",
-    ];
-
-    const localPart = email.split("@")[0]!.toLowerCase();
-    const domain = email.split("@")[1]?.toLowerCase() || "";
-
-    // Check for marketing prefixes
-    const hasMarketingPrefix = marketingPrefixes.some((prefix) =>
-      localPart.startsWith(prefix)
-    );
-
-    if (hasMarketingPrefix) {
-      reasons.push("Marketing prefix detected");
-      confidence += 30;
-    }
-
-    // Check for marketing domains
-    const hasMarketingDomain = marketingDomains.some((marketDomain) =>
-      domain.includes(marketDomain)
-    );
-
-    if (hasMarketingDomain) {
-      reasons.push("Marketing service domain");
-      confidence += 50;
-    }
-
-    // Check for common patterns
-    if (email.includes("noreply")) {
-      reasons.push("'noreply' pattern");
-      confidence += 35;
-    }
-
-    if (email.includes("newsletter")) {
-      reasons.push("Newsletter address");
-      confidence += 40;
-    }
-
-    if (email.includes("promo") || email.includes("promotion")) {
-      reasons.push("Promotional email");
-      confidence += 40;
-    }
-
-    if (email.includes("alert") || email.includes("notification")) {
-      reasons.push("Alert/notification address");
-      confidence += 20;
-    }
-
-    // Check for email aliases with marketing keywords
-    if (email.includes("+")) {
-      const alias = email.split("+")[1]?.split("@")[0]?.toLowerCase() || "";
-      if (
-        alias.includes("promo") ||
-        alias.includes("news") ||
-        alias.includes("offer")
-      ) {
-        reasons.push("Marketing alias detected");
-        confidence += 25;
-      }
-    }
-
-    return {
-      isMarketing: confidence >= 30,
-      confidence: Math.min(confidence, 100),
-      reasons,
-    };
-  }
-
-  /**
-   * Analyzes name for marketing patterns.
-   *
-   * @param name - Name to analyze
-   * @returns Object with isMarketing flag, confidence score, and reasons
-   */
-  private isMarketingName(name: string): {
-    isMarketing: boolean;
-    confidence: number;
-    reasons: string[];
-  } {
-    const reasons: string[] = [];
-    let confidence = 0;
-
-    const lowerName = name.toLowerCase();
-
-    // Marketing-related names
-    const marketingPatterns = [
-      /newsletter/i,
-      /marketing/i,
-      /promotions?/i,
-      /sales/i,
-      /support/i,
-      /noreply/i,
-      /alerts?/i,
-      /notifications?/i,
-      /updates?/i,
-      /announcements?/i,
-      /no.?reply/i,
-      /do.?not.?reply/i,
-      /unsubscribe/i,
-      /automated/i,
-      /system/i,
-      /postmaster/i,
-      /mailer/i,
-      /bounce/i,
-      /webmaster/i,
-      /helpdesk/i,
-      /ticketing/i,
-    ];
-
-    marketingPatterns.forEach((pattern) => {
-      if (pattern.test(lowerName)) {
-        reasons.push(`Pattern: ${pattern.source}`);
-        confidence += 20;
-      }
-    });
-
-    // All caps (common for automated emails)
-    if (lowerName !== name && /^[A-Z\s]+$/.test(name)) {
-      reasons.push("All caps name (automated)");
-      confidence += 15;
-    }
-
-    return {
-      isMarketing: confidence >= 20,
-      confidence: Math.min(confidence, 100),
-      reasons,
-    };
-  }
-
-  /**
-   * Analyzes contact for marketing patterns (email + name + heuristics).
-   *
-   * @param contact - Person object to analyze
-   * @returns Object with isMarketing flag, confidence score, and reasons
-   */
-  private isMarketingContact(contact: Person): {
-    isMarketing: boolean;
-    confidence: number;
-    reasons: string[];
-  } {
-    const reasons: string[] = [];
-    let confidence = 0;
-
-    // Check email
-    if (contact.emailAddresses?.[0]?.value) {
-      const emailAnalysis = this.isMarketingEmail(
-        contact.emailAddresses[0].value
-      );
-      if (emailAnalysis.isMarketing) {
-        confidence += emailAnalysis.confidence * 0.6;
-        reasons.push(...emailAnalysis.reasons);
-      }
-    }
-
-    // Check name
-    const name = contact.names?.[0]?.displayName || "";
-    if (name) {
-      const nameAnalysis = this.isMarketingName(name);
-      if (nameAnalysis.isMarketing) {
-        confidence += nameAnalysis.confidence * 0.4;
-        reasons.push(...nameAnalysis.reasons);
-      }
-    }
-
-    // Heuristic: No phone, no organization, only email = likely marketing
-    if (
-      !contact.phoneNumbers &&
-      !contact.organizations &&
-      contact.emailAddresses?.length
-    ) {
-      confidence += 15;
-      reasons.push("No phone/organization (email-only)");
-    }
-
-    // Heuristic: Multiple email addresses = potential mailing list
-    if (contact.emailAddresses && contact.emailAddresses.length > 2) {
-      confidence += 10;
-      reasons.push("Multiple email addresses");
-    }
-
-    return {
-      isMarketing: confidence >= 30,
-      confidence: Math.min(confidence, 100),
-      reasons: [...new Set(reasons)],
-    };
-  }
 
   /**
    * Detects marketing contacts using email patterns, name patterns, and heuristics.
@@ -2080,36 +1162,7 @@ export class ContactsService extends BaseService {
 
     const contacts = await this.listContacts({ pageSize });
 
-    const marketingContacts: {
-      resourceName: string;
-      displayName: string;
-      email?: string;
-      detectionReasons: string[];
-      confidence: number;
-    }[] = [];
-
-    contacts.forEach((contact) => {
-      const analysis = this.isMarketingContact(contact);
-
-      if (analysis.isMarketing) {
-        marketingContacts.push({
-          resourceName: contact.resourceName || "",
-          displayName: contact.names?.[0]?.displayName || "Unknown",
-          email: contact.emailAddresses?.[0]?.value ?? undefined,
-          detectionReasons: analysis.reasons,
-          confidence: analysis.confidence,
-        });
-      }
-    });
-
-    // Sort by confidence descending
-    marketingContacts.sort((a, b) => b.confidence - a.confidence);
-
-    return {
-      contacts: marketingContacts,
-      totalContacts: contacts.length,
-      marketingContacts: marketingContacts.length,
-    };
+    return this.analyzer!.detectMarketingContacts(contacts);
   }
 
   /**
