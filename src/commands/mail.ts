@@ -244,12 +244,12 @@ async function listLabels(mailService: MailService, _args: string[]) {
     spinner.succeed(`Found ${labels.length} label(s)`);
 
     if (labels.length === 0) {
-      console.log(chalk.yellow("No labels found"));
+      logger.info(chalk.yellow("No labels found"));
       return;
     }
 
-    console.log(chalk.bold("\nGmail Labels:"));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold("\nGmail Labels:"));
+    logger.info("─".repeat(80));
     labels.forEach((label: any) => {
       const name = label.name || "Unknown";
       const type = label.type || "user";
@@ -262,10 +262,10 @@ async function listLabels(mailService: MailService, _args: string[]) {
         labelColor = chalk.hex(color);
       }
 
-      console.log(`\n${labelColor(name)}`);
-      console.log(`  ${chalk.gray("Type:")} ${type}`);
+      logger.info(`\n${labelColor(name)}`);
+      logger.info(`  ${chalk.gray("Type:")} ${type}`);
       if (count > 0) {
-        console.log(`  ${chalk.gray("Messages:")} ${count} (${unread} unread)`);
+        logger.info(`  ${chalk.gray("Messages:")} ${count} (${unread} unread)`);
       }
     });
   } catch (error: unknown) {
@@ -300,7 +300,7 @@ async function listMessages(mailService: MailService, args: string[]) {
     spinner.succeed(`Found ${result.messages.length} message(s)`);
 
     if (result.messages.length === 0) {
-      console.log(chalk.yellow("No messages found"));
+      logger.info(chalk.yellow("No messages found"));
       return;
     }
 
@@ -310,8 +310,8 @@ async function listMessages(mailService: MailService, args: string[]) {
     );
     const messages = await Promise.all(messagePromises);
 
-    console.log(chalk.bold("\nMessages:"));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold("\nMessages:"));
+    logger.info("─".repeat(80));
     messages.forEach((message, index: number) => {
       const headers = message.payload?.headers || [];
       const from = getHeader(headers, "from");
@@ -319,14 +319,14 @@ async function listMessages(mailService: MailService, args: string[]) {
       const date = getHeader(headers, "date");
       const snippet = message.snippet || "";
 
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(subject || "No subject")}`);
-      console.log(`   ${chalk.gray("From:")} ${from}`);
-      console.log(`   ${chalk.gray("Date:")} ${date}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(subject || "No subject")}`);
+      logger.info(`   ${chalk.gray("From:")} ${from}`);
+      logger.info(`   ${chalk.gray("Date:")} ${date}`);
       if (snippet) {
         const shortSnippet = snippet.length > 100 ? snippet.substring(0, 100) + "..." : snippet;
-        console.log(`   ${chalk.gray("Preview:")} ${shortSnippet}`);
+        logger.info(`   ${chalk.gray("Preview:")} ${shortSnippet}`);
       }
-      console.log(`   ${chalk.gray("ID:")} ${message.id}`);
+      logger.info(`   ${chalk.gray("ID:")} ${message.id}`);
     });
   } catch (error: unknown) {
     spinner.fail("Failed to fetch messages");
@@ -357,17 +357,17 @@ async function getMessage(mailService: MailService, messageId: string, args: str
     const message = await mailService.getMessage(messageId, "full");
     spinner.succeed("Message fetched");
 
-    console.log(chalk.bold("\nMessage:"));
-    console.log("─".repeat(80));
-    console.log(formatMessage(message, format));
+    logger.info(chalk.bold("\nMessage:"));
+    logger.info("─".repeat(80));
+    logger.info(formatMessage(message, format));
 
     const parts = message.payload?.parts || [];
     if (parts.length > 0) {
       const attachments = parts.filter((p: any) => p.filename);
       if (attachments.length > 0) {
-        console.log(`\n${chalk.cyan("Attachments:")}`);
+        logger.info(`\n${chalk.cyan("Attachments:")}`);
         attachments.forEach((part: any) => {
-          console.log(`  - ${part.filename} (${part.mimeType})`);
+          logger.info(`  - ${part.filename} (${part.mimeType})`);
         });
       }
     }
@@ -398,7 +398,7 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
     spinner.succeed(`Found ${result.messages.length} message(s) matching "${query}"`);
 
     if (result.messages.length === 0) {
-      console.log(chalk.yellow("No messages found"));
+      logger.info(chalk.yellow("No messages found"));
       return;
     }
 
@@ -407,18 +407,18 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
     );
     const messages = await Promise.all(messagePromises);
 
-    console.log(chalk.bold(`\nSearch Results for: "${query}"`));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold(`\nSearch Results for: "${query}"`));
+    logger.info("─".repeat(80));
     messages.forEach((message, index: number) => {
       const headers = message.payload?.headers || [];
       const from = getHeader(headers, "from");
       const subject = getHeader(headers, "subject");
       const date = getHeader(headers, "date");
 
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(subject || "No subject")}`);
-      console.log(`   ${chalk.gray("From:")} ${from}`);
-      console.log(`   ${chalk.gray("Date:")} ${date}`);
-      console.log(`   ${chalk.gray("ID:")} ${message.id}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(subject || "No subject")}`);
+      logger.info(`   ${chalk.gray("From:")} ${from}`);
+      logger.info(`   ${chalk.gray("Date:")} ${date}`);
+      logger.info(`   ${chalk.gray("ID:")} ${message.id}`);
     });
   } catch (error: unknown) {
     spinner.fail("Search failed");
@@ -438,22 +438,22 @@ async function getStats(mailService: MailService) {
 
     spinner.succeed("Statistics fetched");
 
-    console.log(chalk.bold("\nGmail Statistics:"));
-    console.log("─".repeat(80));
-    console.log(`${chalk.cyan("Email Address:")} ${profile.emailAddress}`);
-    console.log(`${chalk.cyan("Total Messages:")} ${totalCount}`);
-    console.log(`${chalk.cyan("Unread Messages:")} ${unreadCount}`);
-    console.log(`${chalk.cyan("Read Messages:")} ${totalCount - unreadCount}`);
+    logger.info(chalk.bold("\nGmail Statistics:"));
+    logger.info("─".repeat(80));
+    logger.info(`${chalk.cyan("Email Address:")} ${profile.emailAddress}`);
+    logger.info(`${chalk.cyan("Total Messages:")} ${totalCount}`);
+    logger.info(`${chalk.cyan("Unread Messages:")} ${unreadCount}`);
+    logger.info(`${chalk.cyan("Read Messages:")} ${totalCount - unreadCount}`);
 
     const userLabels = labels.filter((l: any) => l.type === "user");
     if (userLabels.length > 0) {
-      console.log(`\n${chalk.cyan("User Labels:")} ${userLabels.length}`);
+      logger.info(`\n${chalk.cyan("User Labels:")} ${userLabels.length}`);
       userLabels.slice(0, 10).forEach((label: any) => {
         const count = label.messagesTotal || 0;
-        console.log(`  - ${label.name}: ${count} messages`);
+        logger.info(`  - ${label.name}: ${count} messages`);
       });
       if (userLabels.length > 10) {
-        console.log(chalk.gray(`  ... and ${userLabels.length - 10} more`));
+        logger.info(chalk.gray(`  ... and ${userLabels.length - 10} more`));
       }
     }
   } catch (error: unknown) {
@@ -479,15 +479,15 @@ async function listThreads(mailService: MailService, args: string[]) {
     spinner.succeed(`Found ${result.threads.length} thread(s)`);
 
     if (result.threads.length === 0) {
-      console.log(chalk.yellow("No threads found"));
+      logger.info(chalk.yellow("No threads found"));
       return;
     }
 
-    console.log(chalk.bold("\nThreads:"));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold("\nThreads:"));
+    logger.info("─".repeat(80));
     result.threads.forEach((thread: any, index: number) => {
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan("Thread ID:")} ${thread.id}`);
-      console.log(`   ${chalk.gray("Messages:")} ${thread.messages?.length || 0}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan("Thread ID:")} ${thread.id}`);
+      logger.info(`   ${chalk.gray("Messages:")} ${thread.messages?.length || 0}`);
     });
   } catch (error: unknown) {
     spinner.fail("Failed to fetch threads");
@@ -521,19 +521,19 @@ async function getThread(mailService: MailService, threadId: string, args: strin
     const thread = await mailService.getThread(threadId);
     spinner.succeed("Thread fetched");
 
-    console.log(chalk.bold("\nThread:"));
-    console.log("─".repeat(80));
-    console.log(`${chalk.cyan("Thread ID:")} ${thread.id}`);
-    console.log(`${chalk.cyan("Messages:")} ${thread.messages?.length || 0}`);
+    logger.info(chalk.bold("\nThread:"));
+    logger.info("─".repeat(80));
+    logger.info(`${chalk.cyan("Thread ID:")} ${thread.id}`);
+    logger.info(`${chalk.cyan("Messages:")} ${thread.messages?.length || 0}`);
 
     if (thread.messages && thread.messages.length > 0) {
       thread.messages.forEach((message: any, index: number) => {
-        console.log(`\n${chalk.bold(`Message ${index + 1}:`)}`);
-        console.log("─".repeat(80));
+        logger.info(`\n${chalk.bold(`Message ${index + 1}:`)}`);
+        logger.info("─".repeat(80));
 
         if (showFullMessages) {
           // Show full message with body
-          console.log(formatMessage(message, format));
+          logger.info(formatMessage(message, format));
         } else {
           // Current snippet preview behavior (unchanged)
           const headers = message.payload?.headers || [];
@@ -541,11 +541,11 @@ async function getThread(mailService: MailService, threadId: string, args: strin
           const subject = getHeader(headers, "subject");
           const date = getHeader(headers, "date");
 
-          console.log(`  ${chalk.gray("From:")} ${from}`);
-          console.log(`  ${chalk.gray("Subject:")} ${subject}`);
-          console.log(`  ${chalk.gray("Date:")} ${date}`);
+          logger.info(`  ${chalk.gray("From:")} ${from}`);
+          logger.info(`  ${chalk.gray("Subject:")} ${subject}`);
+          logger.info(`  ${chalk.gray("Date:")} ${date}`);
           if (message.snippet) {
-            console.log(`  ${chalk.gray("Preview:")} ${message.snippet.substring(0, 100)}...`);
+            logger.info(`  ${chalk.gray("Preview:")} ${message.snippet.substring(0, 100)}...`);
           }
         }
       });
@@ -582,19 +582,19 @@ async function listAttachments(mailService: MailService, messageId: string) {
     const attachments = parts.filter((p: any) => p.filename && p.body?.attachmentId);
 
     if (attachments.length === 0) {
-      console.log(chalk.yellow("No attachments found"));
+      logger.info(chalk.yellow("No attachments found"));
       return;
     }
 
-    console.log(chalk.bold("\nAttachments:"));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold("\nAttachments:"));
+    logger.info("─".repeat(80));
     attachments.forEach((part: any, index: number) => {
       const size = part.body?.size || 0;
       const sizeMB = (size / 1024 / 1024).toFixed(2);
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(part.filename)}`);
-      console.log(`   ${chalk.gray("Type:")} ${part.mimeType}`);
-      console.log(`   ${chalk.gray("Size:")} ${sizeMB} MB`);
-      console.log(`   ${chalk.gray("Attachment ID:")} ${part.body.attachmentId}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(part.filename)}`);
+      logger.info(`   ${chalk.gray("Type:")} ${part.mimeType}`);
+      logger.info(`   ${chalk.gray("Size:")} ${sizeMB} MB`);
+      logger.info(`   ${chalk.gray("Attachment ID:")} ${part.body.attachmentId}`);
     });
   } catch (error: unknown) {
     spinner.fail("Failed to fetch attachments");
@@ -642,9 +642,9 @@ async function deleteQuery(mailService: MailService, query: string) {
     }
 
     spinner.succeed(`Found ${messageIds.length} message(s) to delete`);
-    console.log(chalk.yellow(`\nAbout to delete ${messageIds.length} message(s)`));
-    console.log(chalk.yellow("This action cannot be undone. Proceed? (y/N)"));
-    
+    logger.info(chalk.yellow(`\nAbout to delete ${messageIds.length} message(s)`));
+    logger.info(chalk.yellow("This action cannot be undone. Proceed? (y/N)"));
+
     // In a real implementation, you'd want to read from stdin
     // For now, we'll proceed with the deletion
     await mailService.batchDeleteMessages(messageIds);
