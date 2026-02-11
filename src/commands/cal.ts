@@ -7,23 +7,19 @@ import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 
-// Module-level service instance (set by handleCalCommand)
-let calendarService: CalendarService;
-
-
 export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
-  calendarService = new CalendarService(account);
+  const calendarService = new CalendarService(account);
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(calendarService);
   
   switch (subcommand) {
     case "list":
-      await listEvents(args);
+      await listEvents(calendarService, args);
       break;
     case "calendars":
-      await listCalendars(args);
+      await listCalendars(calendarService, args);
       break;
     case "get":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -31,7 +27,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal get <calendarId> <eventId>");
         process.exit(1);
       }
-      await getEvent(args[0], args[1]);
+      await getEvent(calendarService, args[0], args[1]);
       break;
     case "create":
       if (args.length === 0 || !args[0]) {
@@ -39,7 +35,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal create <calendarId> --title <title> --start <datetime>");
         process.exit(1);
       }
-      await createEvent(args[0], args.slice(1));
+      await createEvent(calendarService, args[0], args.slice(1));
       break;
     case "update":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -47,7 +43,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal update <calendarId> <eventId>");
         process.exit(1);
       }
-      await updateEvent(args[0], args[1], args.slice(2));
+      await updateEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "delete":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -55,7 +51,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal delete <calendarId> <eventId> --confirm");
         process.exit(1);
       }
-      await deleteEvent(args[0], args[1], args.slice(2));
+      await deleteEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "search": {
       if (args.length === 0 || !args[0]) {
@@ -66,7 +62,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       // Extract query (first arg) and remaining options
       const searchQuery = args[0];
       const searchExtraArgs = args.slice(1);
-      await searchEvents(searchQuery, searchExtraArgs);
+      await searchEvents(calendarService, searchQuery, searchExtraArgs);
       break;
     }
     case "freebusy":
@@ -75,7 +71,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal freebusy <start> <end>");
         process.exit(1);
       }
-      await getFreeBusy(args[0], args[1], args.slice(2));
+      await getFreeBusy(calendarService, args[0], args[1], args.slice(2));
       break;
     case "create-calendar":
       if (args.length === 0) {
@@ -83,10 +79,10 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal create-calendar <title>");
         process.exit(1);
       }
-      await createCalendar(compact(args).join(" "));
+      await createCalendar(calendarService, compact(args).join(" "));
       break;
     case "stats":
-      await getStats(args);
+      await getStats(calendarService, args);
       break;
     case "duplicate":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -94,7 +90,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal duplicate <calendarId> <eventId> [options]");
         process.exit(1);
       }
-      await duplicateEvent(args[0], args[1], args.slice(2));
+      await duplicateEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "bulk-update":
       if (args.length === 0 || !args[0]) {
@@ -102,7 +98,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal bulk-update <calendarId> [options]");
         process.exit(1);
       }
-      await bulkUpdateEvents(args[0], args.slice(1));
+      await bulkUpdateEvents(calendarService, args[0], args.slice(1));
       break;
     case "update-recurring":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -110,7 +106,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal update-recurring <calendarId> <eventId> [options]");
         process.exit(1);
       }
-      await updateRecurringEvent(args[0], args[1], args.slice(2));
+      await updateRecurringEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "export":
       if (args.length === 0 || !args[0]) {
@@ -118,7 +114,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal export <calendarId> [options]");
         process.exit(1);
       }
-      await exportEvents(args[0], args.slice(1));
+      await exportEvents(calendarService, args[0], args.slice(1));
       break;
     case "batch-create":
       if (args.length === 0 || !args[0]) {
@@ -126,7 +122,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal batch-create <calendarId> [options]");
         process.exit(1);
       }
-      await batchCreateEvents(args[0], args.slice(1));
+      await batchCreateEvents(calendarService, args[0], args.slice(1));
       break;
     case "reminders":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -134,7 +130,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal reminders <calendarId> <eventId> <action> [options]");
         process.exit(1);
       }
-      await manageReminders(args[0], args[1], args.slice(2));
+      await manageReminders(calendarService, args[0], args[1], args.slice(2));
       break;
     case "check-conflict":
       if (args.length === 0 || !args[0]) {
@@ -142,10 +138,10 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal check-conflict <calendarId> [options]");
         process.exit(1);
       }
-      await checkConflict(args[0], args.slice(1));
+      await checkConflict(calendarService, args[0], args.slice(1));
       break;
     case "quick":
-      await quickAction(args);
+      await quickAction(calendarService, args);
       break;
     case "compare":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -153,10 +149,10 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal compare <calendarId1> <calendarId2> [options]");
         process.exit(1);
       }
-      await compareCalendars(args[0], args[1], args.slice(2));
+      await compareCalendars(calendarService, args[0], args[1], args.slice(2));
       break;
     case "color":
-      await manageColor(args);
+      await manageColor(calendarService, args);
       break;
     case "recurrence":
       await workWithRecurrence(args);
@@ -167,7 +163,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal create-recurring <calendarId> [options]");
         process.exit(1);
       }
-      await createRecurringEvent(args[0], args.slice(1));
+      await createRecurringEvent(calendarService, args[0], args.slice(1));
       break;
     case "recurrence-info":
       if (args.length < 2 || !args[0] || !args[1]) {
@@ -175,7 +171,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
         console.error("Usage: gwork cal recurrence-info <calendarId> <eventId>");
         process.exit(1);
       }
-      await showRecurrenceInfo(args[0], args[1]);
+      await showRecurrenceInfo(calendarService, args[0], args[1]);
       break;
     case "date":
       await dateUtilities(args);
@@ -187,7 +183,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
   }
 }
 
-async function listEvents(args: string[]) {
+async function listEvents(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Fetching events...").start();
   try {
     // Parse options from args
@@ -414,7 +410,7 @@ async function listEvents(args: string[]) {
   }
 }
 
-async function listCalendars(args: string[]) {
+async function listCalendars(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Fetching calendars...").start();
   try {
     const options: { format: string } = { format: "table" };
@@ -471,7 +467,7 @@ async function listCalendars(args: string[]) {
   }
 }
 
-async function getEvent(calendarId: string, eventId: string) {
+async function getEvent(calendarService: CalendarService, calendarId: string, eventId: string) {
   const spinner = ora("Fetching event details...").start();
   try {
     const event = await calendarService.getEvent(calendarId, eventId);
@@ -518,7 +514,7 @@ async function getEvent(calendarId: string, eventId: string) {
   }
 }
 
-async function createEvent(calendarId: string, args: string[]) {
+async function createEvent(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Creating event...").start();
   try {
     // Parse options
@@ -631,6 +627,7 @@ async function createEvent(calendarId: string, args: string[]) {
 }
 
 async function updateEvent(
+  calendarService: CalendarService,
   calendarId: string,
   eventId: string,
   args: string[]
@@ -691,6 +688,7 @@ async function updateEvent(
 }
 
 async function deleteEvent(
+  calendarService: CalendarService,
   calendarId: string,
   eventId: string,
   args: string[]
@@ -716,7 +714,7 @@ async function deleteEvent(
   }
 }
 
-async function searchEvents(query: string, extraArgs: string[] = []) {
+async function searchEvents(calendarService: CalendarService, query: string, extraArgs: string[] = []) {
   const spinner = ora("Searching events...").start();
   try {
     const options: {
@@ -801,7 +799,7 @@ async function searchEvents(query: string, extraArgs: string[] = []) {
   }
 }
 
-async function getFreeBusy(start: string, end: string, args: string[]) {
+async function getFreeBusy(calendarService: CalendarService, start: string, end: string, args: string[]) {
   const spinner = ora("Fetching free/busy information...").start();
   try {
     const startTime = new Date(start);
@@ -852,7 +850,7 @@ async function getFreeBusy(start: string, end: string, args: string[]) {
   }
 }
 
-async function createCalendar(title: string) {
+async function createCalendar(calendarService: CalendarService, title: string) {
   const spinner = ora("Creating calendar...").start();
   try {
     const calendarData = {
@@ -874,7 +872,7 @@ async function createCalendar(title: string) {
   }
 }
 
-async function getStats(args: string[]) {
+async function getStats(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Analyzing calendar...").start();
   try {
     const options: any = {
@@ -990,7 +988,7 @@ async function getStats(args: string[]) {
   }
 }
 
-async function duplicateEvent(calendarId: string, eventId: string, args: string[]) {
+async function duplicateEvent(calendarService: CalendarService, calendarId: string, eventId: string, args: string[]) {
   const spinner = ora("Duplicating event...").start();
   try {
     const options: any = { toCalendar: calendarId };
@@ -1071,7 +1069,7 @@ async function duplicateEvent(calendarId: string, eventId: string, args: string[
   }
 }
 
-async function quickAction(args: string[]) {
+async function quickAction(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Creating quick event...").start();
   try {
     const options: any = { calendar: "primary" };
@@ -1153,7 +1151,7 @@ async function quickAction(args: string[]) {
   }
 }
 
-async function exportEvents(calendarId: string, args: string[]) {
+async function exportEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Exporting events...").start();
   try {
     const options: any = {
@@ -1263,6 +1261,7 @@ async function exportEvents(calendarId: string, args: string[]) {
 }
 
 async function manageReminders(
+  calendarService: CalendarService,
   calendarId: string,
   eventId: string,
   args: string[]
@@ -1388,7 +1387,7 @@ async function manageReminders(
   }
 }
 
-async function bulkUpdateEvents(calendarId: string, args: string[]) {
+async function bulkUpdateEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Bulk updating events...").start();
   try {
     const options: any = {
@@ -1502,7 +1501,7 @@ async function bulkUpdateEvents(calendarId: string, args: string[]) {
   }
 }
 
-async function batchCreateEvents(calendarId: string, args: string[]) {
+async function batchCreateEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Batch creating events...").start();
   try {
     const options: any = {
@@ -1617,7 +1616,7 @@ async function batchCreateEvents(calendarId: string, args: string[]) {
   }
 }
 
-async function checkConflict(calendarId: string, args: string[]) {
+async function checkConflict(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Checking for conflicts...").start();
   try {
     const options: any = {
@@ -1695,7 +1694,7 @@ async function checkConflict(calendarId: string, args: string[]) {
   }
 }
 
-async function compareCalendars(calendarId1: string, calendarId2: string, args: string[]) {
+async function compareCalendars(calendarService: CalendarService, calendarId1: string, calendarId2: string, args: string[]) {
   const spinner = ora("Comparing calendars...").start();
   try {
     const options: any = {
@@ -1831,7 +1830,7 @@ async function compareCalendars(calendarId1: string, calendarId2: string, args: 
   }
 }
 
-async function updateRecurringEvent(calendarId: string, eventId: string, args: string[]) {
+async function updateRecurringEvent(calendarService: CalendarService, calendarId: string, eventId: string, args: string[]) {
   const spinner = ora("Updating recurring event...").start();
   try {
     const options: any = {
@@ -1927,7 +1926,7 @@ async function updateRecurringEvent(calendarId: string, eventId: string, args: s
   }
 }
 
-async function manageColor(args: string[]) {
+async function manageColor(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Managing colors...").start();
   try {
     const colorMap: any = {
@@ -2068,7 +2067,7 @@ async function workWithRecurrence(args: string[]) {
   }
 }
 
-async function createRecurringEvent(calendarId: string, args: string[]) {
+async function createRecurringEvent(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Creating recurring event...").start();
   try {
     const options: any = {};
@@ -2175,7 +2174,7 @@ async function createRecurringEvent(calendarId: string, args: string[]) {
   }
 }
 
-async function showRecurrenceInfo(calendarId: string, eventId: string) {
+async function showRecurrenceInfo(calendarService: CalendarService, calendarId: string, eventId: string) {
   const spinner = ora("Fetching recurrence info...").start();
   try {
     const event = await calendarService.getEvent(calendarId, eventId);

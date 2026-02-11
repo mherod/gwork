@@ -5,23 +5,20 @@ import { ContactsService } from "../services/contacts-service.ts";
 import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 
-// Module-level service instance (set by handleContactsCommand)
-let contactsService: ContactsService;
-
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
   account = "default"
 ) {
   // Create service instance with the specified account
-  contactsService = new ContactsService(account);
+  const contactsService = new ContactsService(account);
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(contactsService);
 
   switch (subcommand) {
     case "list":
-      await listContacts(args);
+      await listContacts(contactsService, args);
       break;
     case "get":
       if (args.length === 0 || !args[0]) {
@@ -29,7 +26,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts get <resourceName>");
         process.exit(1);
       }
-      await getContact(args[0], args.slice(1));
+      await getContact(contactsService, args[0], args.slice(1));
       break;
     case "search":
       if (args.length === 0 || !args[0]) {
@@ -37,7 +34,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts search <query>");
         process.exit(1);
       }
-      await searchContacts(args[0], args.slice(1));
+      await searchContacts(contactsService, args[0], args.slice(1));
       break;
     case "find-email":
       if (args.length === 0 || !args[0]) {
@@ -45,7 +42,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-email <email>");
         process.exit(1);
       }
-      await findContactByEmail(args[0]);
+      await findContactByEmail(contactsService, args[0]);
       break;
     case "find-name":
       if (args.length === 0 || !args[0]) {
@@ -53,10 +50,10 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts find-name <name>");
         process.exit(1);
       }
-      await findContactByName(args[0]);
+      await findContactByName(contactsService, args[0]);
       break;
     case "create":
-      await createContact(args);
+      await createContact(contactsService, args);
       break;
     case "update":
       if (args.length === 0 || !args[0]) {
@@ -64,7 +61,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts update <resourceName> [options]");
         process.exit(1);
       }
-      await updateContact(args[0], args.slice(1));
+      await updateContact(contactsService, args[0], args.slice(1));
       break;
     case "delete":
       if (args.length === 0 || !args[0]) {
@@ -72,10 +69,10 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete <resourceName> --confirm");
         process.exit(1);
       }
-      await deleteContact(args[0], args.slice(1));
+      await deleteContact(contactsService, args[0], args.slice(1));
       break;
     case "groups":
-      await listGroups(args);
+      await listGroups(contactsService, args);
       break;
     case "group-contacts":
       if (args.length === 0 || !args[0]) {
@@ -83,7 +80,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts group-contacts <groupResourceName>");
         process.exit(1);
       }
-      await getContactsInGroup(args[0], args.slice(1));
+      await getContactsInGroup(contactsService, args[0], args.slice(1));
       break;
     case "create-group":
       if (args.length === 0) {
@@ -91,7 +88,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts create-group <name> --confirm");
         process.exit(1);
       }
-      await createGroup(args[0]!, args.slice(1));
+      await createGroup(contactsService, args[0]!, args.slice(1));
       break;
     case "delete-group":
       if (args.length === 0 || !args[0]) {
@@ -99,7 +96,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts delete-group <groupResourceName> --confirm");
         process.exit(1);
       }
-      await deleteGroup(args[0], args.slice(1));
+      await deleteGroup(contactsService, args[0], args.slice(1));
       break;
     case "add-to-group":
       if (args.length < 2) {
@@ -107,7 +104,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
         process.exit(1);
       }
-      await addToGroup(args[0]!, args.slice(1, -1), args.slice(-1));
+      await addToGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "remove-from-group":
       if (args.length < 2) {
@@ -115,7 +112,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
         process.exit(1);
       }
-      await removeFromGroup(args[0]!, args.slice(1, -1), args.slice(-1));
+      await removeFromGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "batch-create":
       if (args.length === 0) {
@@ -123,7 +120,7 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts batch-create <jsonFile> --confirm");
         process.exit(1);
       }
-      await batchCreateContacts(args[0]!, args.slice(1));
+      await batchCreateContacts(contactsService, args[0]!, args.slice(1));
       break;
     case "batch-delete":
       if (args.length === 0) {
@@ -131,16 +128,16 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts batch-delete <resourceName...> --confirm");
         process.exit(1);
       }
-      await batchDeleteContacts(args);
+      await batchDeleteContacts(contactsService, args);
       break;
     case "profile":
-      await getProfile(args);
+      await getProfile(contactsService, args);
       break;
     case "stats":
-      await getStats(args);
+      await getStats(contactsService, args);
       break;
     case "duplicates":
-      await findDuplicates(args);
+      await findDuplicates(contactsService, args);
       break;
     case "merge":
       if (args.length < 2) {
@@ -148,22 +145,22 @@ export async function handleContactsCommand(
         console.error("Usage: gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
         process.exit(1);
       }
-      await mergeContacts(args[0]!, args.slice(1, -1), args.slice(-1));
+      await mergeContacts(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "auto-merge":
-      await autoMergeContacts(args);
+      await autoMergeContacts(contactsService, args);
       break;
     case "find-missing-names":
-      await findMissingNames(args);
+      await findMissingNames(contactsService, args);
       break;
     case "analyze-generic-names":
-      await analyzeGenericNames(args);
+      await analyzeGenericNames(contactsService, args);
       break;
     case "analyze-imported":
-      await analyzeImportedContacts(args);
+      await analyzeImportedContacts(contactsService, args);
       break;
     case "detect-marketing":
-      await detectMarketing(args);
+      await detectMarketing(contactsService, args);
       break;
     default:
       console.error(`Unknown contacts subcommand: ${subcommand}`);
@@ -172,7 +169,7 @@ export async function handleContactsCommand(
   }
 }
 
-async function listContacts(args: string[]) {
+async function listContacts(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Fetching contacts...").start();
   try {
     const options: {
@@ -231,7 +228,7 @@ async function listContacts(args: string[]) {
   }
 }
 
-async function getContact(resourceName: string, args: string[]) {
+async function getContact(contactsService: ContactsService, resourceName: string, args: string[]) {
   const spinner = ora("Fetching contact...").start();
   try {
     const options: { format: string } = { format: "full" };
@@ -304,7 +301,7 @@ async function getContact(resourceName: string, args: string[]) {
   }
 }
 
-async function searchContacts(query: string, args: string[]) {
+async function searchContacts(contactsService: ContactsService, query: string, args: string[]) {
   const spinner = ora("Searching contacts...").start();
   try {
     const options: { max: number; format: string } = { max: 50, format: "table" };
@@ -354,7 +351,7 @@ async function searchContacts(query: string, args: string[]) {
   }
 }
 
-async function findContactByEmail(email: string) {
+async function findContactByEmail(contactsService: ContactsService, email: string) {
   const spinner = ora("Finding contact by email...").start();
   try {
     const contact = await contactsService.findContactByEmail(email);
@@ -388,7 +385,7 @@ async function findContactByEmail(email: string) {
   }
 }
 
-async function findContactByName(name: string) {
+async function findContactByName(contactsService: ContactsService, name: string) {
   const spinner = ora("Finding contact by name...").start();
   try {
     const contact = await contactsService.findContactByName(name);
@@ -425,7 +422,7 @@ async function findContactByName(name: string) {
   }
 }
 
-async function createContact(args: string[]) {
+async function createContact(contactsService: ContactsService, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -492,7 +489,7 @@ async function createContact(args: string[]) {
   }
 }
 
-async function updateContact(resourceName: string, args: string[]) {
+async function updateContact(contactsService: ContactsService, resourceName: string, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -553,7 +550,7 @@ async function updateContact(resourceName: string, args: string[]) {
   }
 }
 
-async function deleteContact(resourceName: string, args: string[]) {
+async function deleteContact(contactsService: ContactsService, resourceName: string, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -575,7 +572,7 @@ async function deleteContact(resourceName: string, args: string[]) {
   }
 }
 
-async function listGroups(args: string[]) {
+async function listGroups(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Fetching contact groups...").start();
   try {
     const options: { format: string } = { format: "table" };
@@ -621,7 +618,7 @@ async function listGroups(args: string[]) {
   }
 }
 
-async function createGroup(name: string, args: string[]) {
+async function createGroup(contactsService: ContactsService, name: string, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -647,7 +644,7 @@ async function createGroup(name: string, args: string[]) {
   }
 }
 
-async function deleteGroup(resourceName: string, args: string[]) {
+async function deleteGroup(contactsService: ContactsService, resourceName: string, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -669,7 +666,7 @@ async function deleteGroup(resourceName: string, args: string[]) {
   }
 }
 
-async function getContactsInGroup(groupResourceName: string, _args: string[]) {
+async function getContactsInGroup(contactsService: ContactsService, groupResourceName: string, _args: string[]) {
   const spinner = ora("Fetching contacts in group...").start();
   try {
     const result = await contactsService.getContactsInGroup(groupResourceName);
@@ -698,7 +695,7 @@ async function getContactsInGroup(groupResourceName: string, _args: string[]) {
   }
 }
 
-async function addToGroup(groupResourceName: string, contactResourceNames: string[], confirmArgs: string[]) {
+async function addToGroup(contactsService: ContactsService, groupResourceName: string, contactResourceNames: string[], confirmArgs: string[]) {
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
@@ -720,7 +717,7 @@ async function addToGroup(groupResourceName: string, contactResourceNames: strin
   }
 }
 
-async function removeFromGroup(groupResourceName: string, contactResourceNames: string[], confirmArgs: string[]) {
+async function removeFromGroup(contactsService: ContactsService, groupResourceName: string, contactResourceNames: string[], confirmArgs: string[]) {
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
@@ -742,7 +739,7 @@ async function removeFromGroup(groupResourceName: string, contactResourceNames: 
   }
 }
 
-async function batchCreateContacts(jsonFile: string, args: string[]) {
+async function batchCreateContacts(contactsService: ContactsService, jsonFile: string, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -777,7 +774,7 @@ async function batchCreateContacts(jsonFile: string, args: string[]) {
   }
 }
 
-async function batchDeleteContacts(args: string[]) {
+async function batchDeleteContacts(contactsService: ContactsService, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
@@ -801,7 +798,7 @@ async function batchDeleteContacts(args: string[]) {
   }
 }
 
-async function getProfile(args: string[]) {
+async function getProfile(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Fetching your profile...").start();
   try {
     const options: { format: string } = { format: "full" };
@@ -852,7 +849,7 @@ async function getProfile(args: string[]) {
   }
 }
 
-async function getStats(_args: string[]) {
+async function getStats(contactsService: ContactsService, _args: string[]) {
   const spinner = ora("Fetching contact statistics...").start();
   try {
     const contacts = await contactsService.listContacts({ pageSize: 10000 });
@@ -885,7 +882,7 @@ async function getStats(_args: string[]) {
   }
 }
 
-async function mergeContacts(targetResourceName: string, sourceResourceNames: string[], confirmArgs: string[]) {
+async function mergeContacts(contactsService: ContactsService, targetResourceName: string, sourceResourceNames: string[], confirmArgs: string[]) {
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
@@ -926,7 +923,7 @@ async function mergeContacts(targetResourceName: string, sourceResourceNames: st
   }
 }
 
-async function autoMergeContacts(args: string[]) {
+async function autoMergeContacts(contactsService: ContactsService, args: string[]) {
   const dryRun = !args.includes("--confirm");
   const confirm = args.includes("--confirm");
 
@@ -1020,7 +1017,7 @@ async function autoMergeContacts(args: string[]) {
   }
 }
 
-async function findDuplicates(args: string[]) {
+async function findDuplicates(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Searching for duplicate contacts...").start();
   try {
     const options: {
@@ -1153,7 +1150,7 @@ async function findDuplicates(args: string[]) {
   }
 }
 
-async function findMissingNames(args: string[]) {
+async function findMissingNames(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Finding contacts with missing names...").start();
   try {
     const options: { maxResults: number; format: string } = {
@@ -1224,7 +1221,7 @@ async function findMissingNames(args: string[]) {
   }
 }
 
-async function analyzeGenericNames(args: string[]) {
+async function analyzeGenericNames(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Analyzing contacts with generic names...").start();
   try {
     const options: { maxResults: number; format: string } = {
@@ -1295,7 +1292,7 @@ async function analyzeGenericNames(args: string[]) {
   }
 }
 
-async function analyzeImportedContacts(args: string[]) {
+async function analyzeImportedContacts(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Analyzing imported contacts...").start();
   try {
     const options: { maxResults: number; format: string } = {
@@ -1376,7 +1373,7 @@ async function analyzeImportedContacts(args: string[]) {
   }
 }
 
-async function detectMarketing(args: string[]) {
+async function detectMarketing(contactsService: ContactsService, args: string[]) {
   const spinner = ora("Detecting marketing contacts...").start();
   try {
     const options: {

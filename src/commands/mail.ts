@@ -6,9 +6,6 @@ import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import fs from "node:fs";
 
-// Module-level service instance (set by handleMailCommand)
-let mailService: MailService;
-
 type EmailBodyFormat = "plain" | "html" | "auto";
 
 function decodeBase64(data: string): string {
@@ -75,17 +72,17 @@ ${body}`;
 
 export async function handleMailCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
-  mailService = new MailService(account);
+  const mailService = new MailService(account);
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(mailService);
-  
+
   switch (subcommand) {
     case "labels":
-      await listLabels(args);
+      await listLabels(mailService, args);
       break;
     case "messages":
-      await listMessages(args);
+      await listMessages(mailService, args);
       break;
     case "get":
       if (args.length === 0) {
@@ -93,7 +90,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail get <messageId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getMessage(args[0]!, args.slice(1));
+      await getMessage(mailService, args[0]!, args.slice(1));
       break;
     case "search": {
       if (args.length === 0) {
@@ -104,14 +101,14 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       // Extract query (first arg) and remaining options
       const query = args[0]!;
       const searchOptions = args.slice(1);
-      await searchMessages(query, searchOptions);
+      await searchMessages(mailService, query, searchOptions);
       break;
     }
     case "stats":
-      await getStats();
+      await getStats(mailService);
       break;
     case "threads":
-      await listThreads(args);
+      await listThreads(mailService, args);
       break;
     case "thread":
       if (args.length === 0) {
@@ -119,19 +116,19 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail thread <threadId> [--format <plain|html|auto>]");
         process.exit(1);
       }
-      await getThread(args[0]!, args.slice(1));
+      await getThread(mailService, args[0]!, args.slice(1));
       break;
     case "unread":
-      await listUnread(args);
+      await listUnread(mailService, args);
       break;
     case "starred":
-      await listStarred(args);
+      await listStarred(mailService, args);
       break;
     case "important":
-      await listImportant(args);
+      await listImportant(mailService, args);
       break;
     case "drafts":
-      await listDrafts(args);
+      await listDrafts(mailService, args);
       break;
     case "attachments":
       if (args.length === 0) {
@@ -139,7 +136,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail attachments <messageId>");
         process.exit(1);
       }
-      await listAttachments(args[0]!);
+      await listAttachments(mailService, args[0]!);
       break;
     case "download":
       if (args.length < 2) {
@@ -147,7 +144,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail download <messageId> <attachmentId> [filename]");
         process.exit(1);
       }
-      await downloadAttachment(args[0]!, args[1]!, args[2]);
+      await downloadAttachment(mailService, args[0]!, args[1]!, args[2]);
       break;
     case "delete":
       if (args.length === 0) {
@@ -155,7 +152,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete <messageId>");
         process.exit(1);
       }
-      await deleteMessage(args[0]!);
+      await deleteMessage(mailService, args[0]!);
       break;
     case "delete-query":
       if (args.length === 0) {
@@ -163,7 +160,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete-query <query>");
         process.exit(1);
       }
-      await deleteQuery(args.join(" "));
+      await deleteQuery(mailService, args.join(" "));
       break;
     case "archive":
       if (args.length === 0) {
@@ -171,7 +168,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive <messageId>");
         process.exit(1);
       }
-      await archiveMessage(args[0]!);
+      await archiveMessage(mailService, args[0]!);
       break;
     case "archive-query":
       if (args.length === 0) {
@@ -179,7 +176,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive-query <query>");
         process.exit(1);
       }
-      await archiveQuery(args.join(" "));
+      await archiveQuery(mailService, args.join(" "));
       break;
     case "archive-many":
       if (args.length === 0) {
@@ -187,7 +184,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail archive-many <messageId1> [messageId2] [...]");
         process.exit(1);
       }
-      await archiveMany(args);
+      await archiveMany(mailService, args);
       break;
     case "unarchive":
       if (args.length === 0) {
@@ -195,7 +192,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive <messageId>");
         process.exit(1);
       }
-      await unarchiveMessage(args[0]!);
+      await unarchiveMessage(mailService, args[0]!);
       break;
     case "unarchive-query":
       if (args.length === 0) {
@@ -203,7 +200,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive-query <query>");
         process.exit(1);
       }
-      await unarchiveQuery(args.join(" "));
+      await unarchiveQuery(mailService, args.join(" "));
       break;
     case "unarchive-many":
       if (args.length === 0) {
@@ -211,7 +208,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unarchive-many <messageId1> [messageId2] [...]");
         process.exit(1);
       }
-      await unarchiveMany(args);
+      await unarchiveMany(mailService, args);
       break;
     case "add-label":
       if (args.length < 2) {
@@ -219,7 +216,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail add-label <messageId> <labelName>");
         process.exit(1);
       }
-      await addLabel(args[0]!, args[1]!);
+      await addLabel(mailService, args[0]!, args[1]!);
       break;
     case "remove-label":
       if (args.length < 2) {
@@ -227,7 +224,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail remove-label <messageId> <labelName>");
         process.exit(1);
       }
-      await removeLabel(args[0]!, args[1]!);
+      await removeLabel(mailService, args[0]!, args[1]!);
       break;
     case "mark-read":
       if (args.length === 0) {
@@ -235,7 +232,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail mark-read <messageId>");
         process.exit(1);
       }
-      await markRead(args[0]!);
+      await markRead(mailService, args[0]!);
       break;
     case "mark-unread":
       if (args.length === 0) {
@@ -243,7 +240,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail mark-unread <messageId>");
         process.exit(1);
       }
-      await markUnread(args[0]!);
+      await markUnread(mailService, args[0]!);
       break;
     case "star":
       if (args.length === 0) {
@@ -251,7 +248,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail star <messageId>");
         process.exit(1);
       }
-      await starMessage(args[0]!);
+      await starMessage(mailService, args[0]!);
       break;
     case "unstar":
       if (args.length === 0) {
@@ -259,7 +256,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail unstar <messageId>");
         process.exit(1);
       }
-      await unstarMessage(args[0]!);
+      await unstarMessage(mailService, args[0]!);
       break;
     case "create-label":
       if (args.length === 0) {
@@ -267,7 +264,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail create-label <labelName> [--color <color>]");
         process.exit(1);
       }
-      await createLabel(args[0]!, args.slice(1));
+      await createLabel(mailService, args[0]!, args.slice(1));
       break;
     case "delete-label":
       if (args.length === 0) {
@@ -275,7 +272,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         console.error("Usage: gwork mail delete-label <labelId>");
         process.exit(1);
       }
-      await deleteLabel(args[0]!);
+      await deleteLabel(mailService, args[0]!);
       break;
     default:
       console.error(`Unknown mail subcommand: ${subcommand}`);
@@ -284,7 +281,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
   }
 }
 
-async function listLabels(_args: string[]) {
+async function listLabels(mailService: MailService, _args: string[]) {
   const spinner = ora("Fetching labels...").start();
   try {
     const labels = await mailService.listLabels();
@@ -322,7 +319,7 @@ async function listLabels(_args: string[]) {
   }
 }
 
-async function listMessages(args: string[]) {
+async function listMessages(mailService: MailService, args: string[]) {
   const spinner = ora("Fetching messages...").start();
   try {
     const options: any = { maxResults: 10 };
@@ -383,7 +380,7 @@ async function listMessages(args: string[]) {
   }
 }
 
-async function getMessage(messageId: string, args: string[] = []) {
+async function getMessage(mailService: MailService, messageId: string, args: string[] = []) {
   const spinner = ora("Fetching message...").start();
   try {
     let format: EmailBodyFormat = "auto";
@@ -429,7 +426,7 @@ async function getMessage(messageId: string, args: string[] = []) {
   }
 }
 
-async function searchMessages(query: string, extraArgs: string[]) {
+async function searchMessages(mailService: MailService, query: string, extraArgs: string[]) {
   const spinner = ora("Searching messages...").start();
   try {
     const options: any = { maxResults: 10 };
@@ -479,7 +476,7 @@ async function searchMessages(query: string, extraArgs: string[]) {
   }
 }
 
-async function getStats() {
+async function getStats(mailService: MailService) {
   const spinner = ora("Fetching statistics...").start();
   try {
     const profile = await mailService.getProfile();
@@ -516,7 +513,7 @@ async function getStats() {
   }
 }
 
-async function listThreads(args: string[]) {
+async function listThreads(mailService: MailService, args: string[]) {
   const spinner = ora("Fetching threads...").start();
   try {
     const options: any = { maxResults: 10 };
@@ -550,7 +547,7 @@ async function listThreads(args: string[]) {
   }
 }
 
-async function getThread(threadId: string, args: string[] = []) {
+async function getThread(mailService: MailService, threadId: string, args: string[] = []) {
   const spinner = ora("Fetching thread...").start();
   try {
     let format: EmailBodyFormat = "auto";
@@ -614,23 +611,23 @@ async function getThread(threadId: string, args: string[] = []) {
   }
 }
 
-async function listUnread(args: string[]) {
-  await listMessages([...args, "--label", "UNREAD"]);
+async function listUnread(mailService: MailService, args: string[]) {
+  await listMessages(mailService, [...args, "--label", "UNREAD"]);
 }
 
-async function listStarred(args: string[]) {
-  await listMessages([...args, "--label", "STARRED"]);
+async function listStarred(mailService: MailService, args: string[]) {
+  await listMessages(mailService, [...args, "--label", "STARRED"]);
 }
 
-async function listImportant(args: string[]) {
-  await listMessages([...args, "--label", "IMPORTANT"]);
+async function listImportant(mailService: MailService, args: string[]) {
+  await listMessages(mailService, [...args, "--label", "IMPORTANT"]);
 }
 
-async function listDrafts(args: string[]) {
-  await listMessages([...args, "--label", "DRAFT"]);
+async function listDrafts(mailService: MailService, args: string[]) {
+  await listMessages(mailService, [...args, "--label", "DRAFT"]);
 }
 
-async function listAttachments(messageId: string) {
+async function listAttachments(mailService: MailService, messageId: string) {
   const spinner = ora("Fetching attachments...").start();
   try {
     const message = await mailService.getMessage(messageId, "full");
@@ -661,7 +658,7 @@ async function listAttachments(messageId: string) {
   }
 }
 
-async function downloadAttachment(messageId: string, attachmentId: string, filename?: string) {
+async function downloadAttachment(mailService: MailService, messageId: string, attachmentId: string, filename?: string) {
   const spinner = ora("Downloading attachment...").start();
   try {
     const attachment = await mailService.getAttachment(messageId, attachmentId);
@@ -678,7 +675,7 @@ async function downloadAttachment(messageId: string, attachmentId: string, filen
   }
 }
 
-async function deleteMessage(messageId: string) {
+async function deleteMessage(mailService: MailService, messageId: string) {
   const spinner = ora("Deleting message...").start();
   try {
     await mailService.deleteMessage(messageId);
@@ -691,7 +688,7 @@ async function deleteMessage(messageId: string) {
   }
 }
 
-async function deleteQuery(query: string) {
+async function deleteQuery(mailService: MailService, query: string) {
   const spinner = ora("Deleting messages...").start();
   try {
     const result = await mailService.searchMessages(query, { maxResults: 500 });
@@ -717,7 +714,7 @@ async function deleteQuery(query: string) {
   }
 }
 
-async function archiveMessage(messageId: string) {
+async function archiveMessage(mailService: MailService, messageId: string) {
   const spinner = ora("Archiving message...").start();
   try {
     await mailService.archiveMessage(messageId);
@@ -730,7 +727,7 @@ async function archiveMessage(messageId: string) {
   }
 }
 
-async function archiveQuery(query: string) {
+async function archiveQuery(mailService: MailService, query: string) {
   const spinner = ora("Archiving messages...").start();
   try {
     const result = await mailService.searchMessages(query, { maxResults: 500 });
@@ -752,7 +749,7 @@ async function archiveQuery(query: string) {
   }
 }
 
-async function archiveMany(messageIds: string[]) {
+async function archiveMany(mailService: MailService, messageIds: string[]) {
   const spinner = ora(`Archiving ${messageIds.length} message(s)...`).start();
   try {
     for (const id of messageIds) {
@@ -766,7 +763,7 @@ async function archiveMany(messageIds: string[]) {
   }
 }
 
-async function unarchiveMessage(messageId: string) {
+async function unarchiveMessage(mailService: MailService, messageId: string) {
   const spinner = ora("Unarchiving message...").start();
   try {
     await mailService.unarchiveMessage(messageId);
@@ -779,7 +776,7 @@ async function unarchiveMessage(messageId: string) {
   }
 }
 
-async function unarchiveQuery(query: string) {
+async function unarchiveQuery(mailService: MailService, query: string) {
   const spinner = ora("Unarchiving messages...").start();
   try {
     const result = await mailService.searchMessages(query, { maxResults: 500 });
@@ -801,7 +798,7 @@ async function unarchiveQuery(query: string) {
   }
 }
 
-async function unarchiveMany(messageIds: string[]) {
+async function unarchiveMany(mailService: MailService, messageIds: string[]) {
   const spinner = ora(`Unarchiving ${messageIds.length} message(s)...`).start();
   try {
     for (const id of messageIds) {
@@ -815,7 +812,7 @@ async function unarchiveMany(messageIds: string[]) {
   }
 }
 
-async function addLabel(messageId: string, labelName: string) {
+async function addLabel(mailService: MailService, messageId: string, labelName: string) {
   const spinner = ora("Adding label...").start();
   try {
     // First, find the label ID
@@ -838,7 +835,7 @@ async function addLabel(messageId: string, labelName: string) {
   }
 }
 
-async function removeLabel(messageId: string, labelName: string) {
+async function removeLabel(mailService: MailService, messageId: string, labelName: string) {
   const spinner = ora("Removing label...").start();
   try {
     const labels = await mailService.listLabels();
@@ -860,7 +857,7 @@ async function removeLabel(messageId: string, labelName: string) {
   }
 }
 
-async function markRead(messageId: string) {
+async function markRead(mailService: MailService, messageId: string) {
   const spinner = ora("Marking as read...").start();
   try {
     await mailService.modifyMessage(messageId, [], ["UNREAD"]);
@@ -873,7 +870,7 @@ async function markRead(messageId: string) {
   }
 }
 
-async function markUnread(messageId: string) {
+async function markUnread(mailService: MailService, messageId: string) {
   const spinner = ora("Marking as unread...").start();
   try {
     await mailService.modifyMessage(messageId, ["UNREAD"], []);
@@ -886,7 +883,7 @@ async function markUnread(messageId: string) {
   }
 }
 
-async function starMessage(messageId: string) {
+async function starMessage(mailService: MailService, messageId: string) {
   const spinner = ora("Starring message...").start();
   try {
     await mailService.modifyMessage(messageId, ["STARRED"], []);
@@ -899,7 +896,7 @@ async function starMessage(messageId: string) {
   }
 }
 
-async function unstarMessage(messageId: string) {
+async function unstarMessage(mailService: MailService, messageId: string) {
   const spinner = ora("Unstarring message...").start();
   try {
     await mailService.modifyMessage(messageId, [], ["STARRED"]);
@@ -912,7 +909,7 @@ async function unstarMessage(messageId: string) {
   }
 }
 
-async function createLabel(labelName: string, args: string[]) {
+async function createLabel(mailService: MailService, labelName: string, args: string[]) {
   const spinner = ora("Creating label...").start();
   try {
     let color: string | undefined;
@@ -946,7 +943,7 @@ async function createLabel(labelName: string, args: string[]) {
   }
 }
 
-async function deleteLabel(labelId: string) {
+async function deleteLabel(mailService: MailService, labelId: string) {
   const spinner = ora("Deleting label...").start();
   try {
     await mailService.deleteLabel(labelId);
