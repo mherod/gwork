@@ -3,14 +3,10 @@ import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
 import { handleServiceError } from "../utils/command-error-handler.ts";
+import { ensureInitialized } from "../utils/command-service.ts";
 
 // Module-level service instance (set by handleContactsCommand)
 let contactsService: ContactsService;
-
-// Helper to ensure service is initialized (checks credentials)
-async function ensureInitialized() {
-  await contactsService.initialize();
-}
 
 export async function handleContactsCommand(
   subcommand: string,
@@ -21,7 +17,7 @@ export async function handleContactsCommand(
   contactsService = new ContactsService(account);
 
   // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized();
+  await ensureInitialized(contactsService);
 
   switch (subcommand) {
     case "list":

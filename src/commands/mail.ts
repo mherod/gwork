@@ -3,17 +3,13 @@ import ora from "ora";
 import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import { handleServiceError } from "../utils/command-error-handler.ts";
+import { ensureInitialized } from "../utils/command-service.ts";
 import fs from "node:fs";
 
 // Module-level service instance (set by handleMailCommand)
 let mailService: MailService;
 
 type EmailBodyFormat = "plain" | "html" | "auto";
-
-// Helper to ensure service is initialized (checks credentials)
-async function ensureInitialized() {
-  await mailService.initialize();
-}
 
 function decodeBase64(data: string): string {
   return Buffer.from(data, "base64").toString("utf-8");
@@ -82,7 +78,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
   mailService = new MailService(account);
 
   // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized();
+  await ensureInitialized(mailService);
   
   switch (subcommand) {
     case "labels":
