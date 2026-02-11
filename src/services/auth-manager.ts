@@ -42,6 +42,35 @@ export interface GetAuthClientOptions {
 }
 
 /**
+ * Helper to detect transient vs permanent errors.
+ * Returns true if the error is likely transient and worth retrying.
+ */
+function isTransientError(error: unknown): boolean {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorCode = error instanceof Error && "code" in error ? (error as any).code : null;
+
+  // Network-related transient errors
+  const transientPatterns = [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "ENOTFOUND",
+    "temporarily unavailable",
+    "429", // Rate limit
+    "503", // Service unavailable
+    "504", // Gateway timeout
+    "SOCKET_TIMEOUT",
+    "SOCKET_HANG_UP",
+  ];
+
+  return transientPatterns.some(
+    (pattern) => errorMessage.includes(pattern) || errorCode === pattern
+  );
+}
+
+/**
  * Manages OAuth2Client instances and ensures credential synchronization.
  * 
  * This class handles all OAuth2Client operations, ensuring that credentials
@@ -262,7 +291,8 @@ export class AuthManager {
   /**
    * Refreshes token if expired and saves to TokenStore.
    * Returns the token data (updated if refreshed).
-   * 
+   * Implements retry logic for transient failures before giving up.
+   *
    * @private
    */
   private async refreshTokenIfNeeded(
@@ -274,21 +304,53 @@ export class AuthManager {
   ): Promise<TokenData> {
     // getAccessToken() will automatically refresh if expired
     // This is the recommended approach (like in the Google example)
+    // Implement retry with exponential backoff for transient errors
     let accessTokenResponse;
-    try {
-      accessTokenResponse = await auth.getAccessToken();
-    } catch (refreshError) {
-      // If refresh fails, it's likely an authentication error
-      const errorMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
-      if (
-        errorMessage.includes("invalid_grant") ||
-        errorMessage.includes("invalid_token") ||
-        errorMessage.includes("unauthorized")
-      ) {
-        logger.warn(`Token refresh failed (${errorMessage}). Token may be revoked.`);
-        throw refreshError; // Will be caught by loadExistingAuth and trigger re-auth
+    let lastError: unknown = null;
+    const maxRetries = 3;
+    const initialDelayMs = 100;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        accessTokenResponse = await auth.getAccessToken();
+        break; // Success, exit retry loop
+      } catch (refreshError) {
+        lastError = refreshError;
+
+        // Check if this is a transient error worth retrying
+        if (isTransientError(refreshError) && attempt < maxRetries - 1) {
+          const delayMs = initialDelayMs * Math.pow(2, attempt); // Exponential backoff
+          logger.debug(`Token refresh transient error (${refreshError instanceof Error ? refreshError.message : String(refreshError)}). Retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        // If refresh fails, it's likely an authentication error
+        const errorMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
+        if (
+          errorMessage.includes("invalid_grant") ||
+          errorMessage.includes("invalid_token") ||
+          errorMessage.includes("unauthorized")
+        ) {
+          logger.warn(`Token refresh failed (${errorMessage}). Token may be revoked.`);
+          throw refreshError; // Will be caught by loadExistingAuth and trigger re-auth
+        }
+
+        // Re-auth needed for this error
+        throw refreshError;
       }
-      throw refreshError;
+    }
+
+    // If we exhausted retries with transient errors, throw the last error
+    if (!accessTokenResponse && lastError) {
+      if (lastError instanceof Error) {
+        throw lastError;
+      }
+      throw new Error("Failed to refresh token after retries");
+    }
+
+    if (!accessTokenResponse) {
+      throw new Error("Failed to refresh token");
     }
     
     const authCredentials = (auth as any).credentials || {};

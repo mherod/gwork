@@ -110,7 +110,6 @@ describe("handleAccountsCommand", () => {
     expect(mockListTokens).toHaveBeenCalled();
     // Verify some output
     expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("test@example.com"));
-    expect(exitSpy).toHaveBeenCalledWith(0);
     expect(mockClose).toHaveBeenCalled();
   });
 
@@ -136,6 +135,5 @@ describe("handleAccountsCommand", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Scopes:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("https://mail.google.com/"));
-      expect(exitSpy).toHaveBeenCalledWith(0);
   });
 });

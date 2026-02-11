@@ -2,8 +2,8 @@ import chalk from "chalk";
 import ora from "ora";
 import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
-import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
+import { ArgumentError } from "../services/errors.ts";
 import fs from "node:fs";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
@@ -86,17 +86,13 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       break;
     case "get":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail get <messageId> [--format <plain|html|auto>]");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail get <messageId> [--format <plain|html|auto>]");
       }
       await getMessage(mailService, args[0]!, args.slice(1));
       break;
     case "search": {
       if (args.length === 0) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork mail search <query>");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork mail search <query>");
       }
       // Extract query (first arg) and remaining options
       const query = args[0]!;
@@ -112,9 +108,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       break;
     case "thread":
       if (args.length === 0) {
-        console.error("Error: threadId is required");
-        console.error("Usage: gwork mail thread <threadId> [--format <plain|html|auto>]");
-        process.exit(1);
+        throw new ArgumentError("Error: threadId is required", "gwork mail thread <threadId> [--format <plain|html|auto>]");
       }
       await getThread(mailService, args[0]!, args.slice(1));
       break;
@@ -132,152 +126,114 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       break;
     case "attachments":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail attachments <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail attachments <messageId>");
       }
       await listAttachments(mailService, args[0]!);
       break;
     case "download":
       if (args.length < 2) {
-        console.error("Error: messageId and attachmentId are required");
-        console.error("Usage: gwork mail download <messageId> <attachmentId> [filename]");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId and attachmentId are required", "gwork mail download <messageId> <attachmentId> [filename]");
       }
       await downloadAttachment(mailService, args[0]!, args[1]!, args[2]);
       break;
     case "delete":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail delete <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail delete <messageId>");
       }
       await deleteMessage(mailService, args[0]!);
       break;
     case "delete-query":
       if (args.length === 0) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork mail delete-query <query>");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork mail delete-query <query>");
       }
       await deleteQuery(mailService, args.join(" "));
       break;
     case "archive":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail archive <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail archive <messageId>");
       }
       await archiveMessage(mailService, args[0]!);
       break;
     case "archive-query":
       if (args.length === 0) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork mail archive-query <query>");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork mail archive-query <query>");
       }
       await archiveQuery(mailService, args.join(" "));
       break;
     case "archive-many":
       if (args.length === 0) {
-        console.error("Error: at least one messageId is required");
-        console.error("Usage: gwork mail archive-many <messageId1> [messageId2] [...]");
-        process.exit(1);
+        throw new ArgumentError("Error: at least one messageId is required", "gwork mail archive-many <messageId1> [messageId2] [...]");
       }
       await archiveMany(mailService, args);
       break;
     case "unarchive":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail unarchive <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail unarchive <messageId>");
       }
       await unarchiveMessage(mailService, args[0]!);
       break;
     case "unarchive-query":
       if (args.length === 0) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork mail unarchive-query <query>");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork mail unarchive-query <query>");
       }
       await unarchiveQuery(mailService, args.join(" "));
       break;
     case "unarchive-many":
       if (args.length === 0) {
-        console.error("Error: at least one messageId is required");
-        console.error("Usage: gwork mail unarchive-many <messageId1> [messageId2] [...]");
-        process.exit(1);
+        throw new ArgumentError("Error: at least one messageId is required", "gwork mail unarchive-many <messageId1> [messageId2] [...]");
       }
       await unarchiveMany(mailService, args);
       break;
     case "add-label":
       if (args.length < 2) {
-        console.error("Error: messageId and labelName are required");
-        console.error("Usage: gwork mail add-label <messageId> <labelName>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail add-label <messageId> <labelName>");
       }
       await addLabel(mailService, args[0]!, args[1]!);
       break;
     case "remove-label":
       if (args.length < 2) {
-        console.error("Error: messageId and labelName are required");
-        console.error("Usage: gwork mail remove-label <messageId> <labelName>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail remove-label <messageId> <labelName>");
       }
       await removeLabel(mailService, args[0]!, args[1]!);
       break;
     case "mark-read":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail mark-read <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail mark-read <messageId>");
       }
       await markRead(mailService, args[0]!);
       break;
     case "mark-unread":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail mark-unread <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail mark-unread <messageId>");
       }
       await markUnread(mailService, args[0]!);
       break;
     case "star":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail star <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail star <messageId>");
       }
       await starMessage(mailService, args[0]!);
       break;
     case "unstar":
       if (args.length === 0) {
-        console.error("Error: messageId is required");
-        console.error("Usage: gwork mail unstar <messageId>");
-        process.exit(1);
+        throw new ArgumentError("Error: messageId is required", "gwork mail unstar <messageId>");
       }
       await unstarMessage(mailService, args[0]!);
       break;
     case "create-label":
       if (args.length === 0) {
-        console.error("Error: labelName is required");
-        console.error("Usage: gwork mail create-label <labelName> [--color <color>]");
-        process.exit(1);
+        throw new ArgumentError("Error: labelName is required", "gwork mail create-label <labelName> [--color <color>]");
       }
       await createLabel(mailService, args[0]!, args.slice(1));
       break;
     case "delete-label":
       if (args.length === 0) {
-        console.error("Error: labelId is required");
-        console.error("Usage: gwork mail delete-label <labelId>");
-        process.exit(1);
+        throw new ArgumentError("Error: labelId is required", "gwork mail delete-label <labelId>");
       }
       await deleteLabel(mailService, args[0]!);
       break;
     default:
-      console.error(`Unknown mail subcommand: ${subcommand}`);
-      console.error("Run 'gwork mail --help' for usage information");
-      process.exit(1);
+      throw new ArgumentError(`Unknown mail subcommand: ${subcommand}`, "gwork mail --help");
   }
 }
 
@@ -312,10 +268,9 @@ async function listLabels(mailService: MailService, _args: string[]) {
         console.log(`  ${chalk.gray("Messages:")} ${count} (${unread} unread)`);
       }
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch labels");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -373,10 +328,9 @@ async function listMessages(mailService: MailService, args: string[]) {
       }
       console.log(`   ${chalk.gray("ID:")} ${message.id}`);
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -388,16 +342,14 @@ async function getMessage(mailService: MailService, messageId: string, args: str
       if (args[i] === "--format" || args[i] === "-f") {
         if (i + 1 >= args.length) {
           spinner.fail("Missing format value");
-          console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
-          process.exit(1);
+          throw new ArgumentError("Error: --format requires a value (plain, html, or auto)");
         }
         const value = args[++i]!;
         if (value === "plain" || value === "html" || value === "auto") {
           format = value;
         } else {
           spinner.fail("Invalid format option");
-          console.error(chalk.red(`Error: Invalid format "${value}". Use: plain, html, or auto`));
-          process.exit(1);
+          throw new ArgumentError(`Error: Invalid format "${value}". Use: plain, html, or auto`);
         }
       }
     }
@@ -419,10 +371,9 @@ async function getMessage(mailService: MailService, messageId: string, args: str
         });
       }
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -469,10 +420,9 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
       console.log(`   ${chalk.gray("Date:")} ${date}`);
       console.log(`   ${chalk.gray("ID:")} ${message.id}`);
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -506,10 +456,9 @@ async function getStats(mailService: MailService) {
         console.log(chalk.gray(`  ... and ${userLabels.length - 10} more`));
       }
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch statistics");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -540,10 +489,9 @@ async function listThreads(mailService: MailService, args: string[]) {
       console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan("Thread ID:")} ${thread.id}`);
       console.log(`   ${chalk.gray("Messages:")} ${thread.messages?.length || 0}`);
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch threads");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -557,8 +505,7 @@ async function getThread(mailService: MailService, threadId: string, args: strin
       if (args[i] === "--format" || args[i] === "-f") {
         if (i + 1 >= args.length) {
           spinner.fail("Missing format value");
-          console.error(chalk.red("Error: --format requires a value (plain, html, or auto)"));
-          process.exit(1);
+          throw new ArgumentError("Error: --format requires a value (plain, html, or auto)");
         }
         const value = args[++i]!;
         if (value === "plain" || value === "html" || value === "auto") {
@@ -566,8 +513,7 @@ async function getThread(mailService: MailService, threadId: string, args: strin
           showFullMessages = true;
         } else {
           spinner.fail("Invalid format option");
-          console.error(chalk.red(`Error: Invalid format "${value}". Use: plain, html, or auto`));
-          process.exit(1);
+          throw new ArgumentError(`Error: Invalid format "${value}". Use: plain, html, or auto`);
         }
       }
     }
@@ -604,10 +550,9 @@ async function getThread(mailService: MailService, threadId: string, args: strin
         }
       });
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch thread");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -651,10 +596,9 @@ async function listAttachments(mailService: MailService, messageId: string) {
       console.log(`   ${chalk.gray("Size:")} ${sizeMB} MB`);
       console.log(`   ${chalk.gray("Attachment ID:")} ${part.body.attachmentId}`);
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch attachments");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -668,10 +612,9 @@ async function downloadAttachment(mailService: MailService, messageId: string, a
     fs.writeFileSync(outputFile, data);
 
     spinner.succeed(`Attachment downloaded to ${outputFile}`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to download attachment");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -681,10 +624,9 @@ async function deleteMessage(mailService: MailService, messageId: string) {
     await mailService.deleteMessage(messageId);
     spinner.succeed("Message deleted");
     console.log(chalk.green("Message has been deleted"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -707,10 +649,9 @@ async function deleteQuery(mailService: MailService, query: string) {
     // For now, we'll proceed with the deletion
     await mailService.batchDeleteMessages(messageIds);
     spinner.succeed(`Deleted ${messageIds.length} message(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -720,10 +661,9 @@ async function archiveMessage(mailService: MailService, messageId: string) {
     await mailService.archiveMessage(messageId);
     spinner.succeed("Message archived");
     console.log(chalk.green("Message has been archived"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -742,10 +682,9 @@ async function archiveQuery(mailService: MailService, query: string) {
       await mailService.archiveMessage(id);
     }
     spinner.succeed(`Archived ${messageIds.length} message(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -756,10 +695,9 @@ async function archiveMany(mailService: MailService, messageIds: string[]) {
       await mailService.archiveMessage(id);
     }
     spinner.succeed(`Archived ${messageIds.length} message(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to archive messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -769,10 +707,9 @@ async function unarchiveMessage(mailService: MailService, messageId: string) {
     await mailService.unarchiveMessage(messageId);
     spinner.succeed("Message unarchived");
     console.log(chalk.green("Message has been unarchived"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -791,10 +728,9 @@ async function unarchiveQuery(mailService: MailService, query: string) {
       await mailService.unarchiveMessage(id);
     }
     spinner.succeed(`Unarchived ${messageIds.length} message(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -805,10 +741,9 @@ async function unarchiveMany(mailService: MailService, messageIds: string[]) {
       await mailService.unarchiveMessage(id);
     }
     spinner.succeed(`Unarchived ${messageIds.length} message(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive messages");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -821,17 +756,15 @@ async function addLabel(mailService: MailService, messageId: string, labelName: 
 
     if (!label?.id) {
       spinner.fail("Label not found");
-      console.error(chalk.red(`Label "${labelName}" not found`));
-      process.exit(1);
+      throw new ArgumentError(`Label "${labelName}" not found`);
     }
 
     await mailService.modifyMessage(messageId, [label.id], []);
     spinner.succeed("Label added");
     console.log(chalk.green(`Label "${label.name}" added to message`));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to add label");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -843,17 +776,15 @@ async function removeLabel(mailService: MailService, messageId: string, labelNam
 
     if (!label?.id) {
       spinner.fail("Label not found");
-      console.error(chalk.red(`Label "${labelName}" not found`));
-      process.exit(1);
+      throw new ArgumentError(`Label "${labelName}" not found`);
     }
 
     await mailService.modifyMessage(messageId, [], [label.id]);
     spinner.succeed("Label removed");
     console.log(chalk.green(`Label "${label.name}" removed from message`));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to remove label");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -863,10 +794,9 @@ async function markRead(mailService: MailService, messageId: string) {
     await mailService.modifyMessage(messageId, [], ["UNREAD"]);
     spinner.succeed("Message marked as read");
     console.log(chalk.green("Message has been marked as read"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as read");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -876,10 +806,9 @@ async function markUnread(mailService: MailService, messageId: string) {
     await mailService.modifyMessage(messageId, ["UNREAD"], []);
     spinner.succeed("Message marked as unread");
     console.log(chalk.green("Message has been marked as unread"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as unread");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -889,10 +818,9 @@ async function starMessage(mailService: MailService, messageId: string) {
     await mailService.modifyMessage(messageId, ["STARRED"], []);
     spinner.succeed("Message starred");
     console.log(chalk.green("Message has been starred"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to star message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -902,10 +830,9 @@ async function unstarMessage(mailService: MailService, messageId: string) {
     await mailService.modifyMessage(messageId, [], ["STARRED"]);
     spinner.succeed("Message unstarred");
     console.log(chalk.green("Message has been unstarred"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to unstar message");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -936,10 +863,9 @@ async function createLabel(mailService: MailService, labelName: string, args: st
     spinner.succeed("Label created");
     console.log(chalk.green(`Label "${label.name}" created`));
     console.log(`${chalk.cyan("Label ID:")} ${label.id}`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create label");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -949,9 +875,8 @@ async function deleteLabel(mailService: MailService, labelId: string) {
     await mailService.deleteLabel(labelId);
     spinner.succeed("Label deleted");
     console.log(chalk.green("Label has been deleted"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete label");
-    handleServiceError(error);
+    throw error;
   }
 }

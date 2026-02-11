@@ -2,8 +2,8 @@ import chalk from "chalk";
 import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
-import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
+import { ArgumentError } from "../services/errors.ts";
 
 export async function handleContactsCommand(
   subcommand: string,
@@ -22,33 +22,25 @@ export async function handleContactsCommand(
       break;
     case "get":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: resourceName is required");
-        console.error("Usage: gwork contacts get <resourceName>");
-        process.exit(1);
+        throw new ArgumentError("Error: resourceName is required", "gwork contacts get <resourceName>");
       }
       await getContact(contactsService, args[0], args.slice(1));
       break;
     case "search":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork contacts search <query>");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork contacts search <query>");
       }
       await searchContacts(contactsService, args[0], args.slice(1));
       break;
     case "find-email":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: email is required");
-        console.error("Usage: gwork contacts find-email <email>");
-        process.exit(1);
+        throw new ArgumentError("Error: email is required", "gwork contacts find-email <email>");
       }
       await findContactByEmail(contactsService, args[0]);
       break;
     case "find-name":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: name is required");
-        console.error("Usage: gwork contacts find-name <name>");
-        process.exit(1);
+        throw new ArgumentError("Error: name is required", "gwork contacts find-name <name>");
       }
       await findContactByName(contactsService, args[0]);
       break;
@@ -57,17 +49,13 @@ export async function handleContactsCommand(
       break;
     case "update":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: resourceName is required");
-        console.error("Usage: gwork contacts update <resourceName> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: resourceName is required", "gwork contacts update <resourceName> [options]");
       }
       await updateContact(contactsService, args[0], args.slice(1));
       break;
     case "delete":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: resourceName is required");
-        console.error("Usage: gwork contacts delete <resourceName> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: resourceName is required", "gwork contacts delete <resourceName> --confirm");
       }
       await deleteContact(contactsService, args[0], args.slice(1));
       break;
@@ -76,57 +64,43 @@ export async function handleContactsCommand(
       break;
     case "group-contacts":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: groupResourceName is required");
-        console.error("Usage: gwork contacts group-contacts <groupResourceName>");
-        process.exit(1);
+        throw new ArgumentError("Error: groupResourceName is required", "gwork contacts group-contacts <groupResourceName>");
       }
       await getContactsInGroup(contactsService, args[0], args.slice(1));
       break;
     case "create-group":
       if (args.length === 0) {
-        console.error("Error: group name is required");
-        console.error("Usage: gwork contacts create-group <name> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: group name is required", "gwork contacts create-group <name> --confirm");
       }
       await createGroup(contactsService, args[0]!, args.slice(1));
       break;
     case "delete-group":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: groupResourceName is required");
-        console.error("Usage: gwork contacts delete-group <groupResourceName> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: groupResourceName is required", "gwork contacts delete-group <groupResourceName> --confirm");
       }
       await deleteGroup(contactsService, args[0], args.slice(1));
       break;
     case "add-to-group":
       if (args.length < 2) {
-        console.error("Error: groupResourceName and at least one contactResourceName are required");
-        console.error("Usage: gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
       }
       await addToGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "remove-from-group":
       if (args.length < 2) {
-        console.error("Error: groupResourceName and at least one contactResourceName are required");
-        console.error("Usage: gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
       }
       await removeFromGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
     case "batch-create":
       if (args.length === 0) {
-        console.error("Error: JSON file path is required");
-        console.error("Usage: gwork contacts batch-create <jsonFile> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: JSON file path is required", "gwork contacts batch-create <jsonFile> --confirm");
       }
       await batchCreateContacts(contactsService, args[0]!, args.slice(1));
       break;
     case "batch-delete":
       if (args.length === 0) {
-        console.error("Error: at least one resourceName is required");
-        console.error("Usage: gwork contacts batch-delete <resourceName...> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: at least one resourceName is required", "gwork contacts batch-delete <resourceName...> --confirm");
       }
       await batchDeleteContacts(contactsService, args);
       break;
@@ -141,9 +115,7 @@ export async function handleContactsCommand(
       break;
     case "merge":
       if (args.length < 2) {
-        console.error("Error: At least two resource names are required");
-        console.error("Usage: gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: At least two resource names are required", "gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
       }
       await mergeContacts(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
       break;
@@ -163,9 +135,7 @@ export async function handleContactsCommand(
       await detectMarketing(contactsService, args);
       break;
     default:
-      console.error(`Unknown contacts subcommand: ${subcommand}`);
-      console.error("Run 'gwork contacts --help' for usage information");
-      process.exit(1);
+      throw new ArgumentError(`Unknown contacts subcommand: ${subcommand}`, "gwork contacts --help");
   }
 }
 
@@ -224,7 +194,7 @@ async function listContacts(contactsService: ContactsService, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -297,7 +267,7 @@ async function getContact(contactsService: ContactsService, resourceName: string
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -347,7 +317,7 @@ async function searchContacts(contactsService: ContactsService, query: string, a
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -381,7 +351,7 @@ async function findContactByEmail(contactsService: ContactsService, email: strin
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -418,7 +388,7 @@ async function findContactByName(contactsService: ContactsService, name: string)
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -426,8 +396,7 @@ async function createContact(contactsService: ContactsService, args: string[]) {
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts create [options] --confirm");
   }
 
   const spinner = ora("Creating contact...").start();
@@ -468,8 +437,7 @@ async function createContact(contactsService: ContactsService, args: string[]) {
 
     if (!options.firstName && !options.lastName && !options.email) {
       spinner.fail("Missing required options");
-      console.error(chalk.red("At least one of --first-name, --last-name, or --email is required"));
-      process.exit(1);
+      throw new ArgumentError("At least one of --first-name, --last-name, or --email is required", "gwork contacts create [--first-name NAME] [--last-name NAME] [--email EMAIL] --confirm");
     }
 
     const contact = await contactsService.createContact(options);
@@ -485,7 +453,7 @@ async function createContact(contactsService: ContactsService, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -493,8 +461,7 @@ async function updateContact(contactsService: ContactsService, resourceName: str
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts update <resourceName> [options] --confirm");
   }
 
   const spinner = ora("Updating contact...").start();
@@ -546,7 +513,7 @@ async function updateContact(contactsService: ContactsService, resourceName: str
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -554,8 +521,7 @@ async function deleteContact(contactsService: ContactsService, resourceName: str
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts delete <resourceName> --confirm");
   }
 
   const spinner = ora("Deleting contact...").start();
@@ -568,7 +534,7 @@ async function deleteContact(contactsService: ContactsService, resourceName: str
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete contact");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -614,7 +580,7 @@ async function listGroups(contactsService: ContactsService, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contact groups");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -622,8 +588,7 @@ async function createGroup(contactsService: ContactsService, name: string, args:
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts create-group <name> --confirm");
   }
 
   const spinner = ora("Creating contact group...").start();
@@ -640,7 +605,7 @@ async function createGroup(contactsService: ContactsService, name: string, args:
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create contact group");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -648,8 +613,7 @@ async function deleteGroup(contactsService: ContactsService, resourceName: strin
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts delete-group <groupResourceName> --confirm");
   }
 
   const spinner = ora("Deleting contact group...").start();
@@ -662,7 +626,7 @@ async function deleteGroup(contactsService: ContactsService, resourceName: strin
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete contact group");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -691,7 +655,7 @@ async function getContactsInGroup(contactsService: ContactsService, groupResourc
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch contacts in group");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -699,8 +663,7 @@ async function addToGroup(contactsService: ContactsService, groupResourceName: s
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
   }
 
   const spinner = ora("Adding contacts to group...").start();
@@ -713,7 +676,7 @@ async function addToGroup(contactsService: ContactsService, groupResourceName: s
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to add contacts to group");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -721,8 +684,7 @@ async function removeFromGroup(contactsService: ContactsService, groupResourceNa
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
   }
 
   const spinner = ora("Removing contacts from group...").start();
@@ -735,7 +697,7 @@ async function removeFromGroup(contactsService: ContactsService, groupResourceNa
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to remove contacts from group");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -743,8 +705,7 @@ async function batchCreateContacts(contactsService: ContactsService, jsonFile: s
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts batch-create <jsonFile> --confirm");
   }
 
   const spinner = ora("Creating contacts...").start();
@@ -770,7 +731,7 @@ async function batchCreateContacts(contactsService: ContactsService, jsonFile: s
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch create contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -778,8 +739,7 @@ async function batchDeleteContacts(contactsService: ContactsService, args: strin
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts batch-delete <resourceName...> --confirm");
   }
 
   const resourceNames = args.filter((arg) => arg !== "--confirm");
@@ -794,7 +754,7 @@ async function batchDeleteContacts(contactsService: ContactsService, args: strin
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch delete contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -845,7 +805,7 @@ async function getProfile(contactsService: ContactsService, args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch profile");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -878,7 +838,7 @@ async function getStats(contactsService: ContactsService, _args: string[]) {
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch statistics");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -886,8 +846,7 @@ async function mergeContacts(contactsService: ContactsService, targetResourceNam
   const confirm = confirmArgs.includes("--confirm") || confirmArgs[0] === "--confirm";
 
   if (!confirm) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
   }
 
   const spinner = ora("Merging contacts...").start();
@@ -919,7 +878,7 @@ async function mergeContacts(contactsService: ContactsService, targetResourceNam
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to merge contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -928,8 +887,7 @@ async function autoMergeContacts(contactsService: ContactsService, args: string[
   const confirm = args.includes("--confirm");
 
   if (!confirm && !dryRun) {
-    console.log(chalk.yellow("Please use --confirm flag to confirm this operation"));
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork contacts auto-merge [--confirm]");
   }
 
   const spinner = ora("Analyzing contacts for auto-merge...").start();
@@ -1013,7 +971,7 @@ async function autoMergeContacts(contactsService: ContactsService, args: string[
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to auto-merge contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1146,7 +1104,7 @@ async function findDuplicates(contactsService: ContactsService, args: string[]) 
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to search for duplicates");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1217,7 +1175,7 @@ async function findMissingNames(contactsService: ContactsService, args: string[]
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to find missing names");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1288,7 +1246,7 @@ async function analyzeGenericNames(contactsService: ContactsService, args: strin
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze generic names");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1369,7 +1327,7 @@ async function analyzeImportedContacts(contactsService: ContactsService, args: s
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze imported contacts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1443,13 +1401,7 @@ async function detectMarketing(contactsService: ContactsService, args: string[])
 
       if (options.cleanup) {
         if (!options.confirm) {
-          console.log(
-            chalk.red(
-              "\n❌ --confirm flag required for cleanup (this is destructive!)"
-            )
-          );
-          console.log(chalk.yellow("Use: gwork contacts detect-marketing --cleanup --confirm"));
-          process.exit(1);
+          throw new ArgumentError("--confirm flag required for cleanup (this is destructive!)", "gwork contacts detect-marketing --cleanup --confirm");
         }
 
         // Perform cleanup
@@ -1483,12 +1435,7 @@ async function detectMarketing(contactsService: ContactsService, args: string[])
           }
         } catch (cleanupError: unknown) {
           cleanupSpinner.fail("Cleanup failed");
-          const message =
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : "Unknown error";
-          console.error(chalk.red("Error:"), message);
-          process.exit(1);
+          throw cleanupError;
         }
       } else {
         console.log(
@@ -1502,6 +1449,6 @@ async function detectMarketing(contactsService: ContactsService, args: string[])
     process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to detect marketing contacts");
-    handleServiceError(error);
+    throw error;
   }
 }

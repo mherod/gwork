@@ -5,6 +5,7 @@ import { handleCalCommand } from "./commands/cal.ts";
 import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
 import { parseAccount } from "./utils/args.ts";
+import { logServiceError } from "./utils/command-error-handler.ts";
 
 function printHelp() {
   console.log(`
@@ -283,6 +284,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("Error:", error.message);
+  logServiceError(error);
   process.exit(1);
 });

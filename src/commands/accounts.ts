@@ -4,6 +4,33 @@ import ora from "ora";
 import { TokenStore } from "../services/token-store.ts";
 import { groupBy } from "lodash-es";
 
+/**
+ * Formats time remaining until token expiry.
+ */
+function formatTimeRemaining(expiryDate: Date): string {
+  const now = Date.now();
+  const expiryTime = expiryDate.getTime();
+  const diffMs = expiryTime - now;
+
+  if (diffMs < 0) {
+    return "Expired";
+  }
+
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) {
+    return `${diffDays} day${diffDays === 1 ? "" : "s"} remaining`;
+  }
+
+  if (diffHours > 0) {
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} remaining`;
+  }
+
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  return `${diffMins} minute${diffMins === 1 ? "" : "s"} remaining`;
+}
+
 export async function handleAccountsCommand(args: string[]) {
   const spinner = ora("Fetching configured accounts...").start();
 
@@ -31,12 +58,24 @@ export async function handleAccountsCommand(args: string[]) {
 
       accountTokens.forEach(token => {
         const expiryDate = new Date(token.expiry_date);
-        const isExpired = expiryDate.getTime() < Date.now();
-        const statusColor = isExpired ? chalk.red : chalk.green;
-        const statusText = isExpired ? "Expired" : "Active";
+        const now = Date.now();
+        const isExpired = expiryDate.getTime() < now;
+        const expiringSoon = expiryDate.getTime() - now < 24 * 60 * 60 * 1000 && !isExpired;
+
+        // Color based on status
+        let statusColor = chalk.green;
+        let statusText = "Active";
+        if (isExpired) {
+          statusColor = chalk.red;
+          statusText = "Expired";
+        } else if (expiringSoon) {
+          statusColor = chalk.yellow;
+          statusText = "Expiring soon";
+        }
 
         console.log(`   ${chalk.gray("Service:")} ${token.service}`);
-        console.log(`   ${chalk.gray("Status:")}  ${statusColor(statusText)} (${expiryDate.toLocaleString()})`);
+        console.log(`   ${chalk.gray("Status:")}  ${statusColor(statusText)}`);
+        console.log(`   ${chalk.gray("Expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
 
         // Show scopes in a condensed way if verbose flag is present
         if (args.includes("-v") || args.includes("--verbose")) {
@@ -50,11 +89,8 @@ export async function handleAccountsCommand(args: string[]) {
 
     // Clean up
     tokenStore.close();
-    process.exit(0);
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     spinner.fail("Failed to list accounts");
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
+    throw error;
   }
 }
