@@ -72,3 +72,11 @@ export class ValidationError extends ServiceError {
     Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
+
+export class ArgumentError extends ServiceError {
+  constructor(message: string, usage?: string) {
+    const fullMessage = usage ? `${message}\nUsage: ${usage}` : message;
+    super(fullMessage, "INVALID_ARGUMENTS", 400, false);
+    Object.setPrototypeOf(this, ArgumentError.prototype);
+  }
+}

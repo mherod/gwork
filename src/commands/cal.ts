@@ -3,8 +3,8 @@ import ora from "ora";
 import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import { CalendarService } from "../services/calendar-service.ts";
+import { ArgumentError } from "../services/errors.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
-import { handleServiceError } from "../utils/command-error-handler.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 
 export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
@@ -23,41 +23,31 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       break;
     case "get":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal get <calendarId> <eventId>");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal get <calendarId> <eventId>");
       }
       await getEvent(calendarService, args[0], args[1]);
       break;
     case "create":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal create <calendarId> --title <title> --start <datetime>");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal create <calendarId> --title <title> --start <datetime>");
       }
       await createEvent(calendarService, args[0], args.slice(1));
       break;
     case "update":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal update <calendarId> <eventId>");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update <calendarId> <eventId>");
       }
       await updateEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "delete":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal delete <calendarId> <eventId> --confirm");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal delete <calendarId> <eventId> --confirm");
       }
       await deleteEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "search": {
       if (args.length === 0 || !args[0]) {
-        console.error("Error: search query is required");
-        console.error("Usage: gwork cal search <query> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: search query is required", "gwork cal search <query> [options]");
       }
       // Extract query (first arg) and remaining options
       const searchQuery = args[0];
@@ -67,17 +57,13 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
     }
     case "freebusy":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: start and end times are required");
-        console.error("Usage: gwork cal freebusy <start> <end>");
-        process.exit(1);
+        throw new ArgumentError("Error: start and end times are required", "gwork cal freebusy <start> <end>");
       }
       await getFreeBusy(calendarService, args[0], args[1], args.slice(2));
       break;
     case "create-calendar":
       if (args.length === 0) {
-        console.error("Error: title is required");
-        console.error("Usage: gwork cal create-calendar <title>");
-        process.exit(1);
+        throw new ArgumentError("Error: title is required", "gwork cal create-calendar <title>");
       }
       await createCalendar(calendarService, compact(args).join(" "));
       break;
@@ -86,57 +72,43 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       break;
     case "duplicate":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal duplicate <calendarId> <eventId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal duplicate <calendarId> <eventId> [options]");
       }
       await duplicateEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "bulk-update":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal bulk-update <calendarId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal bulk-update <calendarId> [options]");
       }
       await bulkUpdateEvents(calendarService, args[0], args.slice(1));
       break;
     case "update-recurring":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal update-recurring <calendarId> <eventId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update-recurring <calendarId> <eventId> [options]");
       }
       await updateRecurringEvent(calendarService, args[0], args[1], args.slice(2));
       break;
     case "export":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal export <calendarId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal export <calendarId> [options]");
       }
       await exportEvents(calendarService, args[0], args.slice(1));
       break;
     case "batch-create":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal batch-create <calendarId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal batch-create <calendarId> [options]");
       }
       await batchCreateEvents(calendarService, args[0], args.slice(1));
       break;
     case "reminders":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal reminders <calendarId> <eventId> <action> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal reminders <calendarId> <eventId> <action> [options]");
       }
       await manageReminders(calendarService, args[0], args[1], args.slice(2));
       break;
     case "check-conflict":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal check-conflict <calendarId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal check-conflict <calendarId> [options]");
       }
       await checkConflict(calendarService, args[0], args.slice(1));
       break;
@@ -145,9 +117,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       break;
     case "compare":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: two calendarIds are required");
-        console.error("Usage: gwork cal compare <calendarId1> <calendarId2> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: two calendarIds are required", "gwork cal compare <calendarId1> <calendarId2> [options]");
       }
       await compareCalendars(calendarService, args[0], args[1], args.slice(2));
       break;
@@ -159,17 +129,13 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       break;
     case "create-recurring":
       if (args.length === 0 || !args[0]) {
-        console.error("Error: calendarId is required");
-        console.error("Usage: gwork cal create-recurring <calendarId> [options]");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId is required", "gwork cal create-recurring <calendarId> [options]");
       }
       await createRecurringEvent(calendarService, args[0], args.slice(1));
       break;
     case "recurrence-info":
       if (args.length < 2 || !args[0] || !args[1]) {
-        console.error("Error: calendarId and eventId are required");
-        console.error("Usage: gwork cal recurrence-info <calendarId> <eventId>");
-        process.exit(1);
+        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal recurrence-info <calendarId> <eventId>");
       }
       await showRecurrenceInfo(calendarService, args[0], args[1]);
       break;
@@ -177,9 +143,7 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
       await dateUtilities(args);
       break;
     default:
-      console.error(`Unknown cal subcommand: ${subcommand}`);
-      console.error("Run 'gwork cal --help' for usage information");
-      process.exit(1);
+      throw new ArgumentError(`Unknown cal subcommand: ${subcommand}`, "Run 'gwork cal --help' for usage information");
   }
 }
 
@@ -245,13 +209,7 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
     if (options.range) {
       timeRange = parseDateRange(options.range);
       if (!timeRange) {
-        spinner.fail("Invalid date range");
-        console.error(
-          chalk.red(
-            "Valid ranges: today, tomorrow, this-week, next-week, this-month, next-month"
-          )
-        );
-        process.exit(1);
+        throw new ArgumentError("Invalid date range", "Valid ranges: today, tomorrow, this-week, next-week, this-month, next-month");
       }
     }
 
@@ -403,10 +361,9 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
         }
       });
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch events");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -460,10 +417,9 @@ async function listCalendars(calendarService: CalendarService, args: string[]) {
         }
       });
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch calendars");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -507,10 +463,9 @@ async function getEvent(calendarService: CalendarService, calendarId: string, ev
     if (event.htmlLink) {
       console.log(`\n${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch event details");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -549,11 +504,7 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
     }
 
     if (!options.title || !options.start) {
-      spinner.fail("Missing required options");
-      console.error(
-        chalk.red("Required: --title <title> --start <datetime>")
-      );
-      process.exit(1);
+      throw new ArgumentError("Missing required options", "Required: --title <title> --start <datetime>");
     }
 
     let startTime;
@@ -619,10 +570,9 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
     if (event.htmlLink) {
       console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -680,10 +630,9 @@ async function updateEvent(
     console.log(chalk.green(`\nEvent updated:`));
     console.log(`${chalk.cyan("Title:")} ${event.summary}`);
     console.log(`${chalk.cyan("ID:")} ${event.id}`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -696,10 +645,7 @@ async function deleteEvent(
   const confirm = args.includes("--confirm");
 
   if (!confirm) {
-    console.log(
-      chalk.yellow("Please use --confirm flag to confirm this operation")
-    );
-    process.exit(1);
+    throw new ArgumentError("Please use --confirm flag to confirm this operation", "gwork cal delete <calendarId> <eventId> --confirm");
   }
 
   const spinner = ora("Deleting event...").start();
@@ -707,10 +653,9 @@ async function deleteEvent(
     await calendarService.deleteEvent(calendarId, eventId);
     spinner.succeed("Event deleted successfully");
     console.log(chalk.green("Event has been deleted"));
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to delete event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -792,10 +737,9 @@ async function searchEvents(calendarService: CalendarService, query: string, ext
         console.log(`   ${chalk.gray("Location:")} ${event.location}`);
       }
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Search failed");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -843,10 +787,9 @@ async function getFreeBusy(calendarService: CalendarService, start: string, end:
         console.log(chalk.green("Free during this time"));
       }
     });
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to fetch free/busy information");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -865,10 +808,9 @@ async function createCalendar(calendarService: CalendarService, title: string) {
     console.log(`${chalk.cyan("Title:")} ${calendar.summary ?? "Unknown"}`);
     console.log(`${chalk.cyan("ID:")} ${calendar.id ?? "Unknown"}`);
     console.log(`${chalk.cyan("Timezone:")} ${calendar.timeZone ?? "Unknown"}`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create calendar");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -980,11 +922,9 @@ async function getStats(calendarService: CalendarService, args: string[]) {
         );
       });
     }
-
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to analyze calendar");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1062,10 +1002,9 @@ async function duplicateEvent(calendarService: CalendarService, calendarId: stri
     if (newEvent.htmlLink) {
       console.log(`${chalk.cyan("Link:")} ${newEvent.htmlLink}`);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to duplicate event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1093,11 +1032,7 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
     }
 
     if (!action || !value) {
-      spinner.fail("Missing action");
-      console.error(
-        chalk.red("Usage: gwork cal quick --meeting <title> | --reminder <title> | --block <hours>")
-      );
-      process.exit(1);
+      throw new ArgumentError("Missing action", "Usage: gwork cal quick --meeting <title> | --reminder <title> | --block <hours>");
     }
 
     const now = new Date();
@@ -1123,9 +1058,7 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
     } else if (action === "block") {
       const hours = parseFloat(value);
       if (isNaN(hours)) {
-        spinner.fail("Invalid hours");
-        console.error(chalk.red("Hours must be a number"));
-        process.exit(1);
+        throw new ArgumentError("Invalid hours", "Hours must be a number");
       }
       const end = new Date(now.getTime() + hours * 60 * 60 * 1000);
       eventData = {
@@ -1144,10 +1077,9 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
     if (event.htmlLink) {
       console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create quick event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1240,9 +1172,7 @@ async function exportEvents(calendarService: CalendarService, calendarId: string
 
       output += "END:VCALENDAR\n";
     } else {
-      spinner.fail("Invalid format");
-      console.error(chalk.red("Valid formats: json, csv, ical"));
-      process.exit(1);
+      throw new ArgumentError("Invalid format", "Valid formats: json, csv, ical");
     }
 
     if (options.output) {
@@ -1253,10 +1183,9 @@ async function exportEvents(calendarService: CalendarService, calendarId: string
       spinner.succeed(`Exported ${events.length} event(s)`);
       console.log(output);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to export events");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1269,12 +1198,7 @@ async function manageReminders(
   const spinner = ora("Managing reminders...").start();
   try {
     if (args.length === 0) {
-      spinner.fail("Missing action");
-      console.error(
-        chalk.red("Usage: gwork cal reminders <calendarId> <eventId> <action> [options]")
-      );
-      console.error("Actions: list, add, remove, clear, default");
-      process.exit(1);
+      throw new ArgumentError("Missing action", "Usage: gwork cal reminders <calendarId> <eventId> <action> [options]\nActions: list, add, remove, clear, default");
     }
 
     const action = args[0];
@@ -1336,15 +1260,12 @@ async function manageReminders(
       }
 
       if (index < 0) {
-        spinner.fail("Invalid index");
-        console.error(chalk.red("Please specify --index <number>"));
-        process.exit(1);
+        throw new ArgumentError("Invalid index", "Please specify --index <number>");
       }
 
       const reminders = event.reminders?.overrides || [];
       if (index >= reminders.length) {
-        spinner.fail("Index out of range");
-        process.exit(1);
+        throw new ArgumentError("Index out of range", "Please specify a valid index");
       }
 
       reminders.splice(index, 1);
@@ -1376,14 +1297,11 @@ async function manageReminders(
       });
       spinner.succeed("Using default reminders");
     } else {
-      spinner.fail("Invalid action");
-      console.error(chalk.red("Valid actions: list, add, remove, clear, default"));
-      process.exit(1);
+      throw new ArgumentError("Invalid action", "Valid actions: list, add, remove, clear, default");
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to manage reminders");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1414,9 +1332,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
     }
 
     if (isEmpty(updates)) {
-      spinner.fail("No updates specified");
-      console.error(chalk.red("Please specify at least one field to update"));
-      process.exit(1);
+      throw new ArgumentError("No updates specified", "Please specify at least one field to update");
     }
 
     const timeMin = new Date();
@@ -1466,7 +1382,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
       if (events.length > 10) {
         console.log(chalk.gray(`\n... and ${events.length - 10} more events`));
       }
-      process.exit(0);
+      return;
     }
 
     let updated = 0;
@@ -1494,10 +1410,9 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
     }
 
     spinner.succeed(`Updated ${updated} event(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to bulk update events");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1534,15 +1449,11 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
       const fileContent = fs.readFileSync(options.file, "utf8");
       eventsData = JSON.parse(fileContent);
     } else {
-      spinner.fail("No input specified");
-      console.error(chalk.red("Please specify --file <path> or --stdin"));
-      process.exit(1);
+      throw new ArgumentError("No input specified", "Please specify --file <path> or --stdin");
     }
 
     if (!Array.isArray(eventsData)) {
-      spinner.fail("Invalid input format");
-      console.error(chalk.red("Input must be a JSON array of event objects"));
-      process.exit(1);
+      throw new ArgumentError("Invalid input format", "Input must be a JSON array of event objects");
     }
 
     if (options.template) {
@@ -1594,7 +1505,7 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
       if (eventsData.length > 10) {
         console.log(chalk.gray(`\n... and ${eventsData.length - 10} more events`));
       }
-      process.exit(0);
+      return;
     }
 
     let created = 0;
@@ -1609,10 +1520,9 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
     }
 
     spinner.succeed(`Created ${created} event(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to batch create events");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1687,10 +1597,9 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
     if (!hasConflicts) {
       console.log(chalk.green("\n✓ No conflicts found - time slot is available"));
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to check conflicts");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1823,10 +1732,9 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
         }
       }
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to compare calendars");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1855,17 +1763,13 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
     }
 
     if (isEmpty(updates)) {
-      spinner.fail("No updates specified");
-      console.error(chalk.red("Please specify at least one field to update"));
-      process.exit(1);
+      throw new ArgumentError("No updates specified", "Please specify at least one field to update");
     }
 
     const originalEvent = await calendarService.getEvent(calendarId, eventId);
 
     if (!originalEvent.recurrence || originalEvent.recurrence.length === 0) {
-      spinner.fail("Event is not recurring");
-      console.error(chalk.red("This event does not have recurrence rules"));
-      process.exit(1);
+      throw new ArgumentError("Event is not recurring", "This event does not have recurrence rules");
     }
 
     // Find all instances
@@ -1902,7 +1806,7 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
       if (recurringInstances.length > 10) {
         console.log(chalk.gray(`\n... and ${recurringInstances.length - 10} more instances`));
       }
-      process.exit(0);
+      return;
     }
 
     let updated = 0;
@@ -1919,10 +1823,9 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
     }
 
     spinner.succeed(`Updated ${updated} instance(s)`);
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to update recurring event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -1951,29 +1854,23 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
         const nameStr = typeof name === "string" ? name : String(name);
         console.log(`  ${id.toString().padStart(2)}. ${startCase(nameStr)}`);
       });
-      process.exit(0);
+      return;
     }
 
     if (args.length < 3) {
-      spinner.fail("Missing parameters");
-      console.error(chalk.red("Usage: gwork cal color set <calendarId> <eventId> <colorId>"));
-      process.exit(1);
+      throw new ArgumentError("Missing parameters", "Usage: gwork cal color set <calendarId> <eventId> <colorId>");
     }
 
     if (args[0] === "set") {
       if (!args[1] || !args[2] || !args[3]) {
-        spinner.fail("Missing parameters");
-        console.error(chalk.red("Usage: gwork cal color set <calendarId> <eventId> <colorId>"));
-        process.exit(1);
+        throw new ArgumentError("Missing parameters", "Usage: gwork cal color set <calendarId> <eventId> <colorId>");
       }
       const calendarId = args[1];
       const eventId = args[2];
       const colorId = parseInt(args[3]);
 
       if (isNaN(colorId) || colorId < 1 || colorId > 11) {
-        spinner.fail("Invalid color ID");
-        console.error(chalk.red("Color ID must be between 1 and 11"));
-        process.exit(1);
+        throw new ArgumentError("Invalid color ID", "Color ID must be between 1 and 11");
       }
 
       const event = await calendarService.getEvent(calendarId, eventId);
@@ -1986,15 +1883,12 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
       console.log(
         chalk.green(`Event color set to: ${startCase(colorMap[colorId] ?? "Unknown")} (${colorId})`)
       );
-      process.exit(0);
     } else {
-      spinner.fail("Invalid action");
-      console.error(chalk.red("Valid actions: list, set"));
-      process.exit(1);
+      throw new ArgumentError("Invalid action", "Valid actions: list, set");
     }
   } catch (error: unknown) {
     spinner.fail("Failed to manage color");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -2006,16 +1900,14 @@ async function workWithRecurrence(args: string[]) {
       console.log("─".repeat(80));
       console.log("Parse RRULE: gwork cal recurrence parse <rrule>");
       console.log("Show occurrences: gwork cal recurrence occurrences <rrule> [--count N]");
-      process.exit(0);
+      return;
     }
 
     const action = args[0];
 
     if (action === "parse") {
       if (args.length < 2 || !args[1]) {
-        spinner.fail("Missing RRULE");
-        console.error(chalk.red("Usage: gwork cal recurrence parse <rrule>"));
-        process.exit(1);
+        throw new ArgumentError("Missing RRULE", "Usage: gwork cal recurrence parse <rrule>");
       }
 
       const { RRule } = await import("rrule");
@@ -2026,9 +1918,7 @@ async function workWithRecurrence(args: string[]) {
       console.log(chalk.gray(`RRULE: ${args[1]}`));
     } else if (action === "occurrences") {
       if (args.length < 2) {
-        spinner.fail("Missing RRULE");
-        console.error(chalk.red("Usage: gwork cal recurrence occurrences <rrule> [--count N]"));
-        process.exit(1);
+        throw new ArgumentError("Missing RRULE", "Usage: gwork cal recurrence occurrences <rrule> [--count N]");
       }
 
       let count = 10;
@@ -2044,8 +1934,7 @@ async function workWithRecurrence(args: string[]) {
       const { RRule } = await import("rrule");
       const rruleString = args[1];
       if (!rruleString) {
-        spinner.fail("Missing RRULE");
-        process.exit(1);
+        throw new ArgumentError("Missing RRULE", "Usage: gwork cal recurrence occurrences <rrule> [--count N]");
       }
       const rrule = RRule.fromString(rruleString);
       const occurrences = rrule.all().slice(0, count);
@@ -2056,14 +1945,11 @@ async function workWithRecurrence(args: string[]) {
         console.log(`  ${index + 1}. ${date.toLocaleString()}`);
       });
     } else {
-      spinner.fail("Invalid action");
-      console.error(chalk.red("Valid actions: parse, occurrences"));
-      process.exit(1);
+      throw new ArgumentError("Invalid action", "Valid actions: parse, occurrences");
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to work with recurrence");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -2097,9 +1983,7 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
     }
 
     if (!options.title || !options.start) {
-      spinner.fail("Missing required options");
-      console.error(chalk.red("Required: --title <title> --start <datetime>"));
-      process.exit(1);
+      throw new ArgumentError("Missing required options", "Required: --title <title> --start <datetime>");
     }
 
     const { RRule } = await import("rrule");
@@ -2118,10 +2002,8 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
       const normalizedFreq = options.frequency.toLowerCase();
       const freq = freqMap[normalizedFreq];
       if (!freq) {
-        spinner.fail("Invalid frequency");
         const validFrequencies = Object.keys(freqMap).map(f => startCase(f)).join(", ");
-        console.error(chalk.red(`Valid frequencies: ${validFrequencies}`));
-        process.exit(1);
+        throw new ArgumentError("Invalid frequency", `Valid frequencies: ${validFrequencies}`);
       }
 
       const rrule = new RRule({
@@ -2132,9 +2014,7 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
       });
       rruleString = rrule.toString();
     } else {
-      spinner.fail("Missing recurrence rule");
-      console.error(chalk.red("Please specify --rrule or --frequency"));
-      process.exit(1);
+      throw new ArgumentError("Missing recurrence rule", "Please specify --rrule or --frequency");
     }
 
     const startTime = new Date(options.start);
@@ -2167,10 +2047,9 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
     if (event.htmlLink) {
       console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to create recurring event");
-    handleServiceError(error);
+    throw error;
   }
 }
 
@@ -2182,14 +2061,13 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
     if (!event.recurrence || event.recurrence.length === 0) {
       spinner.succeed("Event is not recurring");
       console.log(chalk.yellow("This event does not have recurrence rules"));
-      process.exit(0);
+      return;
     }
 
     const rruleString = event.recurrence.find((r: string) => r.startsWith("RRULE:"))?.substring(6) || event.recurrence[0];
     
     if (!rruleString) {
-      spinner.fail("No recurrence rule found");
-      process.exit(1);
+      throw new ArgumentError("No recurrence rule found", "This event has no valid RRULE");
     }
 
     const { RRule } = await import("rrule");
@@ -2213,109 +2091,96 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
         console.log(`  ${index + 1}. ${date.toLocaleString()} (${relative})`);
       });
     }
-    process.exit(0);
   } catch (error: unknown) {
     spinner.fail("Failed to get recurrence info");
-    handleServiceError(error);
+    throw error;
   }
 }
 
 async function dateUtilities(args: string[]) {
-  try {
-    if (args.length === 0 || args[0] === "help") {
-      console.log(chalk.bold("\nDate Utilities:"));
-      console.log("─".repeat(80));
-      console.log("Format: gwork cal date format <date> [--format <format>]");
-      console.log("Parse: gwork cal date parse <dateString>");
-      console.log("Add: gwork cal date add <date> <amount> <unit>");
-      console.log("Diff: gwork cal date diff <date1> <date2>");
-      process.exit(0);
+  if (args.length === 0 || args[0] === "help") {
+    console.log(chalk.bold("\nDate Utilities:"));
+    console.log("─".repeat(80));
+    console.log("Format: gwork cal date format <date> [--format <format>]");
+    console.log("Parse: gwork cal date parse <dateString>");
+    console.log("Add: gwork cal date add <date> <amount> <unit>");
+    console.log("Diff: gwork cal date diff <date1> <date2>");
+    return;
+  }
+
+  const action = args[0];
+  const { format: formatDate, addDays, addWeeks, addMonths, differenceInDays, differenceInHours, formatDistance } = await import("date-fns");
+
+  if (action === "format") {
+    if (args.length < 2) {
+      throw new ArgumentError("Missing date argument", "Usage: gwork cal date format <date> [--format <format>]");
     }
 
-    const action = args[0];
-    const { format: formatDate, addDays, addWeeks, addMonths, differenceInDays, differenceInHours, formatDistance } = await import("date-fns");
+    if (!args[1]) {
+      throw new ArgumentError("Missing date argument", "Usage: gwork cal date format <date> [--format <format>]");
+    }
 
-    if (action === "format") {
-      if (args.length < 2) {
-        console.error(chalk.red("Usage: gwork cal date format <date> [--format <format>]"));
-        process.exit(1);
+    const date = new Date(args[1]);
+    let formatStr = "iso";
+
+    for (let i = 2; i < args.length; i++) {
+      const arg = args[i];
+      if (!arg) continue;
+      if (arg === "--format") {
+        const value = args[++i];
+        if (value) formatStr = value;
       }
+    }
 
-      if (!args[1]) {
-        console.error(chalk.red("Usage: gwork cal date format <date> [--format <format>]"));
-        process.exit(1);
-      }
-      
-      const date = new Date(args[1]);
-      let formatStr = "iso";
+    const formatMap: any = {
+      iso: date.toISOString(),
+      unix: Math.floor(date.getTime() / 1000).toString(),
+      natural: formatDate(date, "MMMM d, yyyy 'at' h:mm a"),
+      relative: formatDistance(date, new Date(), { addSuffix: true }),
+    };
 
-      for (let i = 2; i < args.length; i++) {
-        const arg = args[i];
-        if (!arg) continue;
-        if (arg === "--format") {
-          const value = args[++i];
-          if (value) formatStr = value;
-        }
-      }
+    console.log(formatMap[formatStr] || date.toISOString());
+  } else if (action === "parse") {
+    if (args.length < 2 || !args[1]) {
+      throw new ArgumentError("Missing date argument", "Usage: gwork cal date parse <dateString>");
+    }
 
-      const formatMap: any = {
-        iso: date.toISOString(),
-        unix: Math.floor(date.getTime() / 1000).toString(),
-        natural: formatDate(date, "MMMM d, yyyy 'at' h:mm a"),
-        relative: formatDistance(date, new Date(), { addSuffix: true }),
-      };
+    const date = new Date(args[1]);
+    console.log(`Parsed: ${date.toISOString()}`);
+    console.log(`Formatted: ${formatDate(date, "MMMM d, yyyy 'at' h:mm a")}`);
+  } else if (action === "add") {
+    if (args.length < 4 || !args[1] || !args[2] || !args[3]) {
+      throw new ArgumentError("Missing arguments", "Usage: gwork cal date add <date> <amount> <unit>");
+    }
 
-      console.log(formatMap[formatStr] || date.toISOString());
-    } else if (action === "parse") {
-      if (args.length < 2 || !args[1]) {
-        console.error(chalk.red("Usage: gwork cal date parse <dateString>"));
-        process.exit(1);
-      }
+    let date = new Date(args[1]);
+    const amount = parseInt(args[2]);
+    const unit = args[3].toLowerCase();
 
-      const date = new Date(args[1]);
-      console.log(`Parsed: ${date.toISOString()}`);
-      console.log(`Formatted: ${formatDate(date, "MMMM d, yyyy 'at' h:mm a")}`);
-    } else if (action === "add") {
-      if (args.length < 4 || !args[1] || !args[2] || !args[3]) {
-        console.error(chalk.red("Usage: gwork cal date add <date> <amount> <unit>"));
-        process.exit(1);
-      }
-
-      let date = new Date(args[1]);
-      const amount = parseInt(args[2]);
-      const unit = args[3].toLowerCase();
-
-      if (unit === "days" || unit === "day") {
-        date = addDays(date, amount);
-      } else if (unit === "weeks" || unit === "week") {
-        date = addWeeks(date, amount);
-      } else if (unit === "months" || unit === "month") {
-        date = addMonths(date, amount);
-      } else {
-        console.error(chalk.red("Invalid unit. Use: days, weeks, months"));
-        process.exit(1);
-      }
-
-      console.log(date.toISOString());
-    } else if (action === "diff") {
-      if (args.length < 3 || !args[1] || !args[2]) {
-        console.error(chalk.red("Usage: gwork cal date diff <date1> <date2>"));
-        process.exit(1);
-      }
-
-      const date1 = new Date(args[1]);
-      const date2 = new Date(args[2]);
-      const days = differenceInDays(date2, date1);
-      const hours = differenceInHours(date2, date1);
-
-      console.log(`Difference: ${days} days (${hours} hours)`);
-      console.log(`Relative: ${formatDistance(date2, date1)}`);
+    if (unit === "days" || unit === "day") {
+      date = addDays(date, amount);
+    } else if (unit === "weeks" || unit === "week") {
+      date = addWeeks(date, amount);
+    } else if (unit === "months" || unit === "month") {
+      date = addMonths(date, amount);
     } else {
-      console.error(chalk.red("Invalid action. Use: format, parse, add, diff"));
-      process.exit(1);
+      throw new ArgumentError("Invalid unit", "Use: days, weeks, months");
     }
-    process.exit(0);
-  } catch (error: unknown) {
-    handleServiceError(error);
+
+    console.log(date.toISOString());
+  } else if (action === "diff") {
+    if (args.length < 3 || !args[1] || !args[2]) {
+      throw new ArgumentError("Missing arguments", "Usage: gwork cal date diff <date1> <date2>");
+    }
+
+    const date1 = new Date(args[1]);
+    const date2 = new Date(args[2]);
+    const days = differenceInDays(date2, date1);
+    const hours = differenceInHours(date2, date1);
+
+    console.log(`Difference: ${days} days (${hours} hours)`);
+    console.log(`Relative: ${formatDistance(date2, date1)}`);
+  } else {
+    throw new ArgumentError("Invalid action", "Use: format, parse, add, diff");
   }
 }

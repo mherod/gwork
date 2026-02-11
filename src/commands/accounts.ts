@@ -50,11 +50,8 @@ export async function handleAccountsCommand(args: string[]) {
 
     // Clean up
     tokenStore.close();
-    process.exit(0);
-
   } catch (error: any) {
     spinner.fail("Failed to list accounts");
-    console.error(chalk.red("Error:"), error.message);
-    process.exit(1);
+    throw error;
   }
 }
