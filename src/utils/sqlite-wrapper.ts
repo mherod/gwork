@@ -7,9 +7,26 @@
 const isBun = typeof Bun !== "undefined";
 
 // Import appropriate SQLite module
-const SQLiteModule = isBun
-  ? await import("bun:sqlite")
-  : await import("better-sqlite3");
+let SQLiteModule: any;
+
+if (isBun) {
+  SQLiteModule = await import("bun:sqlite");
+} else {
+  try {
+    SQLiteModule = await import("better-sqlite3");
+  } catch (error) {
+    const errorMsg = (error as any)?.message || String(error);
+    if (errorMsg.includes("ERR_MODULE_NOT_FOUND") || errorMsg.includes("better-sqlite3")) {
+      console.error(
+        "\n❌ Error: better-sqlite3 is not installed.\n" +
+          "To fix this, run: npm install better-sqlite3\n" +
+          "Or reinstall gwork: npm install -g gwork\n"
+      );
+      process.exit(1);
+    }
+    throw error;
+  }
+}
 
 export interface Statement {
   run(params?: Record<string, any>): { changes: number; lastInsertRowid?: number };
@@ -27,7 +44,7 @@ export class Database {
 
     if (this.isBunRuntime) {
       // Bun's Database constructor
-      const DatabaseClass = (SQLiteModule as any).default || SQLiteModule;
+      const DatabaseClass = SQLiteModule.default || SQLiteModule;
       this.db = new DatabaseClass(filename);
     } else {
       // better-sqlite3 constructor
