@@ -87,10 +87,32 @@ describe("formatEventDate", () => {
     });
 
     test("formats event this week with day abbreviation and time", () => {
-      // Get a date 2 days from now (still this week)
-      const futureInWeek = new Date(Date.now() + 86400000 * 2);
-      const futureStr = futureInWeek.toISOString();
-      const result = formatEventDate(futureStr, false);
+      // Find a date within this week that is not today or tomorrow
+      const weekStart = startOfWeek(new Date());
+      const weekEnd = endOfWeek(new Date());
+      const today = startOfDay(new Date());
+      const tomorrow = addDays(today, 1);
+
+      // Try each day of the week until we find one that's in this week but not today/tomorrow
+      let target: Date | null = null;
+      for (let d = new Date(weekStart); d <= weekEnd; d = addDays(d, 1)) {
+        const candidate = new Date(d);
+        candidate.setHours(14, 30, 0, 0);
+        const isToday = candidate.toDateString() === today.toDateString();
+        const isTomorrow = candidate.toDateString() === tomorrow.toDateString();
+        if (!isToday && !isTomorrow) {
+          target = candidate;
+          break;
+        }
+      }
+
+      if (!target) {
+        // Edge case: this week only has today and tomorrow (e.g. Saturday/Sunday week)
+        // Skip the test — cannot reliably test this scenario
+        return;
+      }
+
+      const result = formatEventDate(target.toISOString(), false);
 
       // Should have day abbreviation (Mon, Tue, Wed, etc.) and time
       expect(result).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2}/); // "Wed 2:30 PM"
