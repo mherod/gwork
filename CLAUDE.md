@@ -164,19 +164,26 @@ pnpm publish --dry-run
 pnpm publish --otp=<code>
 ```
 
-### Transitive Vulnerability Fixes
+### Transitive Dependency Fixes (Vulnerabilities & Deprecations)
 
-When a direct dependency cannot be updated (e.g. already at latest), use `pnpm.overrides` in `package.json` to force a safe version of the vulnerable transitive dep:
+Use `pnpm.overrides` in `package.json` to force a safe/newer version of any transitive dep — both for security vulnerabilities and deprecation warnings:
 
 ```json
 "pnpm": {
   "overrides": {
-    "minimatch": ">=10.2.1"
+    "minimatch": ">=10.2.1",
+    "glob": ">=13.0.6",
+    "rimraf": ">=6.1.3",
+    "node-domexception": ">=2.0.2"
   }
 }
 ```
 
-After adding an override, run `pnpm install` to regenerate `pnpm-lock.yaml`, then `pnpm audit --prod` to confirm the vulnerability is resolved. Commit both files together.
+After adding an override, run `pnpm install` to regenerate `pnpm-lock.yaml`, then `pnpm audit --prod` to confirm vulnerabilities are resolved. Commit both files together.
+
+**DON'T** add a package to `peerDependencies` if it's already in `devDependencies` — this produces a spurious `pnpm link --global` warning about unresolved peers. `typescript` belongs only in `devDependencies`.
+
+**Known unresolvable deprecation warnings**: `node-domexception` (entire package retired upstream — even v2.0.2 is flagged deprecated; no replacement exists) and `prebuild-install@7.1.3` (from `better-sqlite3`, already at latest). These cannot be eliminated via overrides — ignore them if they reappear.
 
 ### Build Timestamp Injection
 
