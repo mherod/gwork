@@ -117,8 +117,11 @@ export class Database {
     return {
       run: (params?: Record<string, any>) => {
         const normalizedParams = this.normalizeBunParams(params);
-        bunStmt.run(normalizedParams);
-        return { changes: 0 }; // Bun doesn't return changes in the same way
+        const result = bunStmt.run(normalizedParams);
+        return {
+          changes: result?.changes ?? 0,
+          lastInsertRowid: result?.lastInsertRowid,
+        };
       },
       get: (params?: Record<string, any>) => {
         const normalizedParams = this.normalizeBunParams(params);
