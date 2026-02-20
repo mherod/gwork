@@ -1,6 +1,6 @@
 # gwork
 
-Swiss Army knife for Google Workspace - A CLI tool for Gmail, Google Calendar, Contacts, and more.
+Swiss Army knife for Google Workspace - A CLI tool for Gmail, Google Calendar, Contacts, and Google Drive.
 
 ## Installation
 
@@ -37,6 +37,7 @@ gwork --help
 gwork mail --help
 gwork cal --help
 gwork contacts --help
+gwork drive --help
 ```
 
 ### Native binding (pnpm / Node 25+)
@@ -64,15 +65,22 @@ Commands:
   mail           Gmail operations
   cal            Google Calendar operations
   contacts       Google Contacts operations
+  drive          Google Drive operations
+  accounts       List configured Google accounts
 
 Options:
-  -h, --help     Show help message
-  -v, --version  Show version
+  -h, --help              Show help message
+  -v, --version           Show version
+  --account <email>       Use a specific Google account (default: "default")
+  --verbose               Enable verbose output
+  --quiet                 Suppress non-essential output
 
 Examples:
   gwork mail --help
   gwork cal --help
   gwork contacts --help
+  gwork drive --help
+  gwork cal list --account work@example.com
 ```
 
 ## Setup
@@ -83,10 +91,10 @@ To use calendar, Gmail, and Contacts features, you need OAuth2 credentials from 
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Enable the **Google Calendar API**, **Gmail API**, and **People API**
+3. Enable the **Google Calendar API**, **Gmail API**, **People API**, and **Google Drive API**
 4. Create OAuth2 credentials (Desktop app type)
 5. Download credentials and save as `~/.credentials.json`
-6. Run any `gwork cal`, `gwork mail`, or `gwork contacts` command to authenticate
+6. Run any `gwork cal`, `gwork mail`, `gwork contacts`, or `gwork drive` command to authenticate
 
 **On first run**, the CLI will display a friendly setup guide if credentials are missing, walking you through the process step-by-step.
 
@@ -161,6 +169,14 @@ gwork mail archive-many <id1> <id2> <id3>     # Archive multiple
 ```bash
 gwork mail attachments <messageId>                    # List attachments
 gwork mail download <messageId> <attachmentId> output.pdf  # Download
+```
+
+**Send Email:**
+```bash
+gwork mail send --to alice@example.com --subject "Hello" --body "Hi there"
+gwork mail send --to alice@example.com --subject "Report" --body-file report.html --html
+gwork mail send --to alice@example.com --subject "Files" --attach report.pdf --attach data.csv
+gwork mail send --to alice@example.com --reply-to <messageId> --body "Thanks!"
 ```
 
 **Label Management:**
@@ -352,6 +368,46 @@ gwork contacts detect-marketing               # Find marketing contacts
 gwork contacts detect-marketing --threshold 50 # Stricter threshold
 gwork contacts detect-marketing --delete --dry-run  # Preview deletion
 gwork contacts detect-marketing --delete --confirm  # Remove marketing contacts
+```
+
+### Drive (Google Drive) - 10 Commands
+
+**List & Search:**
+```bash
+gwork drive list                             # List recent files
+gwork drive list --max-results 25            # List 25 files
+gwork drive list --folder <folderId>         # List files in a folder
+gwork drive search "quarterly report"        # Search files by name
+gwork drive get <fileId>                     # Get file metadata
+```
+
+**File Operations:**
+```bash
+gwork drive download <fileId>                        # Download to current directory
+gwork drive download <fileId> --output ./report.pdf  # Download to specific path
+gwork drive upload ./report.pdf                      # Upload a file
+gwork drive upload ./report.pdf --name "Q4 Report"   # Upload with custom name
+gwork drive upload ./report.pdf --folder <folderId>  # Upload to a folder
+gwork drive delete <fileId> --confirm                # Delete a file
+```
+
+**Folders & Organization:**
+```bash
+gwork drive mkdir "Projects"                     # Create a folder
+gwork drive mkdir "Docs" --folder <parentId>     # Create nested folder
+gwork drive move <fileId> <folderId>             # Move file to folder
+```
+
+**Sharing & Storage:**
+```bash
+gwork drive share <fileId>                   # View sharing permissions
+gwork drive stats                            # Show Drive storage usage
+```
+
+### Accounts
+
+```bash
+gwork accounts                               # List configured Google accounts
 ```
 
 ## Publishing
