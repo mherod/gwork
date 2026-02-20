@@ -631,9 +631,9 @@ async function updateEvent(
     );
     spinner.succeed("Event updated successfully");
 
-    console.log(chalk.green(`\nEvent updated:`));
-    console.log(`${chalk.cyan("Title:")} ${event.summary}`);
-    console.log(`${chalk.cyan("ID:")} ${event.id}`);
+    logger.info(chalk.green(`\nEvent updated:`));
+    logger.info(`${chalk.cyan("Title:")} ${event.summary}`);
+    logger.info(`${chalk.cyan("ID:")} ${event.id}`);
   } catch (error: unknown) {
     spinner.fail("Failed to update event");
     throw error;
@@ -656,7 +656,7 @@ async function deleteEvent(
   try {
     await calendarService.deleteEvent(calendarId, eventId);
     spinner.succeed("Event deleted successfully");
-    console.log(chalk.green("Event has been deleted"));
+    logger.info(chalk.green("Event has been deleted"));
   } catch (error: unknown) {
     spinner.fail("Failed to delete event");
     throw error;
@@ -809,10 +809,10 @@ async function createCalendar(calendarService: CalendarService, title: string) {
     const calendar = await calendarService.createCalendar(calendarData);
     spinner.succeed("Calendar created successfully");
 
-    console.log(chalk.green(`\nCalendar created:`));
-    console.log(`${chalk.cyan("Title:")} ${calendar.summary ?? "Unknown"}`);
-    console.log(`${chalk.cyan("ID:")} ${calendar.id ?? "Unknown"}`);
-    console.log(`${chalk.cyan("Timezone:")} ${calendar.timeZone ?? "Unknown"}`);
+    logger.info(chalk.green(`\nCalendar created:`));
+    logger.info(`${chalk.cyan("Title:")} ${calendar.summary ?? "Unknown"}`);
+    logger.info(`${chalk.cyan("ID:")} ${calendar.id ?? "Unknown"}`);
+    logger.info(`${chalk.cyan("Timezone:")} ${calendar.timeZone ?? "Unknown"}`);
   } catch (error: unknown) {
     spinner.fail("Failed to create calendar");
     throw error;
@@ -1934,10 +1934,10 @@ async function workWithRecurrence(args: string[]) {
   const spinner = ora("Working with recurrence...").start();
   try {
     if (args.length === 0 || args[0] === "help") {
-      console.log(chalk.bold("\nRecurrence Utilities:"));
-      console.log("─".repeat(80));
-      console.log("Parse RRULE: gwork cal recurrence parse <rrule>");
-      console.log("Show occurrences: gwork cal recurrence occurrences <rrule> [--count N]");
+      logger.info(chalk.bold("\nRecurrence Utilities:"));
+      logger.info("─".repeat(80));
+      logger.info("Parse RRULE: gwork cal recurrence parse <rrule>");
+      logger.info("Show occurrences: gwork cal recurrence occurrences <rrule> [--count N]");
       return;
     }
 
@@ -2121,7 +2121,7 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
 
     if (!event.recurrence || event.recurrence.length === 0) {
       spinner.succeed("Event is not recurring");
-      console.log(chalk.yellow("This event does not have recurrence rules"));
+      logger.info(chalk.yellow("This event does not have recurrence rules"));
       return;
     }
 
@@ -2160,12 +2160,12 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
 
 async function dateUtilities(args: string[]) {
   if (args.length === 0 || args[0] === "help") {
-    console.log(chalk.bold("\nDate Utilities:"));
-    console.log("─".repeat(80));
-    console.log("Format: gwork cal date format <date> [--format <format>]");
-    console.log("Parse: gwork cal date parse <dateString>");
-    console.log("Add: gwork cal date add <date> <amount> <unit>");
-    console.log("Diff: gwork cal date diff <date1> <date2>");
+    logger.info(chalk.bold("\nDate Utilities:"));
+    logger.info("─".repeat(80));
+    logger.info("Format: gwork cal date format <date> [--format <format>]");
+    logger.info("Parse: gwork cal date parse <dateString>");
+    logger.info("Add: gwork cal date add <date> <amount> <unit>");
+    logger.info("Diff: gwork cal date diff <date1> <date2>");
     return;
   }
 
@@ -2200,15 +2200,15 @@ async function dateUtilities(args: string[]) {
       relative: formatDistance(date, new Date(), { addSuffix: true }),
     };
 
-    console.log(formatMap[formatStr] || date.toISOString());
+    logger.info(formatMap[formatStr] || date.toISOString());
   } else if (action === "parse") {
     if (args.length < 2 || !args[1]) {
       throw new ArgumentError("Missing date argument", "Usage: gwork cal date parse <dateString>");
     }
 
     const date = new Date(args[1]);
-    console.log(`Parsed: ${date.toISOString()}`);
-    console.log(`Formatted: ${formatDate(date, "MMMM d, yyyy 'at' h:mm a")}`);
+    logger.info(`Parsed: ${date.toISOString()}`);
+    logger.info(`Formatted: ${formatDate(date, "MMMM d, yyyy 'at' h:mm a")}`);
   } else if (action === "add") {
     if (args.length < 4 || !args[1] || !args[2] || !args[3]) {
       throw new ArgumentError("Missing arguments", "Usage: gwork cal date add <date> <amount> <unit>");
@@ -2228,7 +2228,7 @@ async function dateUtilities(args: string[]) {
       throw new ArgumentError("Invalid unit", "Use: days, weeks, months");
     }
 
-    console.log(date.toISOString());
+    logger.info(date.toISOString());
   } else if (action === "diff") {
     if (args.length < 3 || !args[1] || !args[2]) {
       throw new ArgumentError("Missing arguments", "Usage: gwork cal date diff <date1> <date2>");
@@ -2239,8 +2239,8 @@ async function dateUtilities(args: string[]) {
     const days = differenceInDays(date2, date1);
     const hours = differenceInHours(date2, date1);
 
-    console.log(`Difference: ${days} days (${hours} hours)`);
-    console.log(`Relative: ${formatDistance(date2, date1)}`);
+    logger.info(`Difference: ${days} days (${hours} hours)`);
+    logger.info(`Relative: ${formatDistance(date2, date1)}`);
   } else {
     throw new ArgumentError("Invalid action", "Use: format, parse, add, diff");
   }
