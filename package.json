@@ -67,6 +67,11 @@
   "peerDependencies": {
     "typescript": "^5"
   },
+  "pnpm": {
+    "overrides": {
+      "minimatch": ">=10.2.1"
+    }
+  },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
     "better-sqlite3": "^12.5.0",
