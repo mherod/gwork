@@ -22,7 +22,10 @@
  */
 
 import { google } from "googleapis";
-import { authenticate } from "@google-cloud/local-auth";
+import { type Credentials } from "google-auth-library";
+import * as http from "http";
+import { URL } from "url";
+import open from "open";
 import type { AuthClient } from "../types/google-apis.ts";
 import type { TokenStore } from "./token-store.ts";
 import type { Logger } from "../utils/logger.ts";
@@ -394,7 +397,13 @@ export class AuthManager {
 
   /**
    * Authenticates user and saves token to TokenStore.
-   * 
+   *
+   * Uses a custom OAuth2 flow with `prompt: 'consent'` to ensure Google always
+   * shows the full consent screen and grants all requested scopes — even when
+   * the user previously authorized a subset of scopes. Without `prompt: 'consent'`,
+   * Google silently returns a token covering only previously-granted scopes, which
+   * causes a re-auth loop: the token is saved as valid but API calls fail with 401.
+   *
    * @private
    */
   private async authenticateAndSave(
@@ -406,38 +415,100 @@ export class AuthManager {
     logger: Logger
   ): Promise<AuthClient> {
     logger.info(`Authenticating ${service} service (account: ${account})...`);
-    
-    const newAuth = await authenticate({
-      scopes: requiredScopes,
-      keyfilePath: credentialsPath,
-    });
 
-    if (
-      !newAuth ||
-      typeof newAuth !== "object" ||
-      !("getAccessToken" in newAuth) ||
-      !("setCredentials" in newAuth)
-    ) {
-      throw new Error(`Authentication failed for ${service}`);
+    const credentialsContent = await fs.readFile(credentialsPath, "utf8");
+    const credentialsFile = JSON.parse(credentialsContent);
+    const clientConfig = credentialsFile.installed || credentialsFile.web;
+
+    if (!clientConfig.redirect_uris || clientConfig.redirect_uris.length === 0) {
+      throw new Error(
+        "No redirect_uris found in credentials file. Please reconfigure your OAuth client."
+      );
     }
 
-    const auth = newAuth as unknown as AuthClient;
+    const redirectUri = new URL(clientConfig.redirect_uris[0] ?? "http://localhost");
+    if (redirectUri.hostname !== "localhost") {
+      throw new Error(
+        "redirect_uri must point to localhost for local authentication."
+      );
+    }
 
-    // Validate token works — capture once, reuse below to avoid consuming the auth code twice
-    const validationToken = await auth.getAccessToken();
-    if (!validationToken.token) {
+    const oauthClient = new google.auth.OAuth2(
+      clientConfig.client_id,
+      clientConfig.client_secret
+    );
+
+    // Start a local HTTP server to receive the OAuth callback
+    const grantedTokens = await new Promise<Credentials>((resolve, reject) => {
+      const server = http.createServer(async (req, res) => {
+        try {
+          const callbackUrl = new URL(req.url ?? "/", "http://localhost");
+          if (callbackUrl.pathname !== (redirectUri.pathname || "/")) {
+            res.end("Invalid callback URL");
+            return;
+          }
+          if (callbackUrl.searchParams.has("error")) {
+            res.end("Authorization rejected.");
+            reject(new Error(callbackUrl.searchParams.get("error") ?? "OAuth error"));
+            server.close();
+            return;
+          }
+          const code = callbackUrl.searchParams.get("code");
+          if (!code) {
+            res.end("No authentication code provided.");
+            reject(new Error("No authentication code in OAuth callback"));
+            server.close();
+            return;
+          }
+          const tokenResponse = await oauthClient.getToken({
+            code,
+            redirect_uri: redirectUri.toString(),
+          });
+          res.end("Authentication successful! Please return to the console.");
+          resolve(tokenResponse.tokens);
+          server.close();
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+          server.close();
+        }
+      });
+
+      // Listen on the redirect URI port (or default 3000)
+      const port = redirectUri.port ? parseInt(redirectUri.port, 10) : 3000;
+      server.listen(port, () => {
+        // Update redirect_uri with actual port before opening browser
+        redirectUri.port = String((server.address() as { port: number }).port);
+
+        // prompt: 'consent' forces Google to show the full consent screen and issue
+        // a fresh refresh_token covering all requested scopes. Without this, Google
+        // may silently return tokens scoped only to previously-granted permissions.
+        const authUrl = oauthClient.generateAuthUrl({
+          access_type: "offline",
+          prompt: "consent",
+          scope: requiredScopes,
+          redirect_uri: redirectUri.toString(),
+        });
+
+        open(authUrl, { wait: false }).then((cp) => cp.unref()).catch(() => {
+          logger.info(`Open this URL to authenticate: ${authUrl}`);
+        });
+      });
+    });
+    oauthClient.setCredentials(grantedTokens);
+
+    const auth = oauthClient as unknown as AuthClient;
+
+    if (!grantedTokens.access_token) {
       throw new Error("No access token received from authentication");
     }
-    const authCredentials = (auth as any).credentials || {};
 
-    // Save to database using the already-fetched token data
     const tokenData = {
       service: service.toLowerCase(),
       account,
-      access_token: validationToken.token,
-      refresh_token: authCredentials.refresh_token || "",
+      access_token: grantedTokens.access_token,
+      refresh_token: grantedTokens.refresh_token || "",
       scopes: requiredScopes,
-      expiry_date: authCredentials.expiry_date || 0,
+      expiry_date: grantedTokens.expiry_date || 0,
     };
     tokenStore.saveToken(tokenData);
 
