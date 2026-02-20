@@ -10,8 +10,8 @@
 
 import { ensureCredentialsExist } from "../utils/setup-guide.ts";
 import { InitializationError } from "./errors.ts";
-import { defaultLogger } from "./logger.ts";
-import type { Logger } from "./logger.ts";
+import { logger as defaultLogger } from "../utils/logger.ts";
+import type { Logger } from "../utils/logger.ts";
 import type { AuthClient } from "../types/google-apis.ts";
 import { AuthManager } from "./auth-manager.ts";
 import { TokenStore } from "./token-store.ts";

@@ -5,13 +5,25 @@
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
+/**
+ * Shared Logger interface used across commands and services.
+ * The singleton `logger` instance implements this interface and respects
+ * --quiet / --verbose flags configured via `logger.configure()`.
+ */
+export interface Logger {
+  error(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  debug(...args: unknown[]): void;
+}
+
 interface LoggerConfig {
   level: LogLevel;
   quiet: boolean;
   verbose: boolean;
 }
 
-class Logger {
+class LoggerImpl implements Logger {
   private config: LoggerConfig = {
     level: 'info',
     quiet: false,
@@ -83,4 +95,4 @@ class Logger {
 }
 
 // Export singleton instance
-export const logger = new Logger();
+export const logger = new LoggerImpl();

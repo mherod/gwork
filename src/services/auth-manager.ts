@@ -25,7 +25,7 @@ import { google } from "googleapis";
 import { authenticate } from "@google-cloud/local-auth";
 import type { AuthClient } from "../types/google-apis.ts";
 import type { TokenStore } from "./token-store.ts";
-import type { Logger } from "./logger.ts";
+import type { Logger } from "../utils/logger.ts";
 import type { TokenData } from "./token-store.ts";
 import * as fs from "fs/promises";
 
