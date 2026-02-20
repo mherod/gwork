@@ -74,6 +74,8 @@ src/
 - **Multi-account**: Supports separate tokens for different Google accounts (e.g., "default", "work", "personal")
 - **Token Refresh**: Google's local-auth library handles automatic refresh before expiry
 - **Setup Detection**: Both `CalendarService` and `MailService` check for credentials on initialization and display friendly setup guide if missing
+- **Account verification**: `MailService.initialize()` calls `gmail.users.getProfile({ userId: "me" })` after auth and throws a clear mismatch error if the token's `emailAddress` doesn't match the requested `--account`. DON'T skip this check — the Gmail API `userId: "me"` does not filter by email; without it, a mismatched token silently queries the wrong mailbox.
+- **Account scoping in search results**: `searchMessages` in `src/commands/mail.ts` filters fetched messages by `To`/`Delivered-To` headers when `account !== "default"`. This is defence-in-depth: always filter results client-side when account isolation is required, even when the token lookup is expected to be correct.
 
 ### SQLite Abstraction Layer
 
@@ -129,6 +131,8 @@ npm publish
 - **Pull Requests**:
   - **DO** use `gh pr create` to submit changes.
   - **DO** ensure all CI checks pass (`bun test`, `bun run lint`) before merging.
+- **CI polling**: Poll with `sleep N && gh pr checks <PR>` in a foreground call. DON'T use `gh pr checks --watch` as a background task — it produces no actionable output until it finishes, leaving a dangling process.
+- **Rebasing already-merged commits**: When rebasing a feature branch onto main and a commit was already incorporated via another PR (e.g., the commit's changes are already in main), use `git rebase --skip` to skip that commit rather than attempting to re-resolve its conflicts.
 
 ## Important Notes
 
