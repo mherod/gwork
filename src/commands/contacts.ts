@@ -104,12 +104,15 @@ const contactsRegistry = new CommandRegistry<ContactsService>()
   .register("analyze-imported", (svc, args) => analyzeImportedContacts(svc, args))
   .register("detect-marketing", (svc, args) => detectMarketing(svc, args));
 
+type ContactsServiceFactory = (account: string) => ContactsService;
+
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
-  account = "default"
+  account = "default",
+  serviceFactory: ContactsServiceFactory = (acc) => new ContactsService(acc)
 ) {
-  const contactsService = new ContactsService(account);
+  const contactsService = serviceFactory(account);
   await ensureInitialized(contactsService);
   await contactsRegistry.execute(subcommand, contactsService, args);
 }

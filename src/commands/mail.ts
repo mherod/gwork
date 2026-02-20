@@ -242,7 +242,14 @@ function buildMailRegistry(account: string): CommandRegistry<MailService> {
     .register("send", (svc, args) => handleSendMessage(svc, args));
 }
 
-export async function handleMailCommand(subcommand: string, args: string[], account = "default") {
+type MailServiceFactory = (account: string) => MailService;
+
+export async function handleMailCommand(
+  subcommand: string,
+  args: string[],
+  account = "default",
+  serviceFactory: MailServiceFactory = (acc) => new MailService(acc)
+) {
   // Handle help flags before initializing the service (avoids unnecessary auth)
   if (args.includes("--help") || args.includes("-h")) {
     if (subcommand === "send") {
@@ -252,7 +259,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
   }
 
   // Create service instance with the specified account
-  const mailService = new MailService(account);
+  const mailService = serviceFactory(account);
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(mailService);
