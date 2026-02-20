@@ -1,6 +1,6 @@
 {
   "name": "gwork",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A CLI tool for managing Google Calendar and Gmail from the command line",
   "type": "module",
   "main": "dist/cli.js",
