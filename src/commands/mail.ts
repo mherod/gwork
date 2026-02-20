@@ -8,6 +8,7 @@ import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
+import { CommandRegistry } from "./registry.ts";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
 
@@ -102,6 +103,145 @@ Examples:
 `);
 }
 
+function buildMailRegistry(account: string): CommandRegistry<MailService> {
+  return new CommandRegistry<MailService>()
+    .register("labels", (svc, args) => listLabels(svc, args))
+    .register("messages", (svc, args) => listMessages(svc, args))
+    .register("get", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail get <messageId> [--format <plain|html|auto>]");
+      }
+      return getMessage(svc, args[0]!, args.slice(1));
+    })
+    .register("search", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: search query is required", "gwork mail search <query>");
+      }
+      return searchMessages(svc, args[0]!, args.slice(1), account);
+    })
+    .register("stats", (svc) => getStats(svc))
+    .register("threads", (svc, args) => listThreads(svc, args))
+    .register("thread", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: threadId is required", "gwork mail thread <threadId> [--format <plain|html|auto>]");
+      }
+      return getThread(svc, args[0]!, args.slice(1));
+    })
+    .register("unread", (svc, args) => listUnread(svc, args))
+    .register("starred", (svc, args) => listStarred(svc, args))
+    .register("important", (svc, args) => listImportant(svc, args))
+    .register("drafts", (svc, args) => listDrafts(svc, args))
+    .register("attachments", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail attachments <messageId>");
+      }
+      return listAttachments(svc, args[0]!);
+    })
+    .register("download", (svc, args) => {
+      if (args.length < 2) {
+        throw new ArgumentError("Error: messageId and attachmentId are required", "gwork mail download <messageId> <attachmentId> [filename]");
+      }
+      return downloadAttachment(svc, args[0]!, args[1]!, args[2]);
+    })
+    .register("delete", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail delete <messageId>");
+      }
+      return deleteMessage(svc, args[0]!);
+    })
+    .register("delete-query", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: search query is required", "gwork mail delete-query <query>");
+      }
+      return deleteQuery(svc, args.join(" "));
+    })
+    .register("archive", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail archive <messageId>");
+      }
+      return archiveMessage(svc, args[0]!);
+    })
+    .register("archive-query", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: search query is required", "gwork mail archive-query <query>");
+      }
+      return archiveQuery(svc, args.join(" "));
+    })
+    .register("archive-many", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: at least one messageId is required", "gwork mail archive-many <messageId1> [messageId2] [...]");
+      }
+      return archiveMany(svc, args);
+    })
+    .register("unarchive", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail unarchive <messageId>");
+      }
+      return unarchiveMessage(svc, args[0]!);
+    })
+    .register("unarchive-query", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: search query is required", "gwork mail unarchive-query <query>");
+      }
+      return unarchiveQuery(svc, args.join(" "));
+    })
+    .register("unarchive-many", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: at least one messageId is required", "gwork mail unarchive-many <messageId1> [messageId2] [...]");
+      }
+      return unarchiveMany(svc, args);
+    })
+    .register("add-label", (svc, args) => {
+      if (args.length < 2) {
+        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail add-label <messageId> <labelName>");
+      }
+      return addLabel(svc, args[0]!, args[1]!);
+    })
+    .register("remove-label", (svc, args) => {
+      if (args.length < 2) {
+        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail remove-label <messageId> <labelName>");
+      }
+      return removeLabel(svc, args[0]!, args[1]!);
+    })
+    .register("mark-read", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail mark-read <messageId>");
+      }
+      return markRead(svc, args[0]!);
+    })
+    .register("mark-unread", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail mark-unread <messageId>");
+      }
+      return markUnread(svc, args[0]!);
+    })
+    .register("star", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail star <messageId>");
+      }
+      return starMessage(svc, args[0]!);
+    })
+    .register("unstar", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: messageId is required", "gwork mail unstar <messageId>");
+      }
+      return unstarMessage(svc, args[0]!);
+    })
+    .register("create-label", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: labelName is required", "gwork mail create-label <labelName> [--color <color>]");
+      }
+      return createLabel(svc, args[0]!, args.slice(1));
+    })
+    .register("delete-label", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: labelId is required", "gwork mail delete-label <labelId>");
+      }
+      return deleteLabel(svc, args[0]!);
+    })
+    .register("send", (svc, args) => handleSendMessage(svc, args));
+}
+
 export async function handleMailCommand(subcommand: string, args: string[], account = "default") {
   // Handle help flags before initializing the service (avoids unnecessary auth)
   if (args.includes("--help") || args.includes("-h")) {
@@ -117,167 +257,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(mailService);
 
-  switch (subcommand) {
-    case "labels":
-      await listLabels(mailService, args);
-      break;
-    case "messages":
-      await listMessages(mailService, args);
-      break;
-    case "get":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail get <messageId> [--format <plain|html|auto>]");
-      }
-      await getMessage(mailService, args[0]!, args.slice(1));
-      break;
-    case "search": {
-      if (args.length === 0) {
-        throw new ArgumentError("Error: search query is required", "gwork mail search <query>");
-      }
-      // Extract query (first arg) and remaining options
-      const query = args[0]!;
-      const searchOptions = args.slice(1);
-      await searchMessages(mailService, query, searchOptions, account);
-      break;
-    }
-    case "stats":
-      await getStats(mailService);
-      break;
-    case "threads":
-      await listThreads(mailService, args);
-      break;
-    case "thread":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: threadId is required", "gwork mail thread <threadId> [--format <plain|html|auto>]");
-      }
-      await getThread(mailService, args[0]!, args.slice(1));
-      break;
-    case "unread":
-      await listUnread(mailService, args);
-      break;
-    case "starred":
-      await listStarred(mailService, args);
-      break;
-    case "important":
-      await listImportant(mailService, args);
-      break;
-    case "drafts":
-      await listDrafts(mailService, args);
-      break;
-    case "attachments":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail attachments <messageId>");
-      }
-      await listAttachments(mailService, args[0]!);
-      break;
-    case "download":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: messageId and attachmentId are required", "gwork mail download <messageId> <attachmentId> [filename]");
-      }
-      await downloadAttachment(mailService, args[0]!, args[1]!, args[2]);
-      break;
-    case "delete":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail delete <messageId>");
-      }
-      await deleteMessage(mailService, args[0]!);
-      break;
-    case "delete-query":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: search query is required", "gwork mail delete-query <query>");
-      }
-      await deleteQuery(mailService, args.join(" "));
-      break;
-    case "archive":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail archive <messageId>");
-      }
-      await archiveMessage(mailService, args[0]!);
-      break;
-    case "archive-query":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: search query is required", "gwork mail archive-query <query>");
-      }
-      await archiveQuery(mailService, args.join(" "));
-      break;
-    case "archive-many":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: at least one messageId is required", "gwork mail archive-many <messageId1> [messageId2] [...]");
-      }
-      await archiveMany(mailService, args);
-      break;
-    case "unarchive":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail unarchive <messageId>");
-      }
-      await unarchiveMessage(mailService, args[0]!);
-      break;
-    case "unarchive-query":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: search query is required", "gwork mail unarchive-query <query>");
-      }
-      await unarchiveQuery(mailService, args.join(" "));
-      break;
-    case "unarchive-many":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: at least one messageId is required", "gwork mail unarchive-many <messageId1> [messageId2] [...]");
-      }
-      await unarchiveMany(mailService, args);
-      break;
-    case "add-label":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail add-label <messageId> <labelName>");
-      }
-      await addLabel(mailService, args[0]!, args[1]!);
-      break;
-    case "remove-label":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: messageId and labelName are required", "gwork mail remove-label <messageId> <labelName>");
-      }
-      await removeLabel(mailService, args[0]!, args[1]!);
-      break;
-    case "mark-read":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail mark-read <messageId>");
-      }
-      await markRead(mailService, args[0]!);
-      break;
-    case "mark-unread":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail mark-unread <messageId>");
-      }
-      await markUnread(mailService, args[0]!);
-      break;
-    case "star":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail star <messageId>");
-      }
-      await starMessage(mailService, args[0]!);
-      break;
-    case "unstar":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: messageId is required", "gwork mail unstar <messageId>");
-      }
-      await unstarMessage(mailService, args[0]!);
-      break;
-    case "create-label":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: labelName is required", "gwork mail create-label <labelName> [--color <color>]");
-      }
-      await createLabel(mailService, args[0]!, args.slice(1));
-      break;
-    case "delete-label":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: labelId is required", "gwork mail delete-label <labelId>");
-      }
-      await deleteLabel(mailService, args[0]!);
-      break;
-    case "send":
-      await handleSendMessage(mailService, args);
-      break;
-    default:
-      throw new ArgumentError(`Unknown mail subcommand: ${subcommand}`, "gwork mail --help");
-  }
+  await buildMailRegistry(account).execute(subcommand, mailService, args);
 }
 
 async function listLabels(mailService: MailService, _args: string[]) {

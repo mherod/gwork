@@ -5,6 +5,7 @@ import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
 import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
+import { CommandRegistry } from "./commands/registry.ts";
 import { parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
 import { logger } from "./utils/logger.ts";
@@ -308,25 +309,14 @@ async function main() {
   // Pass remaining args to subcommands
   const commandArgs = filteredArgs.slice(1);
 
-  switch (command) {
-    case "mail":
-      await handleMail(commandArgs);
-      break;
-    case "cal":
-      await handleCal(commandArgs);
-      break;
-    case "contacts":
-      await handleContacts(commandArgs);
-      break;
-    case "accounts":
-      await handleAccountsCommand(commandArgs);
-      break;
-    default:
-      console.error(`Unknown command: ${command}`);
-      console.error("Run 'gwork --help' for usage information");
-      process.exit(1);
-  }
+  await topLevelRegistry.execute(command, null, commandArgs);
 }
+
+const topLevelRegistry = new CommandRegistry<null>()
+  .register("mail", (_svc, args) => handleMail(args))
+  .register("cal", (_svc, args) => handleCal(args))
+  .register("contacts", (_svc, args) => handleContacts(args))
+  .register("accounts", (_svc, args) => handleAccountsCommand(args));
 
 main().catch((error) => {
   logServiceError(error);

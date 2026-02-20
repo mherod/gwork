@@ -5,139 +5,113 @@ import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { CommandRegistry } from "./registry.ts";
+
+const contactsRegistry = new CommandRegistry<ContactsService>()
+  .register("list", (svc, args) => listContacts(svc, args))
+  .register("get", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: resourceName is required", "gwork contacts get <resourceName>");
+    }
+    return getContact(svc, args[0], args.slice(1));
+  })
+  .register("search", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: search query is required", "gwork contacts search <query>");
+    }
+    return searchContacts(svc, args[0], args.slice(1));
+  })
+  .register("find-email", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: email is required", "gwork contacts find-email <email>");
+    }
+    return findContactByEmail(svc, args[0]);
+  })
+  .register("find-name", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: name is required", "gwork contacts find-name <name>");
+    }
+    return findContactByName(svc, args[0]);
+  })
+  .register("create", (svc, args) => createContact(svc, args))
+  .register("update", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: resourceName is required", "gwork contacts update <resourceName> [options]");
+    }
+    return updateContact(svc, args[0], args.slice(1));
+  })
+  .register("delete", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: resourceName is required", "gwork contacts delete <resourceName> --confirm");
+    }
+    return deleteContact(svc, args[0], args.slice(1));
+  })
+  .register("groups", (svc, args) => listGroups(svc, args))
+  .register("group-contacts", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: groupResourceName is required", "gwork contacts group-contacts <groupResourceName>");
+    }
+    return getContactsInGroup(svc, args[0], args.slice(1));
+  })
+  .register("create-group", (svc, args) => {
+    if (args.length === 0) {
+      throw new ArgumentError("Error: group name is required", "gwork contacts create-group <name> --confirm");
+    }
+    return createGroup(svc, args[0]!, args.slice(1));
+  })
+  .register("delete-group", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: groupResourceName is required", "gwork contacts delete-group <groupResourceName> --confirm");
+    }
+    return deleteGroup(svc, args[0], args.slice(1));
+  })
+  .register("add-to-group", (svc, args) => {
+    if (args.length < 2) {
+      throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
+    }
+    return addToGroup(svc, args[0]!, args.slice(1, -1), args.slice(-1));
+  })
+  .register("remove-from-group", (svc, args) => {
+    if (args.length < 2) {
+      throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
+    }
+    return removeFromGroup(svc, args[0]!, args.slice(1, -1), args.slice(-1));
+  })
+  .register("batch-create", (svc, args) => {
+    if (args.length === 0) {
+      throw new ArgumentError("Error: JSON file path is required", "gwork contacts batch-create <jsonFile> --confirm");
+    }
+    return batchCreateContacts(svc, args[0]!, args.slice(1));
+  })
+  .register("batch-delete", (svc, args) => {
+    if (args.length === 0) {
+      throw new ArgumentError("Error: at least one resourceName is required", "gwork contacts batch-delete <resourceName...> --confirm");
+    }
+    return batchDeleteContacts(svc, args);
+  })
+  .register("profile", (svc, args) => getProfile(svc, args))
+  .register("stats", (svc, args) => getStats(svc, args))
+  .register("duplicates", (svc, args) => findDuplicates(svc, args))
+  .register("merge", (svc, args) => {
+    if (args.length < 2) {
+      throw new ArgumentError("Error: At least two resource names are required", "gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
+    }
+    return mergeContacts(svc, args[0]!, args.slice(1, -1), args.slice(-1));
+  })
+  .register("auto-merge", (svc, args) => autoMergeContacts(svc, args))
+  .register("find-missing-names", (svc, args) => findMissingNames(svc, args))
+  .register("analyze-generic-names", (svc, args) => analyzeGenericNames(svc, args))
+  .register("analyze-imported", (svc, args) => analyzeImportedContacts(svc, args))
+  .register("detect-marketing", (svc, args) => detectMarketing(svc, args));
 
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
   account = "default"
 ) {
-  // Create service instance with the specified account
   const contactsService = new ContactsService(account);
-
-  // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(contactsService);
-
-  switch (subcommand) {
-    case "list":
-      await listContacts(contactsService, args);
-      break;
-    case "get":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: resourceName is required", "gwork contacts get <resourceName>");
-      }
-      await getContact(contactsService, args[0], args.slice(1));
-      break;
-    case "search":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: search query is required", "gwork contacts search <query>");
-      }
-      await searchContacts(contactsService, args[0], args.slice(1));
-      break;
-    case "find-email":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: email is required", "gwork contacts find-email <email>");
-      }
-      await findContactByEmail(contactsService, args[0]);
-      break;
-    case "find-name":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: name is required", "gwork contacts find-name <name>");
-      }
-      await findContactByName(contactsService, args[0]);
-      break;
-    case "create":
-      await createContact(contactsService, args);
-      break;
-    case "update":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: resourceName is required", "gwork contacts update <resourceName> [options]");
-      }
-      await updateContact(contactsService, args[0], args.slice(1));
-      break;
-    case "delete":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: resourceName is required", "gwork contacts delete <resourceName> --confirm");
-      }
-      await deleteContact(contactsService, args[0], args.slice(1));
-      break;
-    case "groups":
-      await listGroups(contactsService, args);
-      break;
-    case "group-contacts":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: groupResourceName is required", "gwork contacts group-contacts <groupResourceName>");
-      }
-      await getContactsInGroup(contactsService, args[0], args.slice(1));
-      break;
-    case "create-group":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: group name is required", "gwork contacts create-group <name> --confirm");
-      }
-      await createGroup(contactsService, args[0]!, args.slice(1));
-      break;
-    case "delete-group":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: groupResourceName is required", "gwork contacts delete-group <groupResourceName> --confirm");
-      }
-      await deleteGroup(contactsService, args[0], args.slice(1));
-      break;
-    case "add-to-group":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts add-to-group <groupResourceName> <contactResourceName...> --confirm");
-      }
-      await addToGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
-      break;
-    case "remove-from-group":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: groupResourceName and at least one contactResourceName are required", "gwork contacts remove-from-group <groupResourceName> <contactResourceName...> --confirm");
-      }
-      await removeFromGroup(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
-      break;
-    case "batch-create":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: JSON file path is required", "gwork contacts batch-create <jsonFile> --confirm");
-      }
-      await batchCreateContacts(contactsService, args[0]!, args.slice(1));
-      break;
-    case "batch-delete":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: at least one resourceName is required", "gwork contacts batch-delete <resourceName...> --confirm");
-      }
-      await batchDeleteContacts(contactsService, args);
-      break;
-    case "profile":
-      await getProfile(contactsService, args);
-      break;
-    case "stats":
-      await getStats(contactsService, args);
-      break;
-    case "duplicates":
-      await findDuplicates(contactsService, args);
-      break;
-    case "merge":
-      if (args.length < 2) {
-        throw new ArgumentError("Error: At least two resource names are required", "gwork contacts merge <targetResourceName> <sourceResourceName...> --confirm");
-      }
-      await mergeContacts(contactsService, args[0]!, args.slice(1, -1), args.slice(-1));
-      break;
-    case "auto-merge":
-      await autoMergeContacts(contactsService, args);
-      break;
-    case "find-missing-names":
-      await findMissingNames(contactsService, args);
-      break;
-    case "analyze-generic-names":
-      await analyzeGenericNames(contactsService, args);
-      break;
-    case "analyze-imported":
-      await analyzeImportedContacts(contactsService, args);
-      break;
-    case "detect-marketing":
-      await detectMarketing(contactsService, args);
-      break;
-    default:
-      throw new ArgumentError(`Unknown contacts subcommand: ${subcommand}`, "gwork contacts --help");
-  }
+  await contactsRegistry.execute(subcommand, contactsService, args);
 }
 
 async function listContacts(contactsService: ContactsService, args: string[]) {

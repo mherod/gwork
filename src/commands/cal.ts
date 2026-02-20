@@ -8,6 +8,118 @@ import { ArgumentError } from "../services/errors.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { logger } from "../utils/logger.ts";
+import { CommandRegistry } from "./registry.ts";
+
+const calRegistry = new CommandRegistry<CalendarService>()
+  .register("list", (svc, args) => listEvents(svc, args))
+  .register("calendars", (svc, args) => listCalendars(svc, args))
+  .register("get", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal get <calendarId> <eventId>");
+    }
+    return getEvent(svc, args[0], args[1]);
+  })
+  .register("create", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal create <calendarId> --title <title> --start <datetime>");
+    }
+    return createEvent(svc, args[0], args.slice(1));
+  })
+  .register("update", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update <calendarId> <eventId>");
+    }
+    return updateEvent(svc, args[0], args[1], args.slice(2));
+  })
+  .register("delete", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal delete <calendarId> <eventId> --confirm");
+    }
+    return deleteEvent(svc, args[0], args[1], args.slice(2));
+  })
+  .register("search", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: search query is required", "gwork cal search <query> [options]");
+    }
+    return searchEvents(svc, args[0], args.slice(1));
+  })
+  .register("freebusy", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: start and end times are required", "gwork cal freebusy <start> <end>");
+    }
+    return getFreeBusy(svc, args[0], args[1], args.slice(2));
+  })
+  .register("create-calendar", (svc, args) => {
+    if (args.length === 0) {
+      throw new ArgumentError("Error: title is required", "gwork cal create-calendar <title>");
+    }
+    return createCalendar(svc, compact(args).join(" "));
+  })
+  .register("stats", (svc, args) => getStats(svc, args))
+  .register("duplicate", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal duplicate <calendarId> <eventId> [options]");
+    }
+    return duplicateEvent(svc, args[0], args[1], args.slice(2));
+  })
+  .register("bulk-update", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal bulk-update <calendarId> [options]");
+    }
+    return bulkUpdateEvents(svc, args[0], args.slice(1));
+  })
+  .register("update-recurring", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update-recurring <calendarId> <eventId> [options]");
+    }
+    return updateRecurringEvent(svc, args[0], args[1], args.slice(2));
+  })
+  .register("export", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal export <calendarId> [options]");
+    }
+    return exportEvents(svc, args[0], args.slice(1));
+  })
+  .register("batch-create", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal batch-create <calendarId> [options]");
+    }
+    return batchCreateEvents(svc, args[0], args.slice(1));
+  })
+  .register("reminders", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal reminders <calendarId> <eventId> <action> [options]");
+    }
+    return manageReminders(svc, args[0], args[1], args.slice(2));
+  })
+  .register("check-conflict", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal check-conflict <calendarId> [options]");
+    }
+    return checkConflict(svc, args[0], args.slice(1));
+  })
+  .register("quick", (svc, args) => quickAction(svc, args))
+  .register("compare", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: two calendarIds are required", "gwork cal compare <calendarId1> <calendarId2> [options]");
+    }
+    return compareCalendars(svc, args[0], args[1], args.slice(2));
+  })
+  .register("color", (svc, args) => manageColor(svc, args))
+  .register("recurrence", (_svc, args) => workWithRecurrence(args))
+  .register("create-recurring", (svc, args) => {
+    if (args.length === 0 || !args[0]) {
+      throw new ArgumentError("Error: calendarId is required", "gwork cal create-recurring <calendarId> [options]");
+    }
+    return createRecurringEvent(svc, args[0], args.slice(1));
+  })
+  .register("recurrence-info", (svc, args) => {
+    if (args.length < 2 || !args[0] || !args[1]) {
+      throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal recurrence-info <calendarId> <eventId>");
+    }
+    return showRecurrenceInfo(svc, args[0], args[1]);
+  })
+  .register("date", (_svc, args) => dateUtilities(args));
 
 export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
@@ -15,138 +127,8 @@ export async function handleCalCommand(subcommand: string, args: string[], accou
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(calendarService);
-  
-  switch (subcommand) {
-    case "list":
-      await listEvents(calendarService, args);
-      break;
-    case "calendars":
-      await listCalendars(calendarService, args);
-      break;
-    case "get":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal get <calendarId> <eventId>");
-      }
-      await getEvent(calendarService, args[0], args[1]);
-      break;
-    case "create":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal create <calendarId> --title <title> --start <datetime>");
-      }
-      await createEvent(calendarService, args[0], args.slice(1));
-      break;
-    case "update":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update <calendarId> <eventId>");
-      }
-      await updateEvent(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "delete":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal delete <calendarId> <eventId> --confirm");
-      }
-      await deleteEvent(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "search": {
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: search query is required", "gwork cal search <query> [options]");
-      }
-      // Extract query (first arg) and remaining options
-      const searchQuery = args[0];
-      const searchExtraArgs = args.slice(1);
-      await searchEvents(calendarService, searchQuery, searchExtraArgs);
-      break;
-    }
-    case "freebusy":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: start and end times are required", "gwork cal freebusy <start> <end>");
-      }
-      await getFreeBusy(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "create-calendar":
-      if (args.length === 0) {
-        throw new ArgumentError("Error: title is required", "gwork cal create-calendar <title>");
-      }
-      await createCalendar(calendarService, compact(args).join(" "));
-      break;
-    case "stats":
-      await getStats(calendarService, args);
-      break;
-    case "duplicate":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal duplicate <calendarId> <eventId> [options]");
-      }
-      await duplicateEvent(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "bulk-update":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal bulk-update <calendarId> [options]");
-      }
-      await bulkUpdateEvents(calendarService, args[0], args.slice(1));
-      break;
-    case "update-recurring":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal update-recurring <calendarId> <eventId> [options]");
-      }
-      await updateRecurringEvent(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "export":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal export <calendarId> [options]");
-      }
-      await exportEvents(calendarService, args[0], args.slice(1));
-      break;
-    case "batch-create":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal batch-create <calendarId> [options]");
-      }
-      await batchCreateEvents(calendarService, args[0], args.slice(1));
-      break;
-    case "reminders":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal reminders <calendarId> <eventId> <action> [options]");
-      }
-      await manageReminders(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "check-conflict":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal check-conflict <calendarId> [options]");
-      }
-      await checkConflict(calendarService, args[0], args.slice(1));
-      break;
-    case "quick":
-      await quickAction(calendarService, args);
-      break;
-    case "compare":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: two calendarIds are required", "gwork cal compare <calendarId1> <calendarId2> [options]");
-      }
-      await compareCalendars(calendarService, args[0], args[1], args.slice(2));
-      break;
-    case "color":
-      await manageColor(calendarService, args);
-      break;
-    case "recurrence":
-      await workWithRecurrence(args);
-      break;
-    case "create-recurring":
-      if (args.length === 0 || !args[0]) {
-        throw new ArgumentError("Error: calendarId is required", "gwork cal create-recurring <calendarId> [options]");
-      }
-      await createRecurringEvent(calendarService, args[0], args.slice(1));
-      break;
-    case "recurrence-info":
-      if (args.length < 2 || !args[0] || !args[1]) {
-        throw new ArgumentError("Error: calendarId and eventId are required", "gwork cal recurrence-info <calendarId> <eventId>");
-      }
-      await showRecurrenceInfo(calendarService, args[0], args[1]);
-      break;
-    case "date":
-      await dateUtilities(args);
-      break;
-    default:
-      throw new ArgumentError(`Unknown cal subcommand: ${subcommand}`, "Run 'gwork cal --help' for usage information");
-  }
+
+  await calRegistry.execute(subcommand, calendarService, args);
 }
 
 async function listEvents(calendarService: CalendarService, args: string[]) {
