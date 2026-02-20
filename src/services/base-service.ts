@@ -18,6 +18,10 @@ import { TokenStore } from "./token-store.ts";
 import * as path from "path";
 import * as os from "os";
 
+export interface BaseServiceDeps {
+  authManager?: AuthManager;
+}
+
 export abstract class BaseService {
   protected auth: AuthClient | null = null;
   protected readonly SCOPES: string[];
@@ -30,13 +34,13 @@ export abstract class BaseService {
     protected serviceName: string,
     scopes: string[],
     account = "default",
-    logger: Logger = defaultLogger
+    logger: Logger = defaultLogger,
+    deps?: BaseServiceDeps
   ) {
     this.account = account;
     this.SCOPES = scopes;
     this.logger = logger;
-    // Create AuthManager with dependencies
-    this.authManager = new AuthManager({
+    this.authManager = deps?.authManager ?? new AuthManager({
       tokenStore: TokenStore.getInstance(),
       logger: this.logger,
     });
