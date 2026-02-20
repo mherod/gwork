@@ -26,6 +26,11 @@ import type {
 } from "../types/google-apis.ts";
 import type { people_v1 } from "googleapis";
 
+export interface ContactsServiceDeps {
+  matcher?: ContactMatcher;
+  analyzer?: ContactAnalyzer;
+}
+
 export class ContactsService extends BaseService {
   private people: PeopleClient | null = null;
 
@@ -46,7 +51,9 @@ export class ContactsService extends BaseService {
   private analyzer: ContactAnalyzer | null = null;
   private groupManager: ContactGroupManager | null = null;
 
-  constructor(account = "default") {
+  private readonly deps: ContactsServiceDeps;
+
+  constructor(account = "default", deps: ContactsServiceDeps = {}) {
     super(
       "Contacts",
       [
@@ -56,6 +63,7 @@ export class ContactsService extends BaseService {
       ],
       account
     );
+    this.deps = deps;
   }
 
   /**
@@ -70,9 +78,9 @@ export class ContactsService extends BaseService {
     // Initialize People API client - auth is guaranteed non-null after ensureInitialized()
     this.people = google.people({ version: "v1", auth: this.getAuth() });
 
-    // Initialize composed services
-    this.matcher = new ContactMatcher();
-    this.analyzer = new ContactAnalyzer();
+    // Use injected deps when provided, fall back to default implementations
+    this.matcher = this.deps.matcher ?? new ContactMatcher();
+    this.analyzer = this.deps.analyzer ?? new ContactAnalyzer();
     this.groupManager = new ContactGroupManager(this.people, (rn) => this.getContact(rn));
   }
 
