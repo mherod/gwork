@@ -4,6 +4,7 @@ import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { ArgumentError } from "../services/errors.ts";
+import { logger } from "../utils/logger.ts";
 import fs from "node:fs";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
