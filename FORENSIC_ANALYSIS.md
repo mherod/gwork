@@ -1,6 +1,6 @@
 # Forensic Code Analysis Report: gwork CLI
 
-**Analysis Date:** February 2026
+**Analysis Date:** 2026-02-20 (updated; original February 11, 2026)
 **Target:** `/Users/matthewherod/Development/gwork` (full codebase)
 **Focus:** `full` (all layers)
 **Severity Filter:** `all`
@@ -1439,4 +1439,254 @@ The good news: The codebase has clear separation between services and commands, 
 **Analysis Depth:** Comprehensive (all three layers)
 **Files Analyzed:** 23 TypeScript source files
 **Total LOC Analyzed:** 9,927 lines
+
+---
+
+## ADDENDUM — Second-Pass Analysis (2026-02-20)
+
+This section documents findings from a deeper forensic pass after the original report was written.
+Several earlier "critical" issues (I-005/I-006/B-003) were already resolved between the two analysis
+dates (contacts-service refactored into focused classes, race condition fixed, shared error handler
+extracted). The findings below are net-new issues not covered above.
+
+---
+
+### New Inconsistency Findings
+
+#### I-NEW-01: `handleGoogleApiError` Falls Through Without Throwing in One Code Path
+
+**Severity:** Critical
+**Location:** `src/services/error-handler.ts:54–61`
+
+**Evidence:**
+```typescript
+export function handleGoogleApiError(error: unknown, context: string): never {
+  if (error && typeof error === "object" && "code" in error) {
+    const httpCode = (error as any).code;
+    switch (httpCode) {
+      // cases 401, 404, 403, 429, 500–503...
+      default:
+        if (error instanceof Error) {
+          throw new ServiceError(`Failed to ${context}: ${error.message}`, "API_ERROR", httpCode);
+        }
+        // ← implicit fall-through: code present but error is NOT instanceof Error
+        // execution falls out of the switch, skips the outer instanceof check,
+        // and reaches `throw error` — a raw untyped object
+    }
+  }
+  if (error instanceof Error) { throw ...; }
+  throw error;  // ← raw rethrow of non-Error object
+}
+```
+
+The function is typed `never` and all callers treat it as always throwing a `ServiceError`. When the
+googleapis SDK returns a plain `{ code: 400, message: "..." }` POJO that is not `instanceof Error`,
+the `default:` branch falls through silently and the function re-throws the raw object. This bypasses:
+- Retry logic in `withRetry()` (only retries `ServiceError` where `retryable: true`)
+- User-facing error formatting in `logServiceError()`
+- Any `error instanceof ServiceError` guards downstream
+
+**Fix:** Add `throw new ServiceError(...)` as an unconditional final line of the `default:` branch
+(after the `if (error instanceof Error)` block).
+
+---
+
+#### I-NEW-02: Two Incompatible `Logger` Types Coexist
+
+**Severity:** High
+**Location:** `src/services/logger.ts:7–10` vs `src/utils/logger.ts`
+
+**Evidence:**
+```typescript
+// src/services/logger.ts — used by BaseService / all services
+interface Logger {
+  info(message: string, meta?: any): void;   // ← meta?: any
+  warn(message: string, meta?: any): void;
+  error(message: string, meta?: any): void;
+  debug(message: string, meta?: any): void;
+}
+
+// src/utils/logger.ts — used by all commands
+class Logger {
+  info(...args: unknown[]): void { ... }     // ← variadic unknown
+  configure({ verbose, quiet }): void { ... } // not in service interface
+}
+```
+
+The two types share the name `Logger` but are structurally incompatible — `meta?: any` vs
+`...args: unknown[]`. They cannot be substituted. The service logger has no `configure()`. The
+command logger has no `meta` parameter. This splits the codebase into two logging worlds and means
+the `--quiet`/`--verbose` flags configured on the CLI logger have no effect on service-layer log
+output.
+
+---
+
+#### I-NEW-03: 24 `console.log` Calls Bypass Unified Logger
+
+**Severity:** High
+**Location:** `src/commands/mail.ts:660,697,743,798,818,830,842,854,866,898,899,911`
+         · `src/commands/cal.ts:634–636,659,812–815,1937–1940,2124,2163–2168,2203,2210–2211,2231,2242–2243`
+
+These 24 `console.log` calls co-exist with `logger.info(...)` calls in the same functions. They print
+unconditionally, ignoring `--quiet`. Users piping output programmatically get interleaved noise from
+the `console.log` calls that cannot be suppressed.
+
+---
+
+#### I-NEW-04: `TokenStore.close()` Callable on a Singleton
+
+**Severity:** Medium
+**Location:** `src/services/token-store.ts` + `src/commands/accounts.ts:92`
+
+`TokenStore.getInstance()` is a singleton. `close()` is public and called in `accounts.ts` at end of
+the handler. If a future CLI command chains multiple operations in one process (or if tests reuse the
+singleton), any call after `close()` will hit a "Database is closed" error. The public `close()`
+surface invites this mistake.
+
+---
+
+### New Bug Findings
+
+#### B-NEW-01: `parseInt` Without Radix / No NaN Guard in Argument Parsers
+
+**Severity:** High
+**Location:** `src/commands/mail.ts:286,389,489` · `src/commands/cal.ts` (similar patterns)
+
+**Evidence:**
+```typescript
+// mail.ts:286 (listMessages) — has correct bounds guard but missing radix
+options.maxResults = parseInt(args[++i]!);
+
+// mail.ts:489 (listThreads) — missing BOTH bounds guard and radix
+if (args[i] === "--max-results" || args[i] === "-n") {
+  options.maxResults = parseInt(args[++i]!);  // ← no i+1 bounds check, no radix
+}
+```
+
+`parseInt` without radix `10` can misparse strings starting with `0x`. Without a NaN guard,
+`NaN` is passed as `maxResults`. `validateMaxResults` skips validation when `maxResults > 0` is
+false (NaN), so `NaN` reaches the API call and produces a confusing error. The inconsistency between
+`listMessages` (has bounds check) and `listThreads` (does not) shows this was fixed in one place but
+not others.
+
+**Fix:** `parseInt(value, 10)` + `if (isNaN(n)) throw new ArgumentError(...)` in all parsers.
+
+---
+
+#### B-NEW-02: `isDatabaseLockError` Matches "busy" and "locked" as Bare Substrings
+
+**Severity:** High
+**Location:** `src/utils/db-retry.ts:138+`
+
+The function matches the plain substrings `"busy"` and `"locked"` in any error message. An auth
+error like `"The account is locked"` or a network error containing `"busy"` will trigger SQLite
+retry logic (including event-loop blocking via `Atomics.wait` in `withDbRetrySync`) instead of
+propagating immediately.
+
+**Fix:** Scope matches to `error.name === "SqliteError"` before checking message substrings, or use
+more specific patterns like `"SQLITE_BUSY"` / `"SQLITE_LOCKED"`.
+
+---
+
+#### B-NEW-03: Unchecked Bounds in `listThreads` Argument Parser
+
+**Severity:** Medium
+**Location:** `src/commands/mail.ts:489–491`
+
+```typescript
+// listThreads — missing bounds check (compare listMessages at line 284 which has it):
+if (args[i] === "--max-results" || args[i] === "-n") {
+  options.maxResults = parseInt(args[++i]!);  // args[++i] is undefined if flag is last arg
+}
+```
+
+Passing `gwork mail threads --max-results` (no value) causes `args[++i]` to be `undefined`,
+`parseInt(undefined!) === NaN`, validation is skipped, and the API receives `NaN`.
+
+---
+
+#### B-NEW-04: `batchCreateContacts` Silently Swallows Individual Failures
+
+**Severity:** Medium
+**Location:** `src/services/contacts-service.ts:711`
+
+```typescript
+const results = await Promise.all(
+  batch.map((data) => this.createContact(data).catch(() => null))
+);
+```
+
+Errors are swallowed with `.catch(() => null)`. The caller receives only the count of successes with
+no indication of which contacts failed or why. Bulk import users cannot diagnose partial failures.
+
+---
+
+### New Code Smell Findings
+
+#### S-NEW-01: Redundant `ensureInitialized()` Immediately After `initialize()`
+
+**Severity:** Medium
+**Location:** Every public method in `calendar-service.ts`, `mail-service.ts`, `contacts-service.ts` (~40 methods)
+
+```typescript
+async listEvents(...): Promise<EventsResponse> {
+  await this.initialize();    // idempotent; sets this.initialized = true
+  this.ensureInitialized();   // immediately re-checks the same flag
+```
+
+`initialize()` itself ends with `this.initialized = true`, making the subsequent
+`ensureInitialized()` always a no-op. Removing ~40 redundant calls would reduce noise and clarify the
+initialization contract.
+
+---
+
+#### S-NEW-02: `getUpcomingEvents` / `getTodayEvents` Hardcode `maxResults: 50`
+
+**Severity:** Medium
+**Location:** `src/services/calendar-service.ts:423–428,462–466`
+
+Users with more than 50 events in the window receive silently truncated results. Neither method
+accepts a `maxResults` parameter nor warns when the cap is hit.
+
+---
+
+#### S-NEW-03: `--account` Value Not Validated as Email
+
+**Severity:** Low
+**Location:** `src/utils/args.ts` (`parseAccount`)
+
+`validateEmail()` exists in `src/services/validators.ts` but is not applied to the parsed account
+value. `--account not-an-email` reaches `MailService.initialize()` where it triggers a confusing
+account-mismatch error from `getProfile()` rather than a clear upfront validation message.
+
+---
+
+#### S-NEW-04: Analysis Methods Default to Tiny `pageSize: 100`
+
+**Severity:** Low
+**Location:** `src/services/contacts-service.ts:1046,1082,1120,1161`
+
+`findContactsWithMissingNames`, `findContactsWithGenericNames`, `analyzeImportedContacts`, and
+`detectMarketingContacts` all default to fetching only 100 contacts. Users with large contact books
+get incomplete analysis with no truncation warning.
+
+---
+
+### Updated Priority List (incorporating all findings)
+
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| 1 | `handleGoogleApiError` fall-through (I-NEW-01) | **Critical** | Open |
+| 2 | `parseInt` NaN + missing bounds guard (B-NEW-01/B-NEW-03) | **High** | Open |
+| 3 | `isDatabaseLockError` false-positive substrings (B-NEW-02) | **High** | Open |
+| 4 | Two incompatible Logger types (I-NEW-02) | **High** | Open |
+| 5 | 24 `console.log` bypassing unified logger (I-NEW-03) | **High** | Open |
+| 6 | `any` types in mail.ts command layer (I-010) | **High** | Open |
+| 7 | Redundant `ensureInitialized()` calls S-NEW-01 | **Medium** | Open |
+| 8 | `batchCreateContacts` swallows errors (B-NEW-04) | **Medium** | Open |
+| 9 | `TokenStore.close()` singleton hazard (I-NEW-04) | **Medium** | Open |
+| 10 | `getUpcomingEvents` hardcoded limit (S-NEW-02) | **Medium** | Open |
+| 11 | `--account` not validated as email (S-NEW-03) | **Low** | Open |
+| 12 | Analysis methods default pageSize: 100 (S-NEW-04) | **Low** | Open |
+| 13 | `handleServiceError` deprecated export (original I-007 context) | **Low** | Open |
 
