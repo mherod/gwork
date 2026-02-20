@@ -718,16 +718,32 @@ async function batchCreateContacts(contactsService: ContactsService, jsonFile: s
       throw new Error("JSON file must contain an array of contact objects");
     }
 
-    const results = await contactsService.batchCreateContacts(contactsData);
+    const { created, failures } = await contactsService.batchCreateContacts(contactsData);
 
-    spinner.succeed(`Created ${results.length} contact(s) successfully`);
+    if (failures.length > 0) {
+      spinner.warn(`Created ${created.length} contact(s); ${failures.length} failed`);
+    } else {
+      spinner.succeed(`Created ${created.length} contact(s) successfully`);
+    }
 
-    logger.info(chalk.bold("\nCreated Contacts:"));
-    logger.info("─".repeat(80));
-    results.forEach((contact) => {
-      const name = contact.names?.[0]?.displayName || "No name";
-      logger.info(chalk.cyan(name));
-    });
+    if (created.length > 0) {
+      logger.info(chalk.bold("\nCreated Contacts:"));
+      logger.info("─".repeat(80));
+      created.forEach((contact) => {
+        const name = contact.names?.[0]?.displayName || "No name";
+        logger.info(chalk.cyan(name));
+      });
+    }
+
+    if (failures.length > 0) {
+      logger.info(chalk.bold("\nFailed Contacts:"));
+      logger.info("─".repeat(80));
+      failures.forEach(({ index, data, error }) => {
+        const name = data.firstName || data.lastName || `index ${index}`;
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.info(chalk.red(`  [${index}] ${name}: ${msg}`));
+      });
+    }
 
     process.exit(0);
   } catch (error: unknown) {

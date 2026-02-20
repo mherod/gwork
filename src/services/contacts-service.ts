@@ -688,37 +688,48 @@ export class ContactsService extends BaseService {
    * Creates multiple contacts in batches (with rate limiting).
    *
    * @param contactsData - Array of contact data objects
-   * @returns Array of created Person objects
+   * @returns Object with successfully created contacts and any per-item failures
    * @throws {InitializationError} If service not initialized
    *
    * @example
    * ```typescript
-   * const contacts = await contacts.batchCreateContacts([
+   * const { created, failures } = await contacts.batchCreateContacts([
    *   { firstName: "John", email: "john@example.com" },
    *   { firstName: "Jane", email: "jane@example.com" }
    * ]);
    * ```
    */
-  async batchCreateContacts(contactsData: CreateContactOptions[]): Promise<Person[]> {
+  async batchCreateContacts(contactsData: CreateContactOptions[]): Promise<{
+    created: Person[];
+    failures: { index: number; data: CreateContactOptions; error: unknown }[];
+  }> {
     const created: Person[] = [];
+    const failures: { index: number; data: CreateContactOptions; error: unknown }[] = [];
     const BATCH_SIZE = 5;
     const DELAY_MS = 100;
 
     for (let i = 0; i < contactsData.length; i += BATCH_SIZE) {
       const batch = contactsData.slice(i, i + BATCH_SIZE);
 
-      const results = await Promise.all(
-        batch.map((data) => this.createContact(data).catch(() => null))
+      await Promise.all(
+        batch.map(async (data, batchOffset) => {
+          const globalIndex = i + batchOffset;
+          try {
+            const contact = await this.createContact(data);
+            created.push(contact);
+          } catch (error: unknown) {
+            this.logger.debug(`Failed to create contact at index ${globalIndex}`, { error });
+            failures.push({ index: globalIndex, data, error });
+          }
+        })
       );
-
-      created.push(...results.filter((r) => r !== null));
 
       if (i + BATCH_SIZE < contactsData.length) {
         await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
       }
     }
 
-    return created;
+    return { created, failures };
   }
 
   /**
