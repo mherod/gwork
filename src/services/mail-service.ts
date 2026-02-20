@@ -42,6 +42,20 @@ export class MailService extends BaseService {
     this.ensureInitialized();
     // Initialize Gmail client - auth is guaranteed non-null after ensureInitialized()
     this.gmail = google.gmail({ version: "v1", auth: this.getAuth() });
+
+    // When a specific account (not "default") is requested, verify the authenticated
+    // token actually belongs to that account. This catches token mismatches early
+    // rather than silently returning results from the wrong mailbox.
+    if (this.account !== "default") {
+      const profile = await this.gmail.users.getProfile({ userId: "me" });
+      const authenticatedEmail = profile.data.emailAddress ?? "";
+      if (authenticatedEmail.toLowerCase() !== this.account.toLowerCase()) {
+        throw new Error(
+          `Account mismatch: token is authenticated as "${authenticatedEmail}" but "--account ${this.account}" was requested. ` +
+          `Run "gwork mail messages --account ${this.account}" to re-authenticate the correct account.`
+        );
+      }
+    }
   }
 
   // ============= LABEL OPERATIONS =============
