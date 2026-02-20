@@ -50,7 +50,7 @@ export function handleGoogleApiError(error: unknown, context: string): never {
         throw new ServiceUnavailableError(
           `Google ${context} service temporarily unavailable (HTTP ${httpCode})`
         );
-      default:
+      default: {
         if (error instanceof Error) {
           throw new ServiceError(
             `Failed to ${context}: ${error.message}`,
@@ -58,6 +58,14 @@ export function handleGoogleApiError(error: unknown, context: string): never {
             httpCode
           );
         }
+        const rawMsg = (error as any).message;
+        const msg = typeof rawMsg === "string" ? rawMsg : "unknown error";
+        throw new ServiceError(
+          `Failed to ${context}: ${msg}`,
+          "API_ERROR",
+          httpCode
+        );
+      }
     }
   }
 
