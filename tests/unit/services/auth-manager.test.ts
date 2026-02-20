@@ -311,7 +311,7 @@ describe("AuthManager", () => {
       (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValue(null);
 
       const mockAuthClient = makeMockOAuth2Client({
-        access_token: "mock-new-access",
+        access_token: "fake-new-access",
         refresh_token: "new_refresh_token",
       });
 
@@ -354,7 +354,7 @@ describe("AuthManager", () => {
       const legacyToken: TokenData = {
         service: "gmail",
         account: "",
-        access_token: "mock-legacy",
+        access_token: "fake-legacy-token",
         refresh_token: "legacy_refresh",
         expiry_date: Date.now() + 3600000,
         scopes: [], // Empty scopes
@@ -816,7 +816,7 @@ describe("AuthManager", () => {
       const oldToken: TokenData = {
         service: "gmail",
         account: "default",
-        access_token: "mock-old",
+        access_token: "fake-old-token",
         refresh_token: "refresh_token",
         expiry_date: Date.now() + 3600000,
         scopes: ["old_scope"], // Old/incorrect scopes
@@ -831,7 +831,7 @@ describe("AuthManager", () => {
         .mockReturnValueOnce(oldToken); // Load call
 
       const mockAuthClient = makeMockOAuth2Client({
-        access_token: "mock-old",
+        access_token: "fake-old-token",
         refresh_token: "refresh_token",
       });
 
