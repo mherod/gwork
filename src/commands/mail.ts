@@ -98,7 +98,7 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
       // Extract query (first arg) and remaining options
       const query = args[0]!;
       const searchOptions = args.slice(1);
-      await searchMessages(mailService, query, searchOptions);
+      await searchMessages(mailService, query, searchOptions, account);
       break;
     }
     case "stats":
@@ -378,7 +378,7 @@ async function getMessage(mailService: MailService, messageId: string, args: str
   }
 }
 
-async function searchMessages(mailService: MailService, query: string, extraArgs: string[]) {
+async function searchMessages(mailService: MailService, query: string, extraArgs: string[], account = "default") {
   const spinner = ora("Searching messages...").start();
   try {
     const options: any = { maxResults: 10 };
@@ -396,17 +396,33 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
     }
 
     const result = await mailService.searchMessages(query, options);
-    spinner.succeed(`Found ${result.messages.length} message(s) matching "${query}"`);
-
-    if (result.messages.length === 0) {
-      logger.info(chalk.yellow("No messages found"));
-      return;
-    }
 
     const messagePromises = result.messages.map((msg) =>
       mailService.getMessage(msg.id ?? "", "metadata")
     );
-    const messages = await Promise.all(messagePromises);
+    const allMessages = await Promise.all(messagePromises);
+
+    // Filter results to only include messages addressed to/from the specified account.
+    // This is a defence-in-depth measure: even if the token lookup returned the correct
+    // mailbox, we never surface messages whose To/Delivered-To headers don't match the
+    // requested account (when a specific account was given).
+    const messages = account === "default"
+      ? allMessages
+      : allMessages.filter((message) => {
+          const headers = message.payload?.headers || [];
+          const to = getHeader(headers, "to");
+          const deliveredTo = getHeader(headers, "delivered-to");
+          const accountLower = account.toLowerCase();
+          return to.toLowerCase().includes(accountLower) ||
+            deliveredTo.toLowerCase().includes(accountLower);
+        });
+
+    spinner.succeed(`Found ${messages.length} message(s) matching "${query}"`);
+
+    if (messages.length === 0) {
+      logger.info(chalk.yellow("No messages found"));
+      return;
+    }
 
     logger.info(chalk.bold(`\nSearch Results for: "${query}"`));
     logger.info("─".repeat(80));
