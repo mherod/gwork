@@ -609,7 +609,24 @@ async function downloadAttachment(mailService: MailService, messageId: string, a
     const attachment = await mailService.getAttachment(messageId, attachmentId);
     const data = Buffer.from(attachment.data || "", "base64");
 
-    const outputFile = filename || attachmentId;
+    let outputFile = filename;
+    if (!outputFile) {
+      // Try to find the original filename from the message's attachment metadata
+      try {
+        const message = await mailService.getMessage(messageId, "full");
+        const parts = message.payload?.parts || [];
+        const matchingPart = parts.find((p: any) => p.body?.attachmentId === attachmentId);
+        if (matchingPart?.filename && matchingPart.filename.length > 0) {
+          outputFile = matchingPart.filename;
+        }
+      } catch {
+        // Metadata fetch failed — fall through to hash-based fallback
+      }
+    }
+    if (!outputFile) {
+      // Fall back to a short, safe hash of the attachment ID
+      outputFile = `attachment-${attachmentId.slice(0, 16).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    }
     fs.writeFileSync(outputFile, data);
 
     spinner.succeed(`Attachment downloaded to ${outputFile}`);
