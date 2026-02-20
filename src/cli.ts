@@ -5,6 +5,7 @@ import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
 import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
+import { handleDriveCommand } from "./commands/drive.ts";
 import { CommandRegistry } from "./commands/registry.ts";
 import { parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
@@ -21,6 +22,7 @@ Commands:
   mail           Gmail operations
   cal            Google Calendar operations
   contacts       Google Contacts operations
+  drive          Google Drive operations
   accounts       List configured Google accounts
 
 Options:
@@ -197,6 +199,47 @@ Examples:
 `);
 }
 
+function printDriveHelp() {
+  console.log(`
+gwork drive - Google Drive operations
+
+Usage:
+  gwork drive <command> [options]
+
+Commands:
+  list [options]                  List files and folders
+  get <fileId>                    Get metadata for a specific file
+  search <query>                  Search files using Drive query syntax
+  download <fileId>               Download a file to local disk
+  upload <path>                   Upload a local file to Drive
+  delete <fileId> --confirm       Delete a file
+  mkdir <name>                    Create a new folder
+  move <fileId> <folderId>        Move a file to a folder
+  share <fileId>                  View sharing permissions
+  stats                           Show Drive storage usage
+
+Options:
+  -h, --help                      Show this help message
+  --max-results <number>          Maximum number of results to return (default: 10)
+  --folder <folderId>             Filter by folder / set parent folder
+  --output <path>                 Destination path for download
+  --name <name>                   Override file name for upload
+
+Examples:
+  gwork drive list
+  gwork drive list --max-results 25
+  gwork drive search "quarterly report"
+  gwork drive get <fileId>
+  gwork drive download <fileId>
+  gwork drive download <fileId> --output ./report.pdf
+  gwork drive upload ./report.pdf --name "Q4 Report"
+  gwork drive mkdir "Projects"
+  gwork drive move <fileId> <folderId>
+  gwork drive share <fileId>
+  gwork drive stats
+`);
+}
+
 function printVersion() {
   const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
   console.log(`gwork version 0.3.1${buildTime}`);
@@ -252,6 +295,32 @@ async function handleCal(args: string[]) {
   }
 
   await handleCalCommand(subcommand, filteredArgs, account);
+}
+
+async function handleDrive(args: string[]) {
+  // Check for help flag or no subcommand
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    printDriveHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0];
+  if (!subcommand) {
+    printDriveHelp();
+    process.exit(0);
+  }
+  const subcommandArgs = args.slice(1);
+
+  // Extract account from subcommand args
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  // If --help/-h appears in subcommand args, show parent help
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printDriveHelp();
+    process.exit(0);
+  }
+
+  await handleDriveCommand(subcommand, filteredArgs, account);
 }
 
 async function handleContacts(args: string[]) {
@@ -316,6 +385,7 @@ const topLevelRegistry = new CommandRegistry<null>()
   .register("mail", (_svc, args) => handleMail(args))
   .register("cal", (_svc, args) => handleCal(args))
   .register("contacts", (_svc, args) => handleContacts(args))
+  .register("drive", (_svc, args) => handleDrive(args))
   .register("accounts", (_svc, args) => handleAccountsCommand(args));
 
 main().catch((error) => {
