@@ -1682,21 +1682,28 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
       event1: Event;
       event2: Event;
     }
+
+    // Pre-compute timestamps once per event (O(n+m)) before the O(n*m) comparison loop
+    const times1 = events1.map((e) => {
+      const start = e.start?.dateTime ?? e.start?.date;
+      const end = e.end?.dateTime ?? e.end?.date;
+      return start && end ? { s: new Date(start).getTime(), e: new Date(end).getTime() } : null;
+    });
+    const times2 = events2.map((e) => {
+      const start = e.start?.dateTime ?? e.start?.date;
+      const end = e.end?.dateTime ?? e.end?.date;
+      return start && end ? { s: new Date(start).getTime(), e: new Date(end).getTime() } : null;
+    });
+
     const overlapping: Overlap[] = [];
-    events1.forEach((e1) => {
-      const start1 = e1.start?.dateTime ?? e1.start?.date;
-      const end1 = e1.end?.dateTime ?? e1.end?.date;
-      events2.forEach((e2) => {
-        const start2 = e2.start?.dateTime ?? e2.start?.date;
-        const end2 = e2.end?.dateTime ?? e2.end?.date;
-        if (start1 && start2 && end1 && end2) {
-          const s1 = new Date(start1).getTime();
-          const e1Time = new Date(end1).getTime();
-          const s2 = new Date(start2).getTime();
-          const e2Time = new Date(end2).getTime();
-          if ((s1 < e2Time && s2 < e1Time)) {
-            overlapping.push({ event1: e1, event2: e2 });
-          }
+    events1.forEach((e1, i) => {
+      const t1 = times1[i];
+      if (!t1) return;
+      events2.forEach((e2, j) => {
+        const t2 = times2[j];
+        if (!t2) return;
+        if (t1.s < t2.e && t2.s < t1.e) {
+          overlapping.push({ event1: e1, event2: e2 });
         }
       });
     });
