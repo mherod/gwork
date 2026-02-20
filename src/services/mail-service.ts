@@ -4,6 +4,7 @@
  */
 
 import { google } from "googleapis";
+import { createTransport } from "nodemailer";
 import { BaseService } from "./base-service.ts";
 import { handleGoogleApiError } from "./error-handler.ts";
 import { withRetry } from "./retry.ts";
@@ -22,6 +23,50 @@ import type {
   ThreadsResponse,
 } from "../types/google-apis.ts";
 
+export interface SendMessageOptions {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  html?: boolean;
+  attachments?: string[];
+  replyToMessageId?: string;
+}
+
+async function buildMimeMessage(options: SendMessageOptions & {
+  inReplyTo?: string;
+  references?: string;
+  threadId?: string;
+}): Promise<{ raw: string; threadId?: string }> {
+  // Use nodemailer to build a correctly encoded RFC 2822 message
+  const transporter = createTransport({ streamTransport: true, newline: "unix" });
+
+  const mailOptions: Parameters<typeof transporter.sendMail>[0] = {
+    to: options.to.join(", "),
+    cc: options.cc && options.cc.length > 0 ? options.cc.join(", ") : undefined,
+    bcc: options.bcc && options.bcc.length > 0 ? options.bcc.join(", ") : undefined,
+    subject: options.subject,
+    ...(options.html ? { html: options.body } : { text: options.body }),
+    ...(options.inReplyTo ? { inReplyTo: options.inReplyTo } : {}),
+    ...(options.references ? { references: options.references } : {}),
+    attachments: options.attachments?.map((filePath) => ({ path: filePath })),
+  };
+
+  const info = await transporter.sendMail(mailOptions);
+  const rawBuffer = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    // info.message is Buffer | Readable; streamTransport always produces Readable
+    const stream = info.message as NodeJS.ReadableStream;
+    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  });
+
+  const raw = rawBuffer.toString("base64url");
+  return { raw, threadId: options.threadId };
+}
+
 export class MailService extends BaseService {
   private gmail: GmailClient | null = null;
 
@@ -32,6 +77,7 @@ export class MailService extends BaseService {
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.labels",
+        "https://www.googleapis.com/auth/gmail.send",
       ],
       account
     );
@@ -635,6 +681,83 @@ export class MailService extends BaseService {
       return result.data;
     } catch (error: unknown) {
       handleGoogleApiError(error, "get profile");
+    }
+  }
+
+  // ============= SEND OPERATIONS =============
+
+  /**
+   * Sends an email message via Gmail API.
+   *
+   * @param options - Message options including recipients, subject, body, and attachments
+   * @returns The sent message
+   * @throws {InitializationError} If service not initialized
+   *
+   * @example
+   * ```typescript
+   * const msg = await mail.sendMessage({
+   *   to: ["alice@example.com"],
+   *   subject: "Hello",
+   *   body: "Hi there",
+   * });
+   * ```
+   */
+  async sendMessage(options: SendMessageOptions): Promise<Message> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    let inReplyTo: string | undefined;
+    let references: string | undefined;
+    let threadId: string | undefined;
+
+    if (options.replyToMessageId) {
+      validateResourceId(options.replyToMessageId, "messageId");
+      try {
+        const original = await this.gmail!.users.messages.get({
+          userId: "me",
+          id: options.replyToMessageId,
+          format: "metadata",
+          metadataHeaders: ["Message-ID", "References", "Subject"],
+        });
+        const headers = original.data.payload?.headers ?? [];
+        const getHeader = (name: string) =>
+          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+
+        inReplyTo = getHeader("Message-ID");
+        const existingRefs = getHeader("References");
+        references = existingRefs
+          ? `${existingRefs} ${inReplyTo}`
+          : inReplyTo;
+        threadId = original.data.threadId ?? undefined;
+      } catch (error: unknown) {
+        handleGoogleApiError(error, "get original message for reply");
+      }
+    }
+
+    try {
+      const { raw, threadId: tid } = await buildMimeMessage({
+        ...options,
+        inReplyTo,
+        references,
+        threadId,
+      });
+
+      const requestBody: gmail_v1.Schema$Message = { raw };
+      if (tid) {
+        requestBody.threadId = tid;
+      }
+
+      const result = await this.gmail!.users.messages.send({
+        userId: "me",
+        requestBody,
+      });
+
+      if (!result.data) {
+        throw new Error("No message data returned from send");
+      }
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "send message");
     }
   }
 }

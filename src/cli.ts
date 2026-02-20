@@ -72,16 +72,30 @@ Commands:
   unstar <messageId>                      Remove star from a specific message
   create-label <labelName>                Create a new Gmail label
   delete-label <labelId>                  Delete a Gmail label
+  send [options]                          Compose and send an email
 
 Options:
   -h, --help                              Show this help message
   --max-results <number>                  Maximum number of results to return (default: 10)
+
+Send options:
+  --to <address>                          Recipient (repeatable)
+  --cc <address>                          CC recipient (repeatable)
+  --bcc <address>                         BCC recipient (repeatable)
+  --subject <text>                        Email subject
+  --body <text>                           Plain-text body
+  --body-file <path>                      Read body from file (plain text or HTML)
+  --html                                  Treat body as HTML
+  --attach <path>                         Attach a file (repeatable)
+  --reply-to <messageId>                  Send as a reply to an existing message
 
 Examples:
   gwork mail messages
   gwork mail search "from:example@gmail.com"
   gwork mail unread
   gwork mail stats
+  gwork mail send --to alice@example.com --subject "Hello" --body "Hi there"
+  gwork mail send --to alice@example.com --subject "Report" --body-file report.html --html --attach report.pdf
 `);
 }
 

@@ -2,10 +2,12 @@ import chalk from "chalk";
 import ora from "ora";
 import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
+import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
 
@@ -232,6 +234,9 @@ export async function handleMailCommand(subcommand: string, args: string[], acco
         throw new ArgumentError("Error: labelId is required", "gwork mail delete-label <labelId>");
       }
       await deleteLabel(mailService, args[0]!);
+      break;
+    case "send":
+      await handleSendMessage(mailService, args);
       break;
     default:
       throw new ArgumentError(`Unknown mail subcommand: ${subcommand}`, "gwork mail --help");
@@ -916,6 +921,115 @@ async function deleteLabel(mailService: MailService, labelId: string) {
     logger.info(chalk.green("Label has been deleted"));
   } catch (error: unknown) {
     spinner.fail("Failed to delete label");
+    throw error;
+  }
+}
+
+async function handleSendMessage(mailService: MailService, args: string[]) {
+  const toList: string[] = [];
+  const ccList: string[] = [];
+  const bccList: string[] = [];
+  const attachments: string[] = [];
+  let subject = "";
+  let body = "";
+  let bodyFile = "";
+  let html = false;
+  let replyToMessageId = "";
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--to" && args[i + 1]) {
+      toList.push(args[++i]!);
+    } else if (arg === "--cc" && args[i + 1]) {
+      ccList.push(args[++i]!);
+    } else if (arg === "--bcc" && args[i + 1]) {
+      bccList.push(args[++i]!);
+    } else if (arg === "--subject" && args[i + 1]) {
+      subject = args[++i]!;
+    } else if (arg === "--body" && args[i + 1]) {
+      body = args[++i]!;
+    } else if (arg === "--body-file" && args[i + 1]) {
+      bodyFile = args[++i]!;
+    } else if (arg === "--html") {
+      html = true;
+    } else if (arg === "--attach" && args[i + 1]) {
+      attachments.push(args[++i]!);
+    } else if (arg === "--reply-to" && args[i + 1]) {
+      replyToMessageId = args[++i]!;
+    }
+  }
+
+  // Validate required flags
+  if (toList.length === 0) {
+    throw new ArgumentError(
+      "Error: --to is required",
+      "gwork mail send --to <address> --subject <text> --body <text>"
+    );
+  }
+  if (!subject) {
+    throw new ArgumentError(
+      "Error: --subject is required",
+      "gwork mail send --to <address> --subject <text> --body <text>"
+    );
+  }
+  if (!body && !bodyFile) {
+    throw new ArgumentError(
+      "Error: either --body or --body-file is required",
+      "gwork mail send --to <address> --subject <text> --body <text>"
+    );
+  }
+  if (body && bodyFile) {
+    throw new ArgumentError(
+      "Error: --body and --body-file are mutually exclusive",
+      "gwork mail send --to <address> --subject <text> [--body <text> | --body-file <path>]"
+    );
+  }
+
+  // Validate attachment files exist before making any API calls
+  for (const filePath of attachments) {
+    if (!fs.existsSync(filePath)) {
+      throw new ArgumentError(
+        `Error: attachment file not found: ${filePath}`,
+        "gwork mail send --to <address> --subject <text> --body <text> --attach <path>"
+      );
+    }
+  }
+
+  // Read body from file if --body-file was provided
+  if (bodyFile) {
+    if (!fs.existsSync(bodyFile)) {
+      throw new ArgumentError(
+        `Error: body file not found: ${bodyFile}`,
+        "gwork mail send --to <address> --subject <text> --body-file <path>"
+      );
+    }
+    body = await fsPromises.readFile(bodyFile, "utf-8");
+  }
+
+  const options: SendMessageOptions = {
+    to: toList,
+    cc: ccList.length > 0 ? ccList : undefined,
+    bcc: bccList.length > 0 ? bccList : undefined,
+    subject,
+    body,
+    html,
+    attachments: attachments.length > 0 ? attachments : undefined,
+    replyToMessageId: replyToMessageId || undefined,
+  };
+
+  const spinner = ora("Sending message...").start();
+  try {
+    const message = await mailService.sendMessage(options);
+    spinner.succeed("Message sent");
+    logger.info(chalk.green(`Email sent successfully`));
+    if (message.id) {
+      logger.info(`${chalk.cyan("Message ID:")} ${message.id}`);
+    }
+    if (message.threadId) {
+      logger.info(`${chalk.cyan("Thread ID:")}  ${message.threadId}`);
+    }
+  } catch (error: unknown) {
+    spinner.fail("Failed to send message");
     throw error;
   }
 }
