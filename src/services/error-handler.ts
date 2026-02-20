@@ -11,6 +11,24 @@ import {
   ServiceError,
 } from "./errors.ts";
 
+type ErrorFactory = (context: string, code: number, originalError: unknown) => ServiceError;
+
+const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
+  401: (_ctx, _code, originalError) =>
+    new ServiceError(
+      `Authentication required: ${originalError instanceof Error ? originalError.message : "Login Required"}. Please re-authenticate.`,
+      "AUTHENTICATION_REQUIRED",
+      401,
+      true
+    ),
+  403: (ctx) => new PermissionDeniedError(ctx, "resource"),
+  404: (ctx) => new NotFoundError(ctx, "resource"),
+  429: () => new RateLimitError(),
+  500: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),
+  502: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),
+  503: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),
+};
+
 /**
  * Handles Google API errors and throws appropriate ServiceError subclass.
  *
@@ -25,48 +43,27 @@ import {
 export function handleGoogleApiError(error: unknown, context: string): never {
   // Type-safe error handling for Google API errors
   if (error && typeof error === "object" && "code" in error) {
-    const httpCode = (error as any).code;
-
-    switch (httpCode) {
-      case 401:
-        // 401 Unauthorized / Login Required
-        // This usually means the token is invalid or expired
-        // Suggest re-authentication
-        throw new ServiceError(
-          `Authentication required: ${error instanceof Error ? error.message : "Login Required"}. Please re-authenticate.`,
-          "AUTHENTICATION_REQUIRED",
-          401,
-          true // Retryable - user can re-authenticate
-        );
-      case 404:
-        throw new NotFoundError(context, "resource");
-      case 403:
-        throw new PermissionDeniedError(context, "resource");
-      case 429:
-        throw new RateLimitError();
-      case 500:
-      case 502:
-      case 503:
-        throw new ServiceUnavailableError(
-          `Google ${context} service temporarily unavailable (HTTP ${httpCode})`
-        );
-      default: {
-        if (error instanceof Error) {
-          throw new ServiceError(
-            `Failed to ${context}: ${error.message}`,
-            "API_ERROR",
-            httpCode
-          );
-        }
-        const rawMsg = (error as any).message;
-        const msg = typeof rawMsg === "string" ? rawMsg : "unknown error";
-        throw new ServiceError(
-          `Failed to ${context}: ${msg}`,
-          "API_ERROR",
-          httpCode
-        );
-      }
+    const httpCode = (error as any).code as number;
+    const factory = HTTP_ERROR_MAP[httpCode];
+    if (factory) {
+      throw factory(context, httpCode, error);
     }
+
+    // Unmapped HTTP code — generic fallback
+    if (error instanceof Error) {
+      throw new ServiceError(
+        `Failed to ${context}: ${error.message}`,
+        "API_ERROR",
+        httpCode
+      );
+    }
+    const rawMsg = (error as any).message;
+    const msg = typeof rawMsg === "string" ? rawMsg : "unknown error";
+    throw new ServiceError(
+      `Failed to ${context}: ${msg}`,
+      "API_ERROR",
+      httpCode
+    );
   }
 
   if (error instanceof Error) {
