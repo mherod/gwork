@@ -120,7 +120,54 @@ npm publish
 
 # Versioning
 - **DO** update version in `src/cli.ts` (`printVersion` function) to match `package.json` when bumping versions.
-- **DO** use `npm link` to locally test the production build behavior and version output.
+- **DO** use `pnpm link --global` (not `npm link`) to test the production build locally; `npm link` is blocked by hooks.
+```
+
+### Build Timestamp Injection
+
+The build script injects the current UTC timestamp as a compile-time constant via `bun --define`:
+
+```bash
+--define __BUILD_TIME__=$(date -u +'"%Y-%m-%dT%H:%M:%SZ"')
+```
+
+In source files, declare it at the top before use:
+
+```typescript
+declare const __BUILD_TIME__: string | undefined;
+```
+
+Then guard with `typeof` before reading (the constant is undefined in dev/test mode):
+
+```typescript
+const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
+```
+
+### Type Checking
+
+There is no `typecheck` script in `package.json`. Run type checks with:
+
+```bash
+bunx tsc --noEmit
+```
+
+### Package Manager
+
+- **DO** use `pnpm` for installing packages and managing the lockfile. The `npm` command is blocked by a pretooluse hook.
+- **DO** use `bun add <pkg>` to add new dependencies (updates `package.json` and `bun.lock`).
+- **DO** run `pnpm install` after changing `package.json` to regenerate `pnpm-lock.yaml`, then commit it — the stop hook enforces lockfile sync.
+- **DON'T** use `npm install` or `npm link`; they are blocked.
+
+### MIME / Email Construction
+
+- **DO** use `nodemailer` with `streamTransport: true` to construct RFC 2822 messages for `gmail.users.messages.send`. It handles header encoding, multipart/mixed boundaries, and attachment MIME types correctly.
+- **DON'T** hand-roll RFC 2822 message construction. Hand-rolled implementations hit `no-control-regex` lint errors on non-ASCII header encoding patterns and are fragile.
+
+```typescript
+import { createTransport } from "nodemailer";
+const transporter = createTransport({ streamTransport: true, newline: "unix" });
+const info = await transporter.sendMail(mailOptions);
+const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — cast required
 ```
 
 ## Git & Contribution
