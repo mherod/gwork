@@ -283,7 +283,8 @@ async function listMessages(mailService: MailService, args: string[]) {
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--max-results" || args[i] === "-n") {
         if (i + 1 < args.length) {
-          options.maxResults = parseInt(args[++i]!);
+          const parsed = parseInt(args[++i]!, 10);
+          if (!isNaN(parsed)) options.maxResults = parsed;
         }
       } else if (args[i] === "--query" || args[i] === "-q") {
         if (i + 1 < args.length) {
@@ -386,7 +387,8 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
     for (let i = 0; i < extraArgs.length; i++) {
       if (extraArgs[i] === "--max-results" || extraArgs[i] === "-n") {
         if (i + 1 < extraArgs.length) {
-          options.maxResults = parseInt(extraArgs[++i]!);
+          const parsed = parseInt(extraArgs[++i]!, 10);
+          if (!isNaN(parsed)) options.maxResults = parsed;
         }
       } else if (extraArgs[i] === "--page-token") {
         if (i + 1 < extraArgs.length) {
@@ -486,7 +488,10 @@ async function listThreads(mailService: MailService, args: string[]) {
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--max-results" || args[i] === "-n") {
-        options.maxResults = parseInt(args[++i]!);
+        if (i + 1 < args.length) {
+          const parsed = parseInt(args[++i]!, 10);
+          if (!isNaN(parsed)) options.maxResults = parsed;
+        }
       } else if (args[i] === "--query" || args[i] === "-q") {
         options.q = args[++i]!;
       }
