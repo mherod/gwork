@@ -220,6 +220,20 @@ bunx tsc --noEmit
 - **DO** run `pnpm install` after changing `package.json` to regenerate `pnpm-lock.yaml`, then commit it — the stop hook enforces lockfile sync.
 - **DON'T** use `npm install` or `npm link`; they are blocked.
 
+### better-sqlite3 Native Binding (Local Dev)
+
+After `pnpm install` (or when switching Node.js versions), the `better-sqlite3` native binding may be missing or stale. Run:
+
+```bash
+pnpm run rebuild-sqlite3
+```
+
+**DON'T** use `pnpm rebuild better-sqlite3` — it silently exits 0 without rebuilding under pnpm's virtual store layout. The `rebuild-sqlite3` script uses `node-gyp rebuild --directory <resolved-path>` which is reliable.
+
+**DON'T** put `npm rebuild better-sqlite3` in scripts — `npm` is blocked by a pretooluse hook.
+
+Symptoms of a missing binding: `Error: Could not locate the bindings file. Tried: .../better_sqlite3.node`
+
 ### MIME / Email Construction
 
 - **DO** use `nodemailer` with `streamTransport: true` to construct RFC 2822 messages for `gmail.users.messages.send`. It handles header encoding, multipart/mixed boundaries, and attachment MIME types correctly.
