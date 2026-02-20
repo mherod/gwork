@@ -242,7 +242,7 @@ Examples:
 
 function printVersion() {
   const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
-  console.log(`gwork version 0.3.1${buildTime}`);
+  console.log(`gwork version 0.3.2${buildTime}`);
 }
 
 async function handleMail(args: string[]) {
