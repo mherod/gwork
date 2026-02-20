@@ -121,9 +121,16 @@ const calRegistry = new CommandRegistry<CalendarService>()
   })
   .register("date", (_svc, args) => dateUtilities(args));
 
-export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
+type CalServiceFactory = (account: string) => CalendarService;
+
+export async function handleCalCommand(
+  subcommand: string,
+  args: string[],
+  account = "default",
+  serviceFactory: CalServiceFactory = (acc) => new CalendarService(acc)
+) {
   // Create service instance with the specified account
-  const calendarService = new CalendarService(account);
+  const calendarService = serviceFactory(account);
 
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(calendarService);
