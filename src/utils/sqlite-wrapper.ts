@@ -18,8 +18,11 @@ if (isBun) {
     const errorMsg = (error as any)?.message || String(error);
     if (errorMsg.includes("ERR_MODULE_NOT_FOUND") || errorMsg.includes("better-sqlite3")) {
       console.error(
-        "\n❌ Error: better-sqlite3 is not installed.\n" +
-          "To fix this, run: npm install better-sqlite3\n" +
+        "\n❌ Error: better-sqlite3 native binding could not be loaded.\n" +
+          "This usually means the binding needs to be compiled for your current Node.js version.\n" +
+          "To fix this, run one of:\n" +
+          "  npm rebuild better-sqlite3\n" +
+          "  pnpm rebuild better-sqlite3\n" +
           "Or reinstall gwork: npm install -g gwork\n"
       );
       process.exit(1);
