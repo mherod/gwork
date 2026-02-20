@@ -40,21 +40,26 @@ gwork contacts --help
 gwork drive --help
 ```
 
-### Native binding (pnpm / Node 25+)
+### Native binding (pnpm / Node version changes)
 
-`gwork` uses `better-sqlite3` for token storage, which requires a native `.node` binding compiled for your current Node.js ABI. If you install via **pnpm** or switch Node versions and see an error like:
+`gwork` uses `better-sqlite3` for token storage, which requires a native `.node` binding compiled for your current Node.js ABI. If you see an error like:
 
 ```
 Error: Could not locate the bindings file. Tried: .../better_sqlite3.node
 ```
 
-Rebuild the native binding for your current Node version:
+Rebuild the native binding using the script included in `package.json`:
 
 ```bash
-pnpm rebuild better-sqlite3
-# or
-npm rebuild better-sqlite3
+pnpm run rebuild-sqlite3
 ```
+
+This uses `node-gyp rebuild` with the exact path to `better-sqlite3` under your package manager's store, which is more reliable than `pnpm rebuild better-sqlite3` (the latter silently exits 0 without rebuilding when the path isn't found).
+
+You may need to rebuild after:
+- Running `pnpm install` (can wipe `build/Release/` for native deps)
+- Switching Node.js versions (ABI mismatch)
+- First cloning the repo with pnpm (binding not pre-compiled)
 
 ## Usage
 
