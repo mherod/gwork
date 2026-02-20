@@ -129,7 +129,8 @@ const DEFAULT_OPTIONS: Required<Omit<DbRetryOptions, "logger">> = {
  * 
  * Detected patterns:
  * - Error name === "SQLiteError"
- * - Message contains: "database is locked", "database or disk is full", "busy", "locked"
+ * - Message contains: "database is locked", "database busy", "database or disk is full",
+ *   "sqlite_busy", "sqlite_locked"
  * 
  * @param error - The error to check
  * @returns true if error indicates a database lock condition
@@ -152,13 +153,16 @@ function isDatabaseLockError(error: unknown): boolean {
     ? error.name
     : String(hasName ? (error as { name: unknown }).name : "");
   
-  // Check for SQLite lock errors
+  // Check for SQLite lock errors — use specific phrases to avoid false positives
+  // from unrelated errors containing bare "busy" or "locked"
+  const msg = errorMessage.toLowerCase();
   return (
     errorName === "SQLiteError" ||
-    errorMessage.toLowerCase().includes("database is locked") ||
-    errorMessage.toLowerCase().includes("database or disk is full") ||
-    errorMessage.toLowerCase().includes("busy") ||
-    errorMessage.toLowerCase().includes("locked")
+    msg.includes("database is locked") ||
+    msg.includes("database busy") ||
+    msg.includes("database or disk is full") ||
+    msg.includes("sqlite_busy") ||
+    msg.includes("sqlite_locked")
   );
 }
 
