@@ -17,7 +17,7 @@
     "dev": "bun src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "postinstall": "npm list better-sqlite3 2>/dev/null | grep -q better-sqlite3 || npm install better-sqlite3 2>/dev/null || true",
+    "postinstall": "node -e \"require('better-sqlite3')\" 2>/dev/null || npm rebuild better-sqlite3 2>/dev/null || npm install better-sqlite3 2>/dev/null || true",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "test:watch": "bun test --watch",
