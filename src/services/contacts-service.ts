@@ -902,20 +902,13 @@ export class ContactsService extends BaseService {
     const updated = await this.updateContact(targetResourceName, mergedData as CreateContactOptions);
 
     // Delete source contacts if requested
-    const deletedContacts: string[] = [];
-    if (options.deleteAfterMerge !== false) {
-      for (const sourceContact of sourceContacts) {
-        try {
-          if (sourceContact.resourceName) {
-            await this.deleteContact(sourceContact.resourceName);
-            deletedContacts.push(sourceContact.resourceName);
-          }
-        } catch (error) {
-          // Continue even if deletion fails
-          this.logger.debug(`Failed to delete source contact ${sourceContact.resourceName}`, { error });
-        }
-      }
+    const toDelete = options.deleteAfterMerge !== false
+      ? sourceContacts.map((c) => c.resourceName).filter((rn): rn is string => Boolean(rn))
+      : [];
+    if (toDelete.length > 0) {
+      await this.batchDeleteContacts(toDelete);
     }
+    const deletedContacts = toDelete;
 
     return {
       mergedContact: updated,
