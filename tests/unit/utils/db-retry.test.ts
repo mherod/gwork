@@ -285,6 +285,48 @@ describe("Database Retry Utility", () => {
 
       expect(attempts).toBe(2);
     });
+
+    test("does not retry on bare 'busy' unrelated to database (regression #31)", async () => {
+      let attempts = 0;
+      let caught: Error | undefined;
+
+      try {
+        await withDbRetry(
+          async () => {
+            attempts++;
+            throw new Error("user is busy");
+          },
+          { maxRetries: 3, initialDelay: 10 }
+        );
+      } catch (e) {
+        caught = e as Error;
+      }
+
+      expect(caught?.message).toBe("user is busy");
+      // Should not retry — only 1 attempt
+      expect(attempts).toBe(1);
+    });
+
+    test("does not retry on bare 'locked' unrelated to database (regression #31)", async () => {
+      let attempts = 0;
+      let caught: Error | undefined;
+
+      try {
+        await withDbRetry(
+          async () => {
+            attempts++;
+            throw new Error("account locked");
+          },
+          { maxRetries: 3, initialDelay: 10 }
+        );
+      } catch (e) {
+        caught = e as Error;
+      }
+
+      expect(caught?.message).toBe("account locked");
+      // Should not retry — only 1 attempt
+      expect(attempts).toBe(1);
+    });
   });
 
   describe("exponential backoff", () => {
