@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+declare const __BUILD_TIME__: string | undefined;
 
 import { handleMailCommand } from "./commands/mail.ts";
 import { handleCalCommand } from "./commands/cal.ts";
@@ -196,7 +197,8 @@ Examples:
 }
 
 function printVersion() {
-  console.log("gwork version 0.3.0");
+  const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
+  console.log(`gwork version 0.3.0${buildTime}`);
 }
 
 async function handleMail(args: string[]) {
