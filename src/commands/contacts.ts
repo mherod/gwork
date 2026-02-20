@@ -157,7 +157,7 @@ async function listContacts(contactsService: ContactsService, args: string[]) {
 
       if (arg === "-n" || arg === "--max") {
         const value = args[++i]!;
-        if (value) options.max = parseInt(value);
+        if (value) options.max = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -283,7 +283,7 @@ async function searchContacts(contactsService: ContactsService, query: string, a
 
       if (arg === "-n" || arg === "--max") {
         const value = args[++i]!;
-        if (value) options.max = parseInt(value);
+        if (value) options.max = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -912,10 +912,10 @@ async function autoMergeContacts(contactsService: ContactsService, args: string[
         if (value) options.criteria = value.split(",").map((c) => c.trim());
       } else if (arg === "--threshold" || arg === "-t") {
         const value = args[++i]!;
-        if (value) options.threshold = parseInt(value);
+        if (value) options.threshold = parseInt(value, 10);
       } else if (arg === "--max-results" || arg === "-n") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       }
     }
 
@@ -1002,10 +1002,10 @@ async function findDuplicates(contactsService: ContactsService, args: string[]) 
         if (value) options.criteria = value.split(",").map((c) => c.trim());
       } else if (arg === "--threshold" || arg === "-t") {
         const value = args[++i]!;
-        if (value) options.threshold = parseInt(value);
+        if (value) options.threshold = parseInt(value, 10);
       } else if (arg === "--max-results" || arg === "-n") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -1123,7 +1123,7 @@ async function findMissingNames(contactsService: ContactsService, args: string[]
 
       if (arg === "-n" || arg === "--max-results") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -1194,7 +1194,7 @@ async function analyzeGenericNames(contactsService: ContactsService, args: strin
 
       if (arg === "-n" || arg === "--max-results") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -1265,7 +1265,7 @@ async function analyzeImportedContacts(contactsService: ContactsService, args: s
 
       if (arg === "-n" || arg === "--max-results") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;
@@ -1353,7 +1353,7 @@ async function detectMarketing(contactsService: ContactsService, args: string[])
 
       if (arg === "-n" || arg === "--max-results") {
         const value = args[++i]!;
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-f" || arg === "--format") {
         const value = args[++i]!;
         if (value) options.format = value;

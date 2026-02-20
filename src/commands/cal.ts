@@ -179,10 +179,10 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
         if (value) options.calendar = value;
       } else if (arg === "-n" || arg === "--max") {
         const value = args[++i];
-        if (value) options.max = parseInt(value);
+        if (value) options.max = parseInt(value, 10);
       } else if (arg === "--days") {
         const value = args[++i];
-        if (value) options.days = parseInt(value);
+        if (value) options.days = parseInt(value, 10);
       } else if (arg === "--range") {
         const value = args[++i];
         if (value) options.range = value;
@@ -524,7 +524,7 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
       endTime = new Date(options.end);
     } else {
       endTime = new Date(
-        startTime.getTime() + parseInt(options.duration || "60") * 60000
+        startTime.getTime() + parseInt(options.duration || "60", 10) * 60000
       );
     }
 
@@ -683,14 +683,14 @@ async function searchEvents(calendarService: CalendarService, query: string, ext
       
       if (arg === "--max-results" || arg === "-n") {
         const value = extraArgs[++i];
-        if (value) options.maxResults = parseInt(value);
+        if (value) options.maxResults = parseInt(value, 10);
       } else if (arg === "-c" || arg === "--calendar") {
         const value = extraArgs[++i];
         if (value) options.calendar = value;
       } else if (arg === "--days") {
         const value = extraArgs[++i];
         if (value) {
-          const days = parseInt(value);
+          const days = parseInt(value, 10);
           const timeMin = new Date();
           const timeMax = new Date();
           timeMax.setDate(timeMax.getDate() + days);
@@ -836,7 +836,7 @@ async function getStats(calendarService: CalendarService, args: string[]) {
         if (value) options.calendar = value;
       } else if (arg === "--days") {
         const value = args[++i];
-        if (value) options.days = parseInt(value);
+        if (value) options.days = parseInt(value, 10);
       }
     }
 
@@ -1251,7 +1251,7 @@ async function manageReminders(
         if (!arg) continue;
         if (arg === "--minutes") {
           const value = args[++i];
-          if (value) minutes = parseInt(value);
+          if (value) minutes = parseInt(value, 10);
         }
       }
 
@@ -1274,7 +1274,7 @@ async function manageReminders(
         if (!arg) continue;
         if (arg === "--index") {
           const value = args[++i];
-          if (value) index = parseInt(value) - 1;
+          if (value) index = parseInt(value, 10) - 1;
         }
       }
 
@@ -1585,7 +1585,7 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
         if (value) options.calendars = map(compact(value.split(",")), (id: string) => id.trim());
       } else if (arg === "--duration") {
         const value = args[++i];
-        if (value) options.duration = parseInt(value);
+        if (value) options.duration = parseInt(value, 10);
       }
     }
 
@@ -1905,7 +1905,7 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
       }
       const calendarId = args[1];
       const eventId = args[2];
-      const colorId = parseInt(args[3]);
+      const colorId = parseInt(args[3], 10);
 
       if (isNaN(colorId) || colorId < 1 || colorId > 11) {
         throw new ArgumentError("Invalid color ID", "Color ID must be between 1 and 11");
@@ -1965,7 +1965,7 @@ async function workWithRecurrence(args: string[]) {
         if (!arg) continue;
         if (arg === "--count") {
           const value = args[++i];
-          if (value) count = parseInt(value);
+          if (value) count = parseInt(value, 10);
         }
       }
 
@@ -2036,7 +2036,7 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
         if (value) options.frequency = value;
       } else if (arg === "--count") {
         const value = args[++i];
-        if (value) options.count = parseInt(value);
+        if (value) options.count = parseInt(value, 10);
       } else if (arg === "--until") {
         const value = args[++i];
         if (value) options.until = value;
@@ -2084,7 +2084,7 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
       endTime = new Date(options.end);
     } else {
       endTime = new Date(
-        startTime.getTime() + parseInt(options.duration || "60") * 60000
+        startTime.getTime() + parseInt(options.duration || "60", 10) * 60000
       );
     }
 
@@ -2215,7 +2215,7 @@ async function dateUtilities(args: string[]) {
     }
 
     let date = new Date(args[1]);
-    const amount = parseInt(args[2]);
+    const amount = parseInt(args[2], 10);
     const unit = args[3].toLowerCase();
 
     if (unit === "days" || unit === "day") {
