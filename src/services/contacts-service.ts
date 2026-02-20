@@ -46,6 +46,9 @@ export class ContactsService extends BaseService {
     "metadata",
   ].join(",");
 
+  /** Minimal fields needed for duplicate detection — avoids fetching unused field groups. */
+  private readonly DUPLICATE_DETECTION_FIELDS = "names,emailAddresses,phoneNumbers,metadata";
+
   // Composed service instances
   private matcher: ContactMatcher | null = null;
   private analyzer: ContactAnalyzer | null = null;
@@ -128,7 +131,7 @@ export class ContactsService extends BaseService {
     await this.initialize();
     this.ensureInitialized();
 
-    const { pageSize = 50, pageToken = null, sortOrder = "LAST_NAME_ASCENDING" } = options;
+    const { pageSize = 50, pageToken = null, sortOrder = "LAST_NAME_ASCENDING", personFields } = options;
 
     if (pageSize > 0) {
       validatePageSize(pageSize, 2000);
@@ -141,7 +144,7 @@ export class ContactsService extends BaseService {
             resourceName: "people/me",
             pageSize,
             pageToken: pageToken || undefined,
-            personFields: this.DEFAULT_PERSON_FIELDS,
+            personFields: personFields ?? this.DEFAULT_PERSON_FIELDS,
             sortOrder: sortOrder as people_v1.Params$Resource$People$Connections$List["sortOrder"],
           });
 
@@ -840,8 +843,8 @@ export class ContactsService extends BaseService {
 
     const { maxResults = 1000 } = options;
 
-    // Fetch contacts
-    const contacts = await this.listContacts({ pageSize: maxResults });
+    // Fetch contacts with only the fields needed for duplicate detection
+    const contacts = await this.listContacts({ pageSize: maxResults, personFields: this.DUPLICATE_DETECTION_FIELDS });
 
     return this.matcher!.findDuplicates(contacts, {
       criteria: options.criteria,
