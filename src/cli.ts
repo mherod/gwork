@@ -218,6 +218,12 @@ async function handleMail(args: string[]) {
   // Extract account from subcommand args
   const { account, args: filteredArgs } = parseAccount(subcommandArgs);
 
+  // If --help/-h appears in subcommand args, show parent help (except 'send' which has its own)
+  if (subcommand !== "send" && (filteredArgs.includes("--help") || filteredArgs.includes("-h"))) {
+    printMailHelp();
+    process.exit(0);
+  }
+
   await handleMailCommand(subcommand, filteredArgs, account);
 }
 
@@ -238,6 +244,12 @@ async function handleCal(args: string[]) {
   // Extract account from subcommand args
   const { account, args: filteredArgs } = parseAccount(subcommandArgs);
 
+  // If --help/-h appears in subcommand args, show parent help
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printCalHelp();
+    process.exit(0);
+  }
+
   await handleCalCommand(subcommand, filteredArgs, account);
 }
 
@@ -257,6 +269,12 @@ async function handleContacts(args: string[]) {
 
   // Extract account from subcommand args
   const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  // If --help/-h appears in subcommand args, show parent help
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printContactsHelp();
+    process.exit(0);
+  }
 
   await handleContactsCommand(subcommand, filteredArgs, account);
 }
