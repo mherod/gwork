@@ -6,6 +6,7 @@ import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
 import { parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
+import { logger } from "./utils/logger.ts";
 
 function printHelp() {
   console.log(`
@@ -246,22 +247,32 @@ async function handleContacts(args: string[]) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const command = args[0];
+
+  // Extract and parse global flags
+  const verbose = args.includes("--verbose");
+  const quiet = args.includes("--quiet");
+
+  // Configure logger with global flags
+  logger.configure({ verbose, quiet });
+
+  // Remove global flags from args for command processing
+  const filteredArgs = args.filter(arg => arg !== "--verbose" && arg !== "--quiet");
+  const command = filteredArgs[0];
 
   // Handle version flag at top level
-  if (args[0] === "--version" || args[0] === "-v") {
+  if (filteredArgs[0] === "--version" || filteredArgs[0] === "-v") {
     printVersion();
     process.exit(0);
   }
 
   // Handle help flag at top level (only if no command or just --help)
-  if (!command || args[0] === "--help" || args[0] === "-h") {
+  if (!command || filteredArgs[0] === "--help" || filteredArgs[0] === "-h") {
     printHelp();
     process.exit(0);
   }
 
   // Pass remaining args to subcommands
-  const commandArgs = args.slice(1);
+  const commandArgs = filteredArgs.slice(1);
 
   switch (command) {
     case "mail":

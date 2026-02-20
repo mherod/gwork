@@ -6,6 +6,7 @@ import { CalendarService } from "../services/calendar-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
+import { logger } from "../utils/logger.ts";
 
 export async function handleCalCommand(subcommand: string, args: string[], account = "default") {
   // Create service instance with the specified account
@@ -317,15 +318,15 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
     spinner.succeed(`Found ${events.length} event(s)`);
 
     if (events.length === 0) {
-      console.log(chalk.yellow("No events found"));
+      logger.info(chalk.yellow("No events found"));
       return;
     }
 
     if (options.format === "json") {
-      console.log(JSON.stringify(events, null, 2));
+      logger.info(JSON.stringify(events, null, 2));
     } else {
-      console.log(chalk.bold("\nEvents:"));
-      console.log("─".repeat(80));
+      logger.info(chalk.bold("\nEvents:"));
+      logger.info("─".repeat(80));
       events.forEach((event: any, index: number) => {
         const start = event.start?.dateTime ?? event.start?.date;
         const end = event.end?.dateTime ?? event.end?.date;
@@ -334,30 +335,30 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
         const location = event.location || "";
         const attendees = event.attendees?.length || 0;
 
-        console.log(
+        logger.info(
           `\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(summary)}`
         );
-        console.log(
+        logger.info(
           `   ${chalk.gray("Start:")} ${formatEventDate(start, isAllDay)}`
         );
         if (end && end !== start) {
           const endFormatted = formatEventDate(end, isAllDay);
           if (endFormatted !== formatEventDate(start, isAllDay)) {
-            console.log(`   ${chalk.gray("End:")} ${endFormatted}`);
+            logger.info(`   ${chalk.gray("End:")} ${endFormatted}`);
           }
         }
         if (location) {
-          console.log(`   ${chalk.gray("Location:")} ${location}`);
+          logger.info(`   ${chalk.gray("Location:")} ${location}`);
         }
         if (attendees > 0) {
-          console.log(`   ${chalk.gray("Attendees:")} ${attendees}`);
+          logger.info(`   ${chalk.gray("Attendees:")} ${attendees}`);
         }
         if (event.description) {
           const desc =
             event.description.length > 100
               ? event.description.substring(0, 100) + "..."
               : event.description;
-          console.log(`   ${chalk.gray("Description:")} ${desc}`);
+          logger.info(`   ${chalk.gray("Description:")} ${desc}`);
         }
       });
     }
@@ -386,15 +387,15 @@ async function listCalendars(calendarService: CalendarService, args: string[]) {
     spinner.succeed(`Found ${calendars.length} calendar(s)`);
 
     if (calendars.length === 0) {
-      console.log(chalk.yellow("No calendars found"));
+      logger.info(chalk.yellow("No calendars found"));
       return;
     }
 
     if (options.format === "json") {
-      console.log(JSON.stringify(calendars, null, 2));
+      logger.info(JSON.stringify(calendars, null, 2));
     } else {
-      console.log(chalk.bold("\nCalendars:"));
-      console.log("─".repeat(80));
+      logger.info(chalk.bold("\nCalendars:"));
+      logger.info("─".repeat(80));
       calendars.forEach((calendar: any) => {
         const accessRole = calendar.accessRole || "unknown";
         const color =
@@ -404,16 +405,16 @@ async function listCalendars(calendarService: CalendarService, args: string[]) {
             ? chalk.yellow
             : chalk.gray;
 
-        console.log(`\n${color(calendar.summary || calendar.id)}`);
-        console.log(`  ${chalk.gray("ID:")} ${calendar.id}`);
-        console.log(`  ${chalk.gray("Access:")} ${accessRole}`);
+        logger.info(`\n${color(calendar.summary || calendar.id)}`);
+        logger.info(`  ${chalk.gray("ID:")} ${calendar.id}`);
+        logger.info(`  ${chalk.gray("Access:")} ${accessRole}`);
         if (calendar.description) {
-          console.log(
+          logger.info(
             `  ${chalk.gray("Description:")} ${calendar.description}`
           );
         }
         if (calendar.primary) {
-          console.log(`  ${chalk.cyan("(Primary Calendar)")}`);
+          logger.info(`  ${chalk.cyan("(Primary Calendar)")}`);
         }
       });
     }
@@ -429,24 +430,24 @@ async function getEvent(calendarService: CalendarService, calendarId: string, ev
     const event = await calendarService.getEvent(calendarId, eventId);
     spinner.succeed("Event details fetched");
 
-    console.log(chalk.bold("\nEvent Details:"));
-    console.log("─".repeat(80));
-    console.log(`${chalk.cyan("Title:")} ${event.summary || "No title"}`);
-    console.log(`${chalk.cyan("ID:")} ${event.id}`);
-    console.log(
+    logger.info(chalk.bold("\nEvent Details:"));
+    logger.info("─".repeat(80));
+    logger.info(`${chalk.cyan("Title:")} ${event.summary || "No title"}`);
+    logger.info(`${chalk.cyan("ID:")} ${event.id}`);
+    logger.info(
       `${chalk.cyan("Start:")} ${event.start?.dateTime ?? event.start?.date}`
     );
-    console.log(
+    logger.info(
       `${chalk.cyan("End:")} ${event.end?.dateTime ?? event.end?.date}`
     );
     if (event.location) {
-      console.log(`${chalk.cyan("Location:")} ${event.location}`);
+      logger.info(`${chalk.cyan("Location:")} ${event.location}`);
     }
     if (event.description) {
-      console.log(`${chalk.cyan("Description:")} ${event.description}`);
+      logger.info(`${chalk.cyan("Description:")} ${event.description}`);
     }
     if (event.attendees && event.attendees.length > 0) {
-      console.log(`\n${chalk.cyan("Attendees:")}`);
+      logger.info(`\n${chalk.cyan("Attendees:")}`);
       event.attendees.forEach((attendee: any) => {
         const status = attendee.responseStatus || "no-response";
         const statusColor =
@@ -457,11 +458,11 @@ async function getEvent(calendarService: CalendarService, calendarId: string, ev
             : status === "tentative"
             ? chalk.yellow
             : chalk.gray;
-        console.log(`  ${attendee.email} (${statusColor(status)})`);
+        logger.info(`  ${attendee.email} (${statusColor(status)})`);
       });
     }
     if (event.htmlLink) {
-      console.log(`\n${chalk.cyan("Link:")} ${event.htmlLink}`);
+      logger.info(`\n${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to fetch event details");
@@ -558,17 +559,17 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
     const event = await calendarService.createEvent(calendarId, eventData);
     spinner.succeed("Event created successfully");
 
-    console.log(chalk.green(`\nEvent created:`));
-    console.log(`${chalk.cyan("Title:")} ${event.summary}`);
-    console.log(`${chalk.cyan("ID:")} ${event.id}`);
-    console.log(
+    logger.info(chalk.green(`\nEvent created:`));
+    logger.info(`${chalk.cyan("Title:")} ${event.summary}`);
+    logger.info(`${chalk.cyan("ID:")} ${event.id}`);
+    logger.info(
       `${chalk.cyan("Start:")} ${event.start?.dateTime ?? event.start?.date}`
     );
-    console.log(
+    logger.info(
       `${chalk.cyan("End:")} ${event.end?.dateTime ?? event.end?.date}`
     );
     if (event.htmlLink) {
-      console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
+      logger.info(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to create event");
@@ -721,20 +722,20 @@ async function searchEvents(calendarService: CalendarService, query: string, ext
     spinner.succeed(`Found ${events.length} event(s) matching "${query}"`);
 
     if (events.length === 0) {
-      console.log(chalk.yellow("No events found"));
+      logger.info(chalk.yellow("No events found"));
       return;
     }
 
-    console.log(chalk.bold(`\nSearch results for: "${query}"`));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold(`\nSearch results for: "${query}"`));
+    logger.info("─".repeat(80));
     events.forEach((event: any, index: number) => {
       const start = event.start?.dateTime ?? event.start?.date;
       const summary = event.summary || "No title";
 
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(summary)}`);
-      console.log(`   ${chalk.gray("Start:")} ${start ?? "Unknown"}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(summary)}`);
+      logger.info(`   ${chalk.gray("Start:")} ${start ?? "Unknown"}`);
       if (event.location) {
-        console.log(`   ${chalk.gray("Location:")} ${event.location}`);
+        logger.info(`   ${chalk.gray("Location:")} ${event.location}`);
       }
     });
   } catch (error: unknown) {
@@ -766,25 +767,25 @@ async function getFreeBusy(calendarService: CalendarService, start: string, end:
     );
     spinner.succeed("Free/busy information fetched");
 
-    console.log(chalk.bold("\nFree/Busy Information:"));
-    console.log("─".repeat(80));
-    console.log(
+    logger.info(chalk.bold("\nFree/Busy Information:"));
+    logger.info("─".repeat(80));
+    logger.info(
       `${chalk.cyan("Time Range:")} ${startTime.toISOString()} to ${endTime.toISOString()}`
     );
 
     Object.entries(freeBusy.calendars || {}).forEach(([calendarId, info]: any) => {
-      console.log(`\n${chalk.cyan("Calendar:")} ${calendarId}`);
+      logger.info(`\n${chalk.cyan("Calendar:")} ${calendarId}`);
       if (info.busy && info.busy.length > 0) {
-        console.log(chalk.red("Busy times:"));
+        logger.info(chalk.red("Busy times:"));
         info.busy.forEach((busy: any) => {
           const start = new Date(busy.start);
           const end = new Date(busy.end);
-          console.log(
+          logger.info(
             `  ${start.toLocaleString()} - ${end.toLocaleString()}`
           );
         });
       } else {
-        console.log(chalk.green("Free during this time"));
+        logger.info(chalk.green("Free during this time"));
       }
     });
   } catch (error: unknown) {
@@ -887,28 +888,28 @@ async function getStats(calendarService: CalendarService, args: string[]) {
       (stats.totalDuration % (1000 * 60 * 60)) / (1000 * 60)
     );
 
-    console.log(chalk.bold("\nCalendar Statistics:"));
-    console.log("─".repeat(80));
-    console.log(`${chalk.cyan("Total Events:")} ${stats.total}`);
-    console.log(`${chalk.cyan("All-day Events:")} ${stats.allDay}`);
-    console.log(`${chalk.cyan("Timed Events:")} ${stats.timed}`);
-    console.log(
+    logger.info(chalk.bold("\nCalendar Statistics:"));
+    logger.info("─".repeat(80));
+    logger.info(`${chalk.cyan("Total Events:")} ${stats.total}`);
+    logger.info(`${chalk.cyan("All-day Events:")} ${stats.allDay}`);
+    logger.info(`${chalk.cyan("Timed Events:")} ${stats.timed}`);
+    logger.info(
       `${chalk.cyan("Events with Location:")} ${stats.withLocation}`
     );
-    console.log(
+    logger.info(
       `${chalk.cyan("Events with Attendees:")} ${stats.withAttendees}`
     );
     if (stats.timed > 0) {
-      console.log(
+      logger.info(
         `${chalk.cyan("Total Time Scheduled:")} ${hours}h ${minutes}m`
       );
-      console.log(
+      logger.info(
         `${chalk.cyan("Average Event Duration:")} ${Math.floor(stats.totalDuration / stats.timed / (1000 * 60))} minutes`
       );
     }
 
     if (!isEmpty(stats.byDay)) {
-      console.log(`\n${chalk.cyan("Events by Day of Week:")}`);
+      logger.info(`\n${chalk.cyan("Events by Day of Week:")}`);
       const sortedDays = orderBy(
         Object.entries(stats.byDay),
         [([, count]) => count],
@@ -917,7 +918,7 @@ async function getStats(calendarService: CalendarService, args: string[]) {
       sortedDays.forEach(([day, count]) => {
         const countNum = typeof count === "number" ? count : 0;
         const bar = "█".repeat(Math.floor((countNum / stats.total) * 50));
-        console.log(
+        logger.info(
           `  ${day.padEnd(10)} ${countNum.toString().padStart(3)} ${chalk.gray(bar)}`
         );
       });
@@ -993,14 +994,14 @@ async function duplicateEvent(calendarService: CalendarService, calendarId: stri
     );
     spinner.succeed("Event duplicated successfully");
 
-    console.log(chalk.green(`\nEvent duplicated:`));
-    console.log(`${chalk.cyan("Title:")} ${newEvent.summary}`);
-    console.log(`${chalk.cyan("ID:")} ${newEvent.id}`);
-    console.log(
+    logger.info(chalk.green(`\nEvent duplicated:`));
+    logger.info(`${chalk.cyan("Title:")} ${newEvent.summary}`);
+    logger.info(`${chalk.cyan("ID:")} ${newEvent.id}`);
+    logger.info(
       `${chalk.cyan("Start:")} ${newEvent.start?.dateTime ?? newEvent.start?.date}`
     );
     if (newEvent.htmlLink) {
-      console.log(`${chalk.cyan("Link:")} ${newEvent.htmlLink}`);
+      logger.info(`${chalk.cyan("Link:")} ${newEvent.htmlLink}`);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to duplicate event");
@@ -1071,11 +1072,11 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
     const event = await calendarService.createEvent(options.calendar, eventData);
     spinner.succeed("Quick event created");
 
-    console.log(chalk.green(`\nEvent created:`));
-    console.log(`${chalk.cyan("Title:")} ${event.summary}`);
-    console.log(`${chalk.cyan("ID:")} ${event.id}`);
+    logger.info(chalk.green(`\nEvent created:`));
+    logger.info(`${chalk.cyan("Title:")} ${event.summary}`);
+    logger.info(`${chalk.cyan("ID:")} ${event.id}`);
     if (event.htmlLink) {
-      console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
+      logger.info(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to create quick event");
@@ -1181,7 +1182,7 @@ async function exportEvents(calendarService: CalendarService, calendarId: string
       spinner.succeed(`Exported ${events.length} event(s) to ${options.output}`);
     } else {
       spinner.succeed(`Exported ${events.length} event(s)`);
-      console.log(output);
+      logger.info(output);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to export events");
@@ -1209,18 +1210,18 @@ async function manageReminders(
       const reminders = event.reminders?.overrides || [];
       const useDefault = event.reminders?.useDefault || false;
 
-      console.log(chalk.bold("\nEvent Reminders:"));
-      console.log("─".repeat(80));
+      logger.info(chalk.bold("\nEvent Reminders:"));
+      logger.info("─".repeat(80));
       if (useDefault) {
-        console.log(chalk.cyan("Using default reminders"));
+        logger.info(chalk.cyan("Using default reminders"));
       }
       if (reminders.length === 0 && !useDefault) {
-        console.log(chalk.yellow("No reminders set"));
+        logger.info(chalk.yellow("No reminders set"));
       } else {
         reminders.forEach((reminder: any, index: number) => {
           const method = reminder.method || "popup";
           const minutes = reminder.minutes || 0;
-          console.log(
+          logger.info(
             `${index + 1}. ${method} - ${minutes} minutes before event`
           );
         });
@@ -1247,7 +1248,7 @@ async function manageReminders(
         },
       });
       spinner.succeed("Reminder added");
-      console.log(chalk.green(`Added reminder: ${minutes} minutes before event`));
+      logger.info(chalk.green(`Added reminder: ${minutes} minutes before event`));
     } else if (action === "remove") {
       let index = -1;
       for (let i = 1; i < args.length; i++) {
@@ -1362,25 +1363,25 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
     spinner.succeed(`Found ${events.length} event(s) to update`);
 
     if (options.dryRun) {
-      console.log(chalk.yellow("\nDry run - no changes will be made:"));
+      logger.info(chalk.yellow("\nDry run - no changes will be made:"));
       events.slice(0, 10).forEach((event: any, index: number) => {
-        console.log(`\n${index + 1}. ${event.summary || "No title"}`);
+        logger.info(`\n${index + 1}. ${event.summary || "No title"}`);
         if (updates.summary) {
-          console.log(`   Title: "${event.summary}" -> "${updates.summary}"`);
+          logger.info(`   Title: "${event.summary}" -> "${updates.summary}"`);
         }
         if (updates.titlePattern && event.summary) {
           const newTitle = updates.titlePattern.replace(/%s/g, event.summary);
-          console.log(`   Title: "${event.summary}" -> "${newTitle}"`);
+          logger.info(`   Title: "${event.summary}" -> "${newTitle}"`);
         }
         if (updates.location) {
-          console.log(`   Location: "${event.location || ""}" -> "${updates.location}"`);
+          logger.info(`   Location: "${event.location || ""}" -> "${updates.location}"`);
         }
         if (updates.description) {
-          console.log(`   Description: "${(event.description || "").substring(0, 50)}..." -> "${updates.description.substring(0, 50)}..."`);
+          logger.info(`   Description: "${(event.description || "").substring(0, 50)}..." -> "${updates.description.substring(0, 50)}..."`);
         }
       });
       if (events.length > 10) {
-        console.log(chalk.gray(`\n... and ${events.length - 10} more events`));
+        logger.info(chalk.gray(`\n... and ${events.length - 10} more events`));
       }
       return;
     }
@@ -1494,16 +1495,16 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
     spinner.succeed(`Loaded ${eventsData.length} event(s)`);
 
     if (options.dryRun) {
-      console.log(chalk.yellow("\nDry run - events that would be created:"));
+      logger.info(chalk.yellow("\nDry run - events that would be created:"));
       eventsData.slice(0, 10).forEach((event: any, index: number) => {
-        console.log(`\n${index + 1}. ${event.summary || "No title"}`);
-        console.log(`   Start: ${event.start?.dateTime ?? event.start?.date ?? "N/A"}`);
+        logger.info(`\n${index + 1}. ${event.summary || "No title"}`);
+        logger.info(`   Start: ${event.start?.dateTime ?? event.start?.date ?? "N/A"}`);
         if (event.location) {
-          console.log(`   Location: ${event.location}`);
+          logger.info(`   Location: ${event.location}`);
         }
       });
       if (eventsData.length > 10) {
-        console.log(chalk.gray(`\n... and ${eventsData.length - 10} more events`));
+        logger.info(chalk.gray(`\n... and ${eventsData.length - 10} more events`));
       }
       return;
     }
@@ -1514,7 +1515,7 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
         await calendarService.createEvent(calendarId, eventData);
         created++;
       } catch (_error: unknown) {
-        console.error(chalk.red(`Failed to create event: ${eventData.summary || "Unknown"}`));
+        logger.error(chalk.red(`Failed to create event: ${eventData.summary || "Unknown"}`));
         // Continue with other events even if one fails
       }
     }
@@ -1571,9 +1572,9 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
 
     spinner.succeed("Conflict check complete");
 
-    console.log(chalk.bold("\nConflict Check:"));
-    console.log("─".repeat(80));
-    console.log(
+    logger.info(chalk.bold("\nConflict Check:"));
+    logger.info("─".repeat(80));
+    logger.info(
       `${chalk.cyan("Time Range:")} ${startTime.toLocaleString()} to ${endTime.toLocaleString()}`
     );
 
@@ -1581,21 +1582,21 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
     Object.entries(freeBusy.calendars || {}).forEach(([calId, info]: any) => {
       if (info.busy && info.busy.length > 0) {
         hasConflicts = true;
-        console.log(`\n${chalk.red("Conflicts in:")} ${calId}`);
+        logger.info(`\n${chalk.red("Conflicts in:")} ${calId}`);
         info.busy.forEach((busy: any) => {
           const start = new Date(busy.start);
           const end = new Date(busy.end);
-          console.log(
+          logger.info(
             `  ${chalk.yellow(start.toLocaleString())} - ${chalk.yellow(end.toLocaleString())}`
           );
         });
       } else {
-        console.log(`\n${chalk.green("Free in:")} ${calId}`);
+        logger.info(`\n${chalk.green("Free in:")} ${calId}`);
       }
     });
 
     if (!hasConflicts) {
-      console.log(chalk.green("\n✓ No conflicts found - time slot is available"));
+      logger.info(chalk.green("\n✓ No conflicts found - time slot is available"));
     }
   } catch (error: unknown) {
     spinner.fail("Failed to check conflicts");
@@ -1679,7 +1680,7 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
     });
 
     if (options.format === "json") {
-      console.log(
+      logger.info(
         JSON.stringify(
           {
             calendar1: { id: calendarId1, total: events1.length, unique: unique1.length },
@@ -1694,41 +1695,41 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
         )
       );
     } else {
-      console.log(chalk.bold("\nCalendar Comparison:"));
-      console.log("─".repeat(80));
-      console.log(`${chalk.cyan("Calendar 1:")} ${calendarId1} - ${events1.length} events`);
-      console.log(`${chalk.cyan("Calendar 2:")} ${calendarId2} - ${events2.length} events`);
-      console.log(`${chalk.cyan("Overlapping:")} ${overlapping.length} events`);
+      logger.info(chalk.bold("\nCalendar Comparison:"));
+      logger.info("─".repeat(80));
+      logger.info(`${chalk.cyan("Calendar 1:")} ${calendarId1} - ${events1.length} events`);
+      logger.info(`${chalk.cyan("Calendar 2:")} ${calendarId2} - ${events2.length} events`);
+      logger.info(`${chalk.cyan("Overlapping:")} ${overlapping.length} events`);
 
       if (unique1.length > 0) {
-        console.log(`\n${chalk.yellow(`Unique to ${calendarId1}:`)} ${unique1.length} events`);
+        logger.info(`\n${chalk.yellow(`Unique to ${calendarId1}:`)} ${unique1.length} events`);
         unique1.slice(0, 5).forEach((event) => {
-          console.log(`  - ${event.summary || "No title"}`);
+          logger.info(`  - ${event.summary || "No title"}`);
         });
         if (unique1.length > 5) {
-          console.log(chalk.gray(`  ... and ${unique1.length - 5} more`));
+          logger.info(chalk.gray(`  ... and ${unique1.length - 5} more`));
         }
       }
 
       if (unique2.length > 0) {
-        console.log(`\n${chalk.yellow(`Unique to ${calendarId2}:`)} ${unique2.length} events`);
+        logger.info(`\n${chalk.yellow(`Unique to ${calendarId2}:`)} ${unique2.length} events`);
         unique2.slice(0, 5).forEach((event) => {
-          console.log(`  - ${event.summary || "No title"}`);
+          logger.info(`  - ${event.summary || "No title"}`);
         });
         if (unique2.length > 5) {
-          console.log(chalk.gray(`  ... and ${unique2.length - 5} more`));
+          logger.info(chalk.gray(`  ... and ${unique2.length - 5} more`));
         }
       }
 
       if (overlapping.length > 0) {
-        console.log(`\n${chalk.red("Overlapping events:")}`);
+        logger.info(`\n${chalk.red("Overlapping events:")}`);
         overlapping.slice(0, 5).forEach((overlap) => {
-          console.log(
+          logger.info(
             `  ${overlap.event1.summary || "No title"} <-> ${overlap.event2.summary || "No title"}`
           );
         });
         if (overlapping.length > 5) {
-          console.log(chalk.gray(`  ... and ${overlapping.length - 5} more`));
+          logger.info(chalk.gray(`  ... and ${overlapping.length - 5} more`));
         }
       }
     }
@@ -1792,19 +1793,19 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
     spinner.succeed(`Found ${recurringInstances.length} instance(s)`);
 
     if (options.dryRun) {
-      console.log(chalk.yellow("\nDry run - instances that would be updated:"));
+      logger.info(chalk.yellow("\nDry run - instances that would be updated:"));
       recurringInstances.slice(0, 10).forEach((instance: any, index: number) => {
-        console.log(`\n${index + 1}. ${instance.summary || "No title"}`);
-        console.log(`   Start: ${instance.start?.dateTime ?? instance.start?.date}`);
+        logger.info(`\n${index + 1}. ${instance.summary || "No title"}`);
+        logger.info(`   Start: ${instance.start?.dateTime ?? instance.start?.date}`);
         if (updates.summary) {
-          console.log(`   Title: "${instance.summary}" -> "${updates.summary}"`);
+          logger.info(`   Title: "${instance.summary}" -> "${updates.summary}"`);
         }
         if (updates.location) {
-          console.log(`   Location: "${instance.location || ""}" -> "${updates.location}"`);
+          logger.info(`   Location: "${instance.location || ""}" -> "${updates.location}"`);
         }
       });
       if (recurringInstances.length > 10) {
-        console.log(chalk.gray(`\n... and ${recurringInstances.length - 10} more instances`));
+        logger.info(chalk.gray(`\n... and ${recurringInstances.length - 10} more instances`));
       }
       return;
     }
@@ -1848,11 +1849,11 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
 
     if (args.length === 0 || args[0] === "list") {
       spinner.succeed("Available colors:");
-      console.log(chalk.bold("\nGoogle Calendar Colors:"));
-      console.log("─".repeat(80));
+      logger.info(chalk.bold("\nGoogle Calendar Colors:"));
+      logger.info("─".repeat(80));
       Object.entries(colorMap).forEach(([id, name]) => {
         const nameStr = typeof name === "string" ? name : String(name);
-        console.log(`  ${id.toString().padStart(2)}. ${startCase(nameStr)}`);
+        logger.info(`  ${id.toString().padStart(2)}. ${startCase(nameStr)}`);
       });
       return;
     }
@@ -1880,7 +1881,7 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
       });
 
       spinner.succeed("Color updated");
-      console.log(
+      logger.info(
         chalk.green(`Event color set to: ${startCase(colorMap[colorId] ?? "Unknown")} (${colorId})`)
       );
     } else {
@@ -1914,8 +1915,8 @@ async function workWithRecurrence(args: string[]) {
       const rrule = RRule.fromString(args[1]);
       const text = rrule.toText();
       spinner.succeed("RRULE parsed");
-      console.log(chalk.cyan(`Natural language: ${text}`));
-      console.log(chalk.gray(`RRULE: ${args[1]}`));
+      logger.info(chalk.cyan(`Natural language: ${text}`));
+      logger.info(chalk.gray(`RRULE: ${args[1]}`));
     } else if (action === "occurrences") {
       if (args.length < 2) {
         throw new ArgumentError("Missing RRULE", "Usage: gwork cal recurrence occurrences <rrule> [--count N]");
@@ -1940,9 +1941,9 @@ async function workWithRecurrence(args: string[]) {
       const occurrences = rrule.all().slice(0, count);
 
       spinner.succeed(`Found ${occurrences.length} occurrence(s)`);
-      console.log(chalk.bold("\nNext Occurrences:"));
+      logger.info(chalk.bold("\nNext Occurrences:"));
       occurrences.forEach((date: Date, index: number) => {
-        console.log(`  ${index + 1}. ${date.toLocaleString()}`);
+        logger.info(`  ${index + 1}. ${date.toLocaleString()}`);
       });
     } else {
       throw new ArgumentError("Invalid action", "Valid actions: parse, occurrences");
@@ -2040,12 +2041,12 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
     const event = await calendarService.createEvent(calendarId, eventData);
     spinner.succeed("Recurring event created");
 
-    console.log(chalk.green(`\nRecurring event created:`));
-    console.log(`${chalk.cyan("Title:")} ${event.summary}`);
-    console.log(`${chalk.cyan("ID:")} ${event.id}`);
-    console.log(`${chalk.cyan("RRULE:")} ${rruleString}`);
+    logger.info(chalk.green(`\nRecurring event created:`));
+    logger.info(`${chalk.cyan("Title:")} ${event.summary}`);
+    logger.info(`${chalk.cyan("ID:")} ${event.id}`);
+    logger.info(`${chalk.cyan("RRULE:")} ${rruleString}`);
     if (event.htmlLink) {
-      console.log(`${chalk.cyan("Link:")} ${event.htmlLink}`);
+      logger.info(`${chalk.cyan("Link:")} ${event.htmlLink}`);
     }
   } catch (error: unknown) {
     spinner.fail("Failed to create recurring event");
@@ -2065,7 +2066,7 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
     }
 
     const rruleString = event.recurrence.find((r: string) => r.startsWith("RRULE:"))?.substring(6) || event.recurrence[0];
-    
+
     if (!rruleString) {
       throw new ArgumentError("No recurrence rule found", "This event has no valid RRULE");
     }
@@ -2077,18 +2078,18 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
 
     spinner.succeed("Recurrence info fetched");
 
-    console.log(chalk.bold("\nRecurrence Information:"));
-    console.log("─".repeat(80));
-    console.log(`${chalk.cyan("Event:")} ${event.summary || "No title"}`);
-    console.log(`${chalk.cyan("RRULE:")} ${rruleString}`);
-    console.log(`${chalk.cyan("Natural language:")} ${text}`);
+    logger.info(chalk.bold("\nRecurrence Information:"));
+    logger.info("─".repeat(80));
+    logger.info(`${chalk.cyan("Event:")} ${event.summary || "No title"}`);
+    logger.info(`${chalk.cyan("RRULE:")} ${rruleString}`);
+    logger.info(`${chalk.cyan("Natural language:")} ${text}`);
 
     if (occurrences.length > 0) {
-      console.log(`\n${chalk.cyan("Next 10 Occurrences:")}`);
+      logger.info(`\n${chalk.cyan("Next 10 Occurrences:")}`);
       const { formatDistance } = await import("date-fns");
       occurrences.forEach((date: Date, index: number) => {
         const relative = formatDistance(date, new Date(), { addSuffix: true });
-        console.log(`  ${index + 1}. ${date.toLocaleString()} (${relative})`);
+        logger.info(`  ${index + 1}. ${date.toLocaleString()} (${relative})`);
       });
     }
   } catch (error: unknown) {

@@ -3,6 +3,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { TokenStore } from "../services/token-store.ts";
 import { groupBy } from "lodash-es";
+import { logger } from "../utils/logger.ts";
 
 /**
  * Formats time remaining until token expiry.
@@ -40,8 +41,8 @@ export async function handleAccountsCommand(args: string[]) {
 
     if (tokens.length === 0) {
       spinner.stop();
-      console.log(chalk.yellow("No configured accounts found."));
-      console.log(`Run ${chalk.cyan("gwork <service> <command>")} to authenticate.`);
+      logger.info(chalk.yellow("No configured accounts found."));
+      logger.info(`Run ${chalk.cyan("gwork <service> <command>")} to authenticate.`);
       return;
     }
 
@@ -50,11 +51,11 @@ export async function handleAccountsCommand(args: string[]) {
     // Group tokens by account email
     const accounts = groupBy(tokens, "account");
 
-    console.log(chalk.bold("\nConfigured Accounts:"));
-    console.log("─".repeat(80));
+    logger.info(chalk.bold("\nConfigured Accounts:"));
+    logger.info("─".repeat(80));
 
     Object.entries(accounts).forEach(([email, accountTokens], index) => {
-      console.log(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(email)}`);
+      logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(email)}`);
 
       accountTokens.forEach(token => {
         const expiryDate = new Date(token.expiry_date);
@@ -73,15 +74,15 @@ export async function handleAccountsCommand(args: string[]) {
           statusText = "Expiring soon";
         }
 
-        console.log(`   ${chalk.gray("Service:")} ${token.service}`);
-        console.log(`   ${chalk.gray("Status:")}  ${statusColor(statusText)}`);
-        console.log(`   ${chalk.gray("Expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
+        logger.info(`   ${chalk.gray("Service:")} ${token.service}`);
+        logger.info(`   ${chalk.gray("Status:")}  ${statusColor(statusText)}`);
+        logger.info(`   ${chalk.gray("Expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
 
         // Show scopes in a condensed way if verbose flag is present
         if (args.includes("-v") || args.includes("--verbose")) {
-            console.log(`   ${chalk.gray("Scopes:")}`);
+            logger.info(`   ${chalk.gray("Scopes:")}`);
             token.scopes.forEach(scope => {
-                console.log(`     - ${scope}`);
+                logger.info(`     - ${scope}`);
             });
         }
       });
