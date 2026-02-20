@@ -1,14 +1,14 @@
 /**
  * Unit tests for AuthManager.
- * 
+ *
  * Tests verify:
  * - Token loading and validation
  * - Token refresh and credential synchronization
- * - New authentication flow
+ * - New authentication flow (custom OAuth HTTP server with prompt=consent)
  * - Error handling
  * - Cleanup of invalid tokens
- * 
- * All dependencies (TokenStore, Logger, OAuth2Client, fs, google.auth) are properly mocked.
+ *
+ * All dependencies (TokenStore, Logger, OAuth2Client, fs, http, open) are properly mocked.
  */
 
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
@@ -20,16 +20,80 @@ import type { TokenData } from "../../../src/services/token-store.ts";
 import { createMockCredentials } from "../../helpers/mock-oauth.ts";
 import * as fs from "fs/promises";
 import { google } from "googleapis";
-import * as localAuth from "@google-cloud/local-auth";
+import * as http from "http";
+import * as openModule from "open";
+
+// Helper: build a mock OAuth2 client that includes generateAuthUrl and getToken
+function makeMockOAuth2Client(credentials?: {
+  access_token?: string;
+  refresh_token?: string;
+  expiry_date?: number;
+}) {
+  const creds = {
+    access_token: credentials?.access_token ?? "mock-access-token",
+    refresh_token: credentials?.refresh_token ?? "mock-refresh-token",
+    expiry_date: credentials?.expiry_date ?? (Date.now() + 3600000),
+  };
+  return {
+    setCredentials: mock(() => {}),
+    getAccessToken: mock(async () => ({ token: creds.access_token })),
+    getToken: mock(async (_opts: unknown) => ({
+      tokens: {
+        access_token: creds.access_token,
+        refresh_token: creds.refresh_token,
+        expiry_date: creds.expiry_date,
+      },
+    })),
+    generateAuthUrl: mock((_opts: unknown) => "https://accounts.google.com/o/oauth2/auth?mock"),
+    credentials: creds,
+  };
+}
+
+// Helper: mock http.createServer so it immediately simulates a successful OAuth callback
+// without binding to any real port.
+function mockHttpServerSuccess(fakeCode = "mock-auth-code") {
+  // Build a fake server object
+  const fakeServer = {
+    listen: mock(function (this: typeof fakeServer, _port: number, cb?: () => void) {
+      // Simulate the server starting and call the listen callback
+      if (cb) cb();
+      return fakeServer;
+    }),
+    close: mock(() => {}),
+    address: mock(() => ({ port: 49152 })),
+    on: mock(() => fakeServer),
+  };
+
+  // We intercept createServer and capture the request handler,
+  // then call it with a fake IncomingMessage containing ?code=<fakeCode>
+  const createServerSpy = spyOn(http, "createServer").mockImplementation(
+    (handler: http.RequestListener) => {
+      // Schedule the fake callback after the event loop tick so server.listen()
+      // has already been called (which sets redirectUri.port via address()).
+      Promise.resolve().then(() => {
+        const fakeReq = {
+          url: `/?code=${fakeCode}`,
+        } as http.IncomingMessage;
+        const fakeRes = {
+          end: mock(() => {}),
+        } as unknown as http.ServerResponse;
+        // Call the handler to simulate the OAuth redirect arriving
+        (handler as Function)(fakeReq, fakeRes);
+      });
+
+      return fakeServer as unknown as http.Server;
+    }
+  );
+
+  return { fakeServer, createServerSpy };
+}
 
 describe("AuthManager", () => {
   let mockTokenStore: TokenStore;
   let mockLogger: Logger;
   let authManager: AuthManager;
   let credentialsPath: string;
-  let _originalFsReadFile: typeof fs.readFile;
-  let _originalOAuth2: typeof google.auth.OAuth2;
-  let _originalAuthenticate: typeof authenticate;
+  let openSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     // Create mocks
@@ -54,36 +118,14 @@ describe("AuthManager", () => {
     // Create mock credentials file
     credentialsPath = createMockCredentials();
 
-    // Save original implementations
-    _originalFsReadFile = fs.readFile;
-    _originalOAuth2 = google.auth.OAuth2;
-    _originalAuthenticate = localAuth.authenticate;
-
-    // CRITICAL: Mock authenticate to prevent browser launch
-    // Use spyOn to mock the module export
-    spyOn(localAuth, "authenticate").mockImplementation(async () => {
-      const mockAuth = {
-        getAccessToken: mock(async () => ({ token: "mock-token" })),
-        setCredentials: mock(() => {}),
-        credentials: {
-          access_token: "mock-access-token",
-          refresh_token: "mock-refresh-token",
-          expiry_date: Date.now() + 3600000,
-        },
-        getCredentials: mock(async () => ({
-          access_token: "mock-access-token",
-          refresh_token: "mock-refresh-token",
-          expiry_date: Date.now() + 3600000,
-        })),
-      };
-      return mockAuth as any;
-    });
+    // Prevent real browser launch during authentication
+    openSpy = spyOn(openModule, "default").mockResolvedValue({
+      unref: mock(() => {}),
+    } as unknown as ReturnType<typeof import("open").default>);
   });
 
   afterEach(() => {
-    // Restore original implementations
-    // Note: fs.readFile and google.auth.OAuth2 are restored by spyOn automatically
-    // localAuth.authenticate is restored by spyOn automatically
+    // spyOn mocks are restored automatically by bun:test
   });
 
   describe("cleanupInvalidTokens", () => {
@@ -101,13 +143,8 @@ describe("AuthManager", () => {
 
       (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValueOnce(invalidToken);
 
-      // Mock fs.readFile to prevent actual file read (will fail in loadExistingAuth)
+      // Mock fs.readFile to fail so authenticate() throws (we only care about cleanup)
       spyOn(fs, "readFile").mockRejectedValue(new Error("Should not read file"));
-
-      // Mock authenticate to fail (will be called after cleanup)
-      spyOn(localAuth, "authenticate").mockRejectedValueOnce(
-        new Error("Auth failed")
-      );
 
       await authManager.getAuthClient({
         service: "gmail",
@@ -135,14 +172,12 @@ describe("AuthManager", () => {
         updated_at: Date.now(),
       };
 
-      // cleanupInvalidTokens calls getToken once for the service/account
-      // loadExistingAuth calls getToken again for the same service/account
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call in cleanup - no token for cleanup
-        .mockReturnValueOnce(null) // Second call in cleanup for empty account (if account === "default")
+        .mockReturnValueOnce(null) // First call in cleanup
+        .mockReturnValueOnce(null) // Second call in cleanup (empty account)
         .mockReturnValueOnce(wrongScopeToken); // Third call in loadExistingAuth
 
-      // Mock fs.readFile - won't be called because token is deleted before reaching createOAuth2ClientFromToken
+      // Mock fs.readFile so we never reach createOAuth2ClientFromToken
       spyOn(fs, "readFile").mockRejectedValue(new Error("Should not read file"));
 
       await authManager.getAuthClient({
@@ -172,29 +207,17 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call in cleanup - no token
-        .mockReturnValueOnce(validToken); // Second call in loadExistingAuth
+        .mockReturnValueOnce(null) // First call in cleanup (service/account)
+        .mockReturnValueOnce(null) // Second call in cleanup (empty account)
+        .mockReturnValueOnce(validToken); // Third call in loadExistingAuth
 
-      // Mock OAuth2Client
-      const mockAuthClient = {
-        setCredentials: mock(() => {}),
-        getAccessToken: mock(async () => ({
-          token: "test_access_token",
-        })),
-        credentials: {
-          access_token: "test_access_token",
-          refresh_token: "test_refresh",
-          expiry_date: Date.now() + 3600000,
-        },
-      } as unknown as AuthClient;
+      const mockAuthClient = makeMockOAuth2Client();
 
       // Mock google.auth.OAuth2 constructor
-      const _OAuth2Original = google.auth.OAuth2;
       google.auth.OAuth2 = function OAuth2Mock() {
         return mockAuthClient;
-      } as any;
+      } as unknown as typeof google.auth.OAuth2;
 
-      // Mock fs.readFile to return credentials
       spyOn(fs, "readFile").mockResolvedValue(JSON.stringify({
         installed: {
           client_id: "test-client-id",
@@ -222,10 +245,8 @@ describe("AuthManager", () => {
       // Mock: No token in store
       (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValue(null);
 
-      // Mock authenticate to throw (will fail, but we catch it)
-      spyOn(localAuth, "authenticate").mockRejectedValueOnce(
-        new Error("Authentication failed")
-      );
+      // Mock fs.readFile to fail so authenticate() throws
+      spyOn(fs, "readFile").mockRejectedValue(new Error("File not found"));
 
       await authManager.getAuthClient({
         service: "gmail",
@@ -244,50 +265,26 @@ describe("AuthManager", () => {
         account: "default",
         access_token: "test_access_token",
         refresh_token: "test_refresh_token",
-        expiry_date: Date.now() + 3600000, // 1 hour from now
+        expiry_date: Date.now() + 3600000,
         scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
         created_at: Date.now(),
         updated_at: Date.now(),
       };
 
-      // cleanupInvalidTokens calls getToken for service/account, and if account === "default", also for empty account
-      // loadExistingAuth calls getToken again for service/account
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call in cleanup - no token for service/account
-        .mockReturnValueOnce(null) // Second call in cleanup - no token for empty account (since account === "default")
-        .mockReturnValueOnce(mockToken); // Third call in loadExistingAuth - token exists
+        .mockReturnValueOnce(null) // cleanup - no token for service/account
+        .mockReturnValueOnce(null) // cleanup - no token for empty account
+        .mockReturnValueOnce(mockToken); // loadExistingAuth - token exists
 
-      // Mock OAuth2Client with proper mock functions
-      const setCredentialsMock = mock(() => {});
-      const getAccessTokenMock = mock(async () => ({
-        token: "test_access_token",
-      }));
-      
-      const expiryDate = Date.now() + 3600000;
-      const mockAuthClient = {
-        setCredentials: setCredentialsMock,
-        getAccessToken: getAccessTokenMock,
-        credentials: {
-          access_token: "test_access_token",
-          refresh_token: "test_refresh_token",
-          expiry_date: expiryDate,
-        },
-      } as unknown as AuthClient;
+      const mockAuthClient = makeMockOAuth2Client({
+        access_token: "test_access_token",
+        refresh_token: "test_refresh_token",
+      });
 
-      // Mock google.auth.OAuth2 constructor to return our mock client
-      // IMPORTANT: When using 'new', the constructor function's return value is used
-      // We need to ensure the returned object has the same reference to our mocks
-      const _OAuth2Original = google.auth.OAuth2;
-      google.auth.OAuth2 = function OAuth2Mock(
-        _clientId?: string,
-        _clientSecret?: string,
-        _redirectUri?: string
-      ) {
-        // Return the exact mock client object with tracked mocks
+      google.auth.OAuth2 = function OAuth2Mock() {
         return mockAuthClient;
-      } as any;
+      } as unknown as typeof google.auth.OAuth2;
 
-      // Mock fs.readFile to return credentials
       spyOn(fs, "readFile").mockResolvedValue(JSON.stringify({
         installed: {
           client_id: "test-client-id",
@@ -303,49 +300,37 @@ describe("AuthManager", () => {
         credentialsPath,
       });
 
-      // Should have called getToken (at least twice: cleanup + load)
       expect(mockTokenStore.getToken).toHaveBeenCalled();
-      // Should have saved token (for refresh/update)
       expect(mockTokenStore.saveToken).toHaveBeenCalled();
-      // Should have synchronized credentials
-      // setCredentials is called twice:
-      // 1. In createOAuth2ClientFromToken (line 219) - initial setup with token data
-      // 2. In syncCredentials (line 274) - after refresh with refreshed token data
-      // Verify the mock client was returned (should be our OAuth2 mock, not authenticate mock)
       expect(result).toBe(mockAuthClient);
-      // Verify setCredentials was called (at least once - in createOAuth2ClientFromToken)
-      // The syncCredentials call happens on the same object, so both calls should be tracked
-      expect(setCredentialsMock.mock.calls.length).toBeGreaterThanOrEqual(1);
-      // Verify getAccessToken was called (in refreshTokenIfNeeded)
-      expect(getAccessTokenMock).toHaveBeenCalled();
+      expect(mockAuthClient.setCredentials.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(mockAuthClient.getAccessToken).toHaveBeenCalled();
     });
 
     it("should authenticate when no valid token exists", async () => {
       // Mock: No token in store
       (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValue(null);
 
-      // Mock OAuth2Client for authenticate result
-      const mockAuthClient = {
-        setCredentials: mock(() => {}),
-        getAccessToken: mock(async () => ({
-          token: "new_access_token",
-        })),
-        credentials: {
-          access_token: "new_access_token",
-          refresh_token: "new_refresh_token",
-          expiry_date: Date.now() + 3600000,
-        },
-        getCredentials: mock(async () => ({
-          access_token: "new_access_token",
-          refresh_token: "new_refresh_token",
-          expiry_date: Date.now() + 3600000,
-        })),
-      } as unknown as AuthClient;
+      const mockAuthClient = makeMockOAuth2Client({
+        access_token: "new_access_token",
+        refresh_token: "new_refresh_token",
+      });
 
-      // Mock authenticate function - override the beforeEach mock for this test
-      spyOn(localAuth, "authenticate").mockResolvedValueOnce(
-        mockAuthClient as any
-      );
+      // Mock google.auth.OAuth2 constructor — returns client with generateAuthUrl + getToken
+      google.auth.OAuth2 = function OAuth2Mock() {
+        return mockAuthClient;
+      } as unknown as typeof google.auth.OAuth2;
+
+      spyOn(fs, "readFile").mockResolvedValue(JSON.stringify({
+        installed: {
+          client_id: "test-client-id",
+          client_secret: "test-secret",
+          redirect_uris: ["http://localhost"],
+        },
+      }));
+
+      // Mock http server so it immediately delivers a fake OAuth code
+      const { fakeServer } = mockHttpServerSuccess("fake-code-123");
 
       const result = await authManager.getAuthClient({
         service: "gmail",
@@ -354,17 +339,14 @@ describe("AuthManager", () => {
         credentialsPath,
       });
 
-      // Should have called authenticate
-      expect(localAuth.authenticate).toHaveBeenCalledWith({
-        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-        keyfilePath: credentialsPath,
-      });
-      // Should have saved token
+      // Should have called getToken on the OAuth2 client (code exchange)
+      expect(mockAuthClient.getToken).toHaveBeenCalled();
+      // Should have saved the token
       expect(mockTokenStore.saveToken).toHaveBeenCalled();
-      // Should have synchronized credentials
-      expect(mockAuthClient.setCredentials).toHaveBeenCalled();
-      // Should return auth client
+      // Should have returned the auth client
       expect(result).toBe(mockAuthClient);
+      // Server should have been closed after callback
+      expect(fakeServer.close).toHaveBeenCalled();
     });
   });
 
@@ -387,26 +369,15 @@ describe("AuthManager", () => {
         .mockReturnValueOnce(null) // Cleanup call
         .mockReturnValueOnce(oldToken); // Load call
 
-      // Mock OAuth2Client
-      const mockAuthClient = {
-        setCredentials: mock(() => {}),
-        getAccessToken: mock(async () => ({
-          token: "old_token",
-        })),
-        credentials: {
-          access_token: "old_token",
-          refresh_token: "refresh_token",
-          expiry_date: Date.now() + 3600000,
-        },
-      } as unknown as AuthClient;
+      const mockAuthClient = makeMockOAuth2Client({
+        access_token: "old_token",
+        refresh_token: "refresh_token",
+      });
 
-      // Mock google.auth.OAuth2 constructor
-      const _OAuth2Original = google.auth.OAuth2;
       google.auth.OAuth2 = function OAuth2Mock() {
         return mockAuthClient;
-      } as any;
+      } as unknown as typeof google.auth.OAuth2;
 
-      // Mock fs.readFile
       spyOn(fs, "readFile").mockResolvedValue(JSON.stringify({
         installed: {
           client_id: "test-client-id",
