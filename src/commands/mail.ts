@@ -73,7 +73,44 @@ Date: ${date}
 ${body}`;
 }
 
+function printSendHelp() {
+  console.log(`
+gwork mail send - Compose and send an email
+
+Usage:
+  gwork mail send [options]
+
+Options:
+  --to <address>          Recipient (repeatable)
+  --cc <address>          CC recipient (repeatable)
+  --bcc <address>         BCC recipient (repeatable)
+  --subject <text>        Email subject
+  --body <text>           Plain-text body
+  --body-file <path>      Read body from file (plain text or HTML)
+  --html                  Treat body as HTML
+  --attach <path>         Attach a file (repeatable)
+  --reply-to <messageId>  Send as a reply to an existing message
+  --account <email>       Use a specific Google account
+
+Examples:
+  gwork mail send --to alice@example.com --subject "Hello" --body "Hi there"
+  gwork mail send --to alice@example.com --to bob@example.com \\
+    --subject "Report" --body-file report.html --html \\
+    --attach report.pdf --attach data.csv
+  gwork mail send --to alice@example.com --subject "Re: Hello" \\
+    --body "Got it" --reply-to <messageId>
+`);
+}
+
 export async function handleMailCommand(subcommand: string, args: string[], account = "default") {
+  // Handle help flags before initializing the service (avoids unnecessary auth)
+  if (args.includes("--help") || args.includes("-h")) {
+    if (subcommand === "send") {
+      printSendHelp();
+    }
+    process.exit(0);
+  }
+
   // Create service instance with the specified account
   const mailService = new MailService(account);
 
