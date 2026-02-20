@@ -2,6 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
+import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
@@ -215,9 +216,9 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
     }
 
     if (options.today) {
-      const todayOptions: any = {};
+      const todayOptions: Record<string, string | undefined> = {};
       if (options.query) {
-        todayOptions.q = options.query;
+        todayOptions["q"] = options.query;
       }
       // getTodayEvents doesn't support query, so we use listEvents directly
       const today = new Date();
@@ -327,7 +328,7 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
     } else {
       logger.info(chalk.bold("\nEvents:"));
       logger.info("─".repeat(80));
-      events.forEach((event: any, index: number) => {
+      events.forEach((event: Event, index: number) => {
         const start = event.start?.dateTime ?? event.start?.date;
         const end = event.end?.dateTime ?? event.end?.date;
         const isAllDay = !!event.start?.date;
@@ -338,13 +339,15 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
         logger.info(
           `\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(summary)}`
         );
-        logger.info(
-          `   ${chalk.gray("Start:")} ${formatEventDate(start, isAllDay)}`
-        );
-        if (end && end !== start) {
-          const endFormatted = formatEventDate(end, isAllDay);
-          if (endFormatted !== formatEventDate(start, isAllDay)) {
-            logger.info(`   ${chalk.gray("End:")} ${endFormatted}`);
+        if (start) {
+          logger.info(
+            `   ${chalk.gray("Start:")} ${formatEventDate(start, isAllDay)}`
+          );
+          if (end && end !== start) {
+            const endFormatted = formatEventDate(end, isAllDay);
+            if (endFormatted !== formatEventDate(start, isAllDay)) {
+              logger.info(`   ${chalk.gray("End:")} ${endFormatted}`);
+            }
           }
         }
         if (location) {
@@ -396,7 +399,7 @@ async function listCalendars(calendarService: CalendarService, args: string[]) {
     } else {
       logger.info(chalk.bold("\nCalendars:"));
       logger.info("─".repeat(80));
-      calendars.forEach((calendar: any) => {
+      calendars.forEach((calendar: calendar_v3.Schema$CalendarListEntry) => {
         const accessRole = calendar.accessRole || "unknown";
         const color =
           accessRole === "owner"
@@ -448,7 +451,7 @@ async function getEvent(calendarService: CalendarService, calendarId: string, ev
     }
     if (event.attendees && event.attendees.length > 0) {
       logger.info(`\n${chalk.cyan("Attendees:")}`);
-      event.attendees.forEach((attendee: any) => {
+      event.attendees.forEach((attendee: calendar_v3.Schema$EventAttendee) => {
         const status = attendee.responseStatus || "no-response";
         const statusColor =
           status === "accepted"
@@ -529,7 +532,7 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
       endTime.setHours(23, 59, 59, 999);
     }
 
-    const eventData: any = {
+    const eventData: Partial<Event> = {
       summary: options.title,
       start: options.allDay
         ? { date: startTime.toISOString().split("T")[0] }
@@ -728,7 +731,7 @@ async function searchEvents(calendarService: CalendarService, query: string, ext
 
     logger.info(chalk.bold(`\nSearch results for: "${query}"`));
     logger.info("─".repeat(80));
-    events.forEach((event: any, index: number) => {
+    events.forEach((event: Event, index: number) => {
       const start = event.start?.dateTime ?? event.start?.date;
       const summary = event.summary || "No title";
 
@@ -773,13 +776,14 @@ async function getFreeBusy(calendarService: CalendarService, start: string, end:
       `${chalk.cyan("Time Range:")} ${startTime.toISOString()} to ${endTime.toISOString()}`
     );
 
-    Object.entries(freeBusy.calendars || {}).forEach(([calendarId, info]: any) => {
+    Object.entries(freeBusy.calendars || {}).forEach(([calendarId, info]: [string, calendar_v3.Schema$FreeBusyGroup | undefined]) => {
       logger.info(`\n${chalk.cyan("Calendar:")} ${calendarId}`);
-      if (info.busy && info.busy.length > 0) {
+      const busyPeriods = (info as any)?.busy as calendar_v3.Schema$TimePeriod[] | undefined;
+      if (busyPeriods && busyPeriods.length > 0) {
         logger.info(chalk.red("Busy times:"));
-        info.busy.forEach((busy: any) => {
-          const start = new Date(busy.start);
-          const end = new Date(busy.end);
+        busyPeriods.forEach((busy: calendar_v3.Schema$TimePeriod) => {
+          const start = busy.start ? new Date(busy.start) : new Date();
+          const end = busy.end ? new Date(busy.end) : new Date();
           logger.info(
             `  ${start.toLocaleString()} - ${end.toLocaleString()}`
           );
@@ -818,7 +822,7 @@ async function createCalendar(calendarService: CalendarService, title: string) {
 async function getStats(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Analyzing calendar...").start();
   try {
-    const options: any = {
+    const options: { calendar: string; days: number } = {
       calendar: "primary",
       days: 30,
     };
@@ -838,7 +842,7 @@ async function getStats(calendarService: CalendarService, args: string[]) {
 
     const timeMin = new Date();
     const timeMax = new Date();
-    timeMax.setDate(timeMax.getDate() + parseInt(options.days));
+    timeMax.setDate(timeMax.getDate() + options.days);
 
     const result = await calendarService.listEvents(options.calendar, {
       maxResults: 2500,
@@ -849,17 +853,25 @@ async function getStats(calendarService: CalendarService, args: string[]) {
 
     spinner.succeed(`Analyzed ${events.length} event(s)`);
 
-    const stats: any = {
+    const stats: {
+      total: number;
+      allDay: number;
+      timed: number;
+      withLocation: number;
+      withAttendees: number;
+      totalDuration: number;
+      byDay: Record<string, number>;
+    } = {
       total: events.length,
       allDay: 0,
       timed: 0,
       withLocation: 0,
       withAttendees: 0,
       totalDuration: 0,
-      byDay: {} as any,
+      byDay: {},
     };
 
-    events.forEach((event: any) => {
+    events.forEach((event: Event) => {
       if (event.start?.date) {
         stats.allDay++;
       } else {
@@ -932,20 +944,22 @@ async function getStats(calendarService: CalendarService, args: string[]) {
 async function duplicateEvent(calendarService: CalendarService, calendarId: string, eventId: string, args: string[]) {
   const spinner = ora("Duplicating event...").start();
   try {
-    const options: any = { toCalendar: calendarId };
+    const options: { toCalendar: string; start?: string } = { toCalendar: calendarId };
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--to-calendar") {
-        options.toCalendar = args[++i];
+        const value = args[++i];
+        if (value) options.toCalendar = value;
       } else if (args[i] === "--start") {
-        options.start = args[++i];
+        const value = args[++i];
+        if (value) options.start = value;
       }
     }
 
     const originalEvent = await calendarService.getEvent(calendarId, eventId);
 
     // Create new event data from original
-    const newEventData: any = {
+    const newEventData: Partial<Event> = {
       summary: originalEvent.summary,
       description: originalEvent.description,
       location: originalEvent.location,
@@ -1012,23 +1026,27 @@ async function duplicateEvent(calendarService: CalendarService, calendarId: stri
 async function quickAction(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Creating quick event...").start();
   try {
-    const options: any = { calendar: "primary" };
+    const options: { calendar: string } = { calendar: "primary" };
 
-    let action = null;
-    let value = null;
+    let action: string | null = null;
+    let value: string | null = null;
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--meeting") {
         action = "meeting";
-        value = args[++i];
+        const v = args[++i];
+        if (v) value = v;
       } else if (args[i] === "--reminder") {
         action = "reminder";
-        value = args[++i];
+        const v = args[++i];
+        if (v) value = v;
       } else if (args[i] === "--block") {
         action = "block";
-        value = args[++i];
+        const v = args[++i];
+        if (v) value = v;
       } else if (args[i] === "-c" || args[i] === "--calendar") {
-        options.calendar = args[++i];
+        const v = args[++i];
+        if (v) options.calendar = v;
       }
     }
 
@@ -1037,7 +1055,7 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
     }
 
     const now = new Date();
-    let eventData: any = {};
+    let eventData: Partial<Event> = {};
 
     if (action === "meeting") {
       const end = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour
@@ -1087,7 +1105,7 @@ async function quickAction(calendarService: CalendarService, args: string[]) {
 async function exportEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Exporting events...").start();
   try {
-    const options: any = {
+    const options: { format: string; output: string | null } = {
       format: "json",
       output: null,
     };
@@ -1128,7 +1146,7 @@ async function exportEvents(calendarService: CalendarService, calendarId: string
       output = JSON.stringify(events, null, 2);
     } else if (options.format === "csv") {
       output = "Title,Start,End,Location,Description\n";
-      events.forEach((event: any) => {
+      events.forEach((event: Event) => {
         const title = (event.summary || "").replace(/"/g, '""');
         const start = event.start?.dateTime ?? event.start?.date ?? "";
         const end = event.end?.dateTime ?? event.end?.date ?? "";
@@ -1142,7 +1160,7 @@ async function exportEvents(calendarService: CalendarService, calendarId: string
       output += "PRODID:-//gwork//EN\n";
       output += "CALSCALE:GREGORIAN\n";
 
-      events.forEach((event: any) => {
+      events.forEach((event: Event) => {
         output += "BEGIN:VEVENT\n";
         output += `UID:${event.id}@gwork\n`;
         output += `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").split(".")[0]}Z\n`;
@@ -1218,7 +1236,7 @@ async function manageReminders(
       if (reminders.length === 0 && !useDefault) {
         logger.info(chalk.yellow("No reminders set"));
       } else {
-        reminders.forEach((reminder: any, index: number) => {
+        reminders.forEach((reminder: calendar_v3.Schema$EventReminder, index: number) => {
           const method = reminder.method || "popup";
           const minutes = reminder.minutes || 0;
           logger.info(
@@ -1309,25 +1327,37 @@ async function manageReminders(
 async function bulkUpdateEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Bulk updating events...").start();
   try {
-    const options: any = {
+    const options: { dryRun: boolean; query: string | null } = {
       dryRun: false,
       query: null,
     };
 
-    const updates: any = {};
+    const updates: {
+      summary?: string;
+      location?: string;
+      description?: string;
+      titlePattern?: string;
+    } = {};
 
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === "--query") {
-        options.query = args[++i];
-      } else if (args[i] === "--title") {
-        updates.summary = args[++i];
-      } else if (args[i] === "--location") {
-        updates.location = args[++i];
-      } else if (args[i] === "--description") {
-        updates.description = args[++i];
-      } else if (args[i] === "--title-pattern") {
-        updates.titlePattern = args[++i];
-      } else if (args[i] === "--dry-run") {
+      const arg = args[i];
+      if (!arg) continue;
+      if (arg === "--query") {
+        const value = args[++i];
+        if (value) options.query = value;
+      } else if (arg === "--title") {
+        const value = args[++i];
+        if (value) updates.summary = value;
+      } else if (arg === "--location") {
+        const value = args[++i];
+        if (value) updates.location = value;
+      } else if (arg === "--description") {
+        const value = args[++i];
+        if (value) updates.description = value;
+      } else if (arg === "--title-pattern") {
+        const value = args[++i];
+        if (value) updates.titlePattern = value;
+      } else if (arg === "--dry-run") {
         options.dryRun = true;
       }
     }
@@ -1364,7 +1394,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
 
     if (options.dryRun) {
       logger.info(chalk.yellow("\nDry run - no changes will be made:"));
-      events.slice(0, 10).forEach((event: any, index: number) => {
+      events.slice(0, 10).forEach((event: Event, index: number) => {
         logger.info(`\n${index + 1}. ${event.summary || "No title"}`);
         if (updates.summary) {
           logger.info(`   Title: "${event.summary}" -> "${updates.summary}"`);
@@ -1388,7 +1418,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
 
     let updated = 0;
     for (const event of events) {
-      const eventUpdates: any = { ...event };
+      const eventUpdates: Partial<Event> = { ...event };
 
       if (updates.summary) {
         eventUpdates.summary = updates.summary;
@@ -1420,7 +1450,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
 async function batchCreateEvents(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Batch creating events...").start();
   try {
-    const options: any = {
+    const options: { file: string | null; stdin: boolean; template: string | null; dryRun: boolean } = {
       file: null,
       stdin: false,
       template: null,
@@ -1429,17 +1459,19 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--file" || args[i] === "-f") {
-        options.file = args[++i];
+        const file = args[++i];
+        if (file) options.file = file;
       } else if (args[i] === "--stdin") {
         options.stdin = true;
       } else if (args[i] === "--template") {
-        options.template = args[++i];
+        const template = args[++i];
+        if (template) options.template = template;
       } else if (args[i] === "--dry-run") {
         options.dryRun = true;
       }
     }
 
-    let eventsData: any[] = [];
+    let eventsData: Partial<Event>[] = [];
 
     if (options.stdin) {
       const fs = await import("node:fs");
@@ -1459,8 +1491,8 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
 
     if (options.template) {
       // Apply template
-      eventsData = eventsData.map((event: any) => {
-        const templateEvent: any = { ...event };
+      eventsData = eventsData.map((event: Partial<Event> & Record<string, unknown>) => {
+        const templateEvent: Partial<Event> = { ...event };
         if (options.template === "meeting") {
           templateEvent.summary = event.summary || "Meeting";
           if (!templateEvent.start) {
@@ -1482,9 +1514,9 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
           templateEvent.end = { date: tomorrow.toISOString().split("T")[0] };
         } else if (options.template === "all-day") {
           templateEvent.summary = event.summary || "All-day event";
-          const date = event.date || new Date().toISOString().split("T")[0];
-          templateEvent.start = { date };
-          const nextDay = new Date(date);
+          const dateStr = (event["date"] as string | undefined) || new Date().toISOString().split("T")[0];
+          templateEvent.start = { date: dateStr || "" };
+          const nextDay = new Date(dateStr || "");
           nextDay.setDate(nextDay.getDate() + 1);
           templateEvent.end = { date: nextDay.toISOString().split("T")[0] };
         }
@@ -1496,7 +1528,7 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
 
     if (options.dryRun) {
       logger.info(chalk.yellow("\nDry run - events that would be created:"));
-      eventsData.slice(0, 10).forEach((event: any, index: number) => {
+      eventsData.slice(0, 10).forEach((event: Partial<Event>, index: number) => {
         logger.info(`\n${index + 1}. ${event.summary || "No title"}`);
         logger.info(`   Start: ${event.start?.dateTime ?? event.start?.date ?? "N/A"}`);
         if (event.location) {
@@ -1530,7 +1562,7 @@ async function batchCreateEvents(calendarService: CalendarService, calendarId: s
 async function checkConflict(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Checking for conflicts...").start();
   try {
-    const options: any = {
+    const options: { calendars: string[]; duration: number } = {
       calendars: [calendarId],
       duration: 60,
     };
@@ -1579,13 +1611,14 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
     );
 
     let hasConflicts = false;
-    Object.entries(freeBusy.calendars || {}).forEach(([calId, info]: any) => {
-      if (info.busy && info.busy.length > 0) {
+    Object.entries(freeBusy.calendars || {}).forEach(([calId, info]: [string, calendar_v3.Schema$FreeBusyGroup | undefined]) => {
+      const busyPeriods = (info as any)?.busy as calendar_v3.Schema$TimePeriod[] | undefined;
+      if (busyPeriods && busyPeriods.length > 0) {
         hasConflicts = true;
         logger.info(`\n${chalk.red("Conflicts in:")} ${calId}`);
-        info.busy.forEach((busy: any) => {
-          const start = new Date(busy.start);
-          const end = new Date(busy.end);
+        busyPeriods.forEach((busy: calendar_v3.Schema$TimePeriod) => {
+          const start = busy.start ? new Date(busy.start) : new Date();
+          const end = busy.end ? new Date(busy.end) : new Date();
           logger.info(
             `  ${chalk.yellow(start.toLocaleString())} - ${chalk.yellow(end.toLocaleString())}`
           );
@@ -1607,7 +1640,7 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
 async function compareCalendars(calendarService: CalendarService, calendarId1: string, calendarId2: string, args: string[]) {
   const spinner = ora("Comparing calendars...").start();
   try {
-    const options: any = {
+    const options: { format: string } = {
       format: "table",
     };
 
@@ -1742,12 +1775,16 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
 async function updateRecurringEvent(calendarService: CalendarService, calendarId: string, eventId: string, args: string[]) {
   const spinner = ora("Updating recurring event...").start();
   try {
-    const options: any = {
+    const options: { dryRun: boolean; allInstances: boolean } = {
       dryRun: false,
       allInstances: false,
     };
 
-    const updates: any = {};
+    const updates: {
+      summary?: string;
+      location?: string;
+      description?: string;
+    } = {};
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--title") {
@@ -1786,7 +1823,7 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
     });
     const instances = result.events;
 
-    const recurringInstances = instances.filter((e: any) => {
+    const recurringInstances = instances.filter((e: Event) => {
       return e.recurringEventId === eventId || e.id === eventId;
     });
 
@@ -1794,7 +1831,7 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
 
     if (options.dryRun) {
       logger.info(chalk.yellow("\nDry run - instances that would be updated:"));
-      recurringInstances.slice(0, 10).forEach((instance: any, index: number) => {
+      recurringInstances.slice(0, 10).forEach((instance: Event, index: number) => {
         logger.info(`\n${index + 1}. ${instance.summary || "No title"}`);
         logger.info(`   Start: ${instance.start?.dateTime ?? instance.start?.date}`);
         if (updates.summary) {
@@ -1833,7 +1870,7 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
 async function manageColor(calendarService: CalendarService, args: string[]) {
   const spinner = ora("Managing colors...").start();
   try {
-    const colorMap: any = {
+    const colorMap: Record<number, string> = {
       1: "Lavender",
       2: "Sage",
       3: "Grape",
@@ -1957,29 +1994,52 @@ async function workWithRecurrence(args: string[]) {
 async function createRecurringEvent(calendarService: CalendarService, calendarId: string, args: string[]) {
   const spinner = ora("Creating recurring event...").start();
   try {
-    const options: any = {};
+    const options: {
+      title?: string;
+      start?: string;
+      end?: string;
+      duration?: string;
+      location?: string;
+      description?: string;
+      rrule?: string;
+      frequency?: string;
+      count?: number;
+      until?: string;
+    } = {};
 
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === "--title") {
-        options.title = args[++i]!;
-      } else if (args[i] === "--start") {
-        options.start = args[++i]!;
-      } else if (args[i] === "--end") {
-        options.end = args[++i]!;
-      } else if (args[i] === "--duration") {
-        options.duration = args[++i]!;
-      } else if (args[i] === "--location") {
-        options.location = args[++i]!;
-      } else if (args[i] === "--description") {
-        options.description = args[++i]!;
-      } else if (args[i] === "--rrule") {
-        options.rrule = args[++i]!;
-      } else if (args[i] === "--frequency") {
-        options.frequency = args[++i]!;
-      } else if (args[i] === "--count") {
-        options.count = parseInt(args[++i]!);
-      } else if (args[i] === "--until") {
-        options.until = args[++i]!;
+      const arg = args[i];
+      if (!arg) continue;
+      if (arg === "--title") {
+        const value = args[++i];
+        if (value) options.title = value;
+      } else if (arg === "--start") {
+        const value = args[++i];
+        if (value) options.start = value;
+      } else if (arg === "--end") {
+        const value = args[++i];
+        if (value) options.end = value;
+      } else if (arg === "--duration") {
+        const value = args[++i];
+        if (value) options.duration = value;
+      } else if (arg === "--location") {
+        const value = args[++i];
+        if (value) options.location = value;
+      } else if (arg === "--description") {
+        const value = args[++i];
+        if (value) options.description = value;
+      } else if (arg === "--rrule") {
+        const value = args[++i];
+        if (value) options.rrule = value;
+      } else if (arg === "--frequency") {
+        const value = args[++i];
+        if (value) options.frequency = value;
+      } else if (arg === "--count") {
+        const value = args[++i];
+        if (value) options.count = parseInt(value);
+      } else if (arg === "--until") {
+        const value = args[++i];
+        if (value) options.until = value;
       }
     }
 
@@ -2028,8 +2088,8 @@ async function createRecurringEvent(calendarService: CalendarService, calendarId
       );
     }
 
-    const eventData: any = {
-      summary: options.title,
+    const eventData: Partial<Event> = {
+      summary: typeof options.title === "string" ? options.title : "",
       start: { dateTime: startTime.toISOString() },
       end: { dateTime: endTime.toISOString() },
       recurrence: [rruleString],
@@ -2133,7 +2193,7 @@ async function dateUtilities(args: string[]) {
       }
     }
 
-    const formatMap: any = {
+    const formatMap: Record<string, string> = {
       iso: date.toISOString(),
       unix: Math.floor(date.getTime() / 1000).toString(),
       natural: formatDate(date, "MMMM d, yyyy 'at' h:mm a"),
