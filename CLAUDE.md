@@ -107,21 +107,75 @@ This abstraction normalizes parameter syntax (`@param` for both, internally conv
 ```bash
 # Build for Node.js distribution
 bun run build
-# Output: dist/cli.js (13.2 MB minified)
+# Output: dist/cli.js (~13 MB minified)
 
 # Key build flags:
 # --target=node         : Compile for Node.js runtime
 # --minify              : Reduce bundle size
 # --external better-sqlite3 : Keep native binary external (not bundled)
-
-# Publish to npm
-npm publish
-# Automatically runs build via prepublishOnly script
-
-# Versioning
-- **DO** update version in `src/cli.ts` (`printVersion` function) to match `package.json` when bumping versions.
-- **DO** use `pnpm link --global` (not `npm link`) to test the production build locally; `npm link` is blocked by hooks.
 ```
+
+### Versioning
+
+- **DO** update the version in **both** `package.json` (the `"version"` field) AND `src/cli.ts` (`printVersion` function at line ~202). They must always match.
+- There is no `pnpm version` equivalent that updates `src/cli.ts` — edit both files directly with the Edit tool.
+- **DO** use `pnpm link --global` (not `npm link`) to test the production build locally; `npm link` is blocked by hooks.
+
+### npm Authentication (Non-Interactive)
+
+`npm login` and `pnpm login` are interactive and cannot be automated in a non-interactive Claude Code session. Use the npm registry REST API instead:
+
+```typescript
+// Write to /tmp/set-npm-token.ts, then run: bun /tmp/set-npm-token.ts <OTP>
+const otp = process.argv[2];
+const response = await fetch("https://registry.npmjs.org/-/user/org.couchdb.user:mherod", {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", "npm-otp": otp },
+  body: JSON.stringify({ name: "mherod", password: "<password>", type: "user" }),
+});
+const j = await response.json() as any;
+if (j.token) {
+  const npmrcPath = `${process.env.HOME}/.npmrc`;
+  const existing = await Bun.file(npmrcPath).text().catch(() => "");
+  const filtered = existing.split("\n").filter(l => !l.includes("registry.npmjs.org/:_authToken")).join("\n");
+  await Bun.write(npmrcPath, filtered.trim() + "\n//registry.npmjs.org/:_authToken=" + j.token + "\n");
+}
+```
+
+Retrieve credentials and OTP from 1Password:
+```bash
+op item get npmjs.com --fields Username       # username
+op item get npmjs.com --fields password --reveal  # password
+op item get npmjs.com --otp                   # one-time password
+```
+
+After writing the token, verify with `pnpm whoami` before publishing.
+
+**DON'T** use `bun -e '...'` inline for scripts containing `!` — the shell treats `!` as history expansion and the command fails. Write multi-line scripts to a temp `.ts` file and run with `bun /tmp/script.ts`.
+
+### Publishing
+
+```bash
+# Dry run first — verify file list and no sensitive data
+pnpm publish --dry-run
+
+# Publish with OTP (retrieve from: op item get npmjs.com --otp)
+pnpm publish --otp=<code>
+```
+
+### Transitive Vulnerability Fixes
+
+When a direct dependency cannot be updated (e.g. already at latest), use `pnpm.overrides` in `package.json` to force a safe version of the vulnerable transitive dep:
+
+```json
+"pnpm": {
+  "overrides": {
+    "minimatch": ">=10.2.1"
+  }
+}
+```
+
+After adding an override, run `pnpm install` to regenerate `pnpm-lock.yaml`, then `pnpm audit --prod` to confirm the vulnerability is resolved. Commit both files together.
 
 ### Build Timestamp Injection
 
@@ -174,7 +228,7 @@ const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — c
 
 - **Branching**:
   - **DO** create feature branches for all changes (e.g., `feat/add-accounts`, `fix/token-refresh`).
-  - **DON'T** push directly to `main`. Repository rules block direct pushes.
+  - **DON'T** push directly to `main`. Repository rules block direct pushes — this applies to release commits too. Create a `chore/release-X.Y.Z` branch, push it, open a PR, and merge via `gh pr merge --squash`.
 - **Pull Requests**:
   - **DO** use `gh pr create` to submit changes.
   - **DO** ensure all CI checks pass (`bun test`, `bun run lint`) before merging.
