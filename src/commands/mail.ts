@@ -662,7 +662,7 @@ async function deleteMessage(mailService: MailService, messageId: string) {
   try {
     await mailService.deleteMessage(messageId);
     spinner.succeed("Message deleted");
-    console.log(chalk.green("Message has been deleted"));
+    logger.info(chalk.green("Message has been deleted"));
   } catch (error: unknown) {
     spinner.fail("Failed to delete message");
     throw error;
@@ -699,7 +699,7 @@ async function archiveMessage(mailService: MailService, messageId: string) {
   try {
     await mailService.archiveMessage(messageId);
     spinner.succeed("Message archived");
-    console.log(chalk.green("Message has been archived"));
+    logger.info(chalk.green("Message has been archived"));
   } catch (error: unknown) {
     spinner.fail("Failed to archive message");
     throw error;
@@ -745,7 +745,7 @@ async function unarchiveMessage(mailService: MailService, messageId: string) {
   try {
     await mailService.unarchiveMessage(messageId);
     spinner.succeed("Message unarchived");
-    console.log(chalk.green("Message has been unarchived"));
+    logger.info(chalk.green("Message has been unarchived"));
   } catch (error: unknown) {
     spinner.fail("Failed to unarchive message");
     throw error;
@@ -800,7 +800,7 @@ async function addLabel(mailService: MailService, messageId: string, labelName: 
 
     await mailService.modifyMessage(messageId, [label.id], []);
     spinner.succeed("Label added");
-    console.log(chalk.green(`Label "${label.name}" added to message`));
+    logger.info(chalk.green(`Label "${label.name}" added to message`));
   } catch (error: unknown) {
     spinner.fail("Failed to add label");
     throw error;
@@ -820,7 +820,7 @@ async function removeLabel(mailService: MailService, messageId: string, labelNam
 
     await mailService.modifyMessage(messageId, [], [label.id]);
     spinner.succeed("Label removed");
-    console.log(chalk.green(`Label "${label.name}" removed from message`));
+    logger.info(chalk.green(`Label "${label.name}" removed from message`));
   } catch (error: unknown) {
     spinner.fail("Failed to remove label");
     throw error;
@@ -832,7 +832,7 @@ async function markRead(mailService: MailService, messageId: string) {
   try {
     await mailService.modifyMessage(messageId, [], ["UNREAD"]);
     spinner.succeed("Message marked as read");
-    console.log(chalk.green("Message has been marked as read"));
+    logger.info(chalk.green("Message has been marked as read"));
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as read");
     throw error;
@@ -844,7 +844,7 @@ async function markUnread(mailService: MailService, messageId: string) {
   try {
     await mailService.modifyMessage(messageId, ["UNREAD"], []);
     spinner.succeed("Message marked as unread");
-    console.log(chalk.green("Message has been marked as unread"));
+    logger.info(chalk.green("Message has been marked as unread"));
   } catch (error: unknown) {
     spinner.fail("Failed to mark message as unread");
     throw error;
@@ -856,7 +856,7 @@ async function starMessage(mailService: MailService, messageId: string) {
   try {
     await mailService.modifyMessage(messageId, ["STARRED"], []);
     spinner.succeed("Message starred");
-    console.log(chalk.green("Message has been starred"));
+    logger.info(chalk.green("Message has been starred"));
   } catch (error: unknown) {
     spinner.fail("Failed to star message");
     throw error;
@@ -868,7 +868,7 @@ async function unstarMessage(mailService: MailService, messageId: string) {
   try {
     await mailService.modifyMessage(messageId, [], ["STARRED"]);
     spinner.succeed("Message unstarred");
-    console.log(chalk.green("Message has been unstarred"));
+    logger.info(chalk.green("Message has been unstarred"));
   } catch (error: unknown) {
     spinner.fail("Failed to unstar message");
     throw error;
@@ -900,8 +900,8 @@ async function createLabel(mailService: MailService, labelName: string, args: st
 
     const label = await mailService.createLabel(labelData);
     spinner.succeed("Label created");
-    console.log(chalk.green(`Label "${label.name}" created`));
-    console.log(`${chalk.cyan("Label ID:")} ${label.id}`);
+    logger.info(chalk.green(`Label "${label.name}" created`));
+    logger.info(`${chalk.cyan("Label ID:")} ${label.id}`);
   } catch (error: unknown) {
     spinner.fail("Failed to create label");
     throw error;
@@ -913,7 +913,7 @@ async function deleteLabel(mailService: MailService, labelId: string) {
   try {
     await mailService.deleteLabel(labelId);
     spinner.succeed("Label deleted");
-    console.log(chalk.green("Label has been deleted"));
+    logger.info(chalk.green("Label has been deleted"));
   } catch (error: unknown) {
     spinner.fail("Failed to delete label");
     throw error;
