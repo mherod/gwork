@@ -423,26 +423,27 @@ export class AuthManager {
 
     const auth = newAuth as unknown as AuthClient;
 
-    // Validate token works
+    // Validate token works — capture once, reuse below to avoid consuming the auth code twice
     const validationToken = await auth.getAccessToken();
     if (!validationToken.token) {
       throw new Error("No access token received from authentication");
     }
-
-    // Save to database
-    await this.saveAuthToStore(auth, service, account, requiredScopes, tokenStore);
-
-    // CRITICAL: Get latest credentials after save and synchronize
-    const latestAccessToken = await auth.getAccessToken();
     const authCredentials = (auth as any).credentials || {};
-    
-    this.syncCredentials(auth, {
+
+    // Save to database using the already-fetched token data
+    const tokenData = {
       service: service.toLowerCase(),
       account,
-      access_token: latestAccessToken.token || authCredentials.access_token || "",
+      access_token: validationToken.token,
       refresh_token: authCredentials.refresh_token || "",
-      expiry_date: authCredentials.expiry_date || 0,
       scopes: requiredScopes,
+      expiry_date: authCredentials.expiry_date || 0,
+    };
+    tokenStore.saveToken(tokenData);
+
+    // CRITICAL: Synchronize credentials so auth object matches what was saved
+    this.syncCredentials(auth, {
+      ...tokenData,
       created_at: Date.now(),
       updated_at: Date.now(),
     });
@@ -451,41 +452,4 @@ export class AuthManager {
     return auth;
   }
 
-  /**
-   * Saves auth client credentials to TokenStore.
-   * 
-   * @private
-   */
-  private async saveAuthToStore(
-    auth: AuthClient,
-    service: string,
-    account: string,
-    requiredScopes: string[],
-    tokenStore: TokenStore
-  ): Promise<void> {
-    const accessToken = await auth.getAccessToken();
-    
-    // Try to get full credentials
-    let credentials: any = {};
-    try {
-      const getCredentialsMethod = (auth as any).getCredentials;
-      if (typeof getCredentialsMethod === "function") {
-        credentials = await getCredentialsMethod.call(auth);
-      } else {
-        credentials = (auth as any).credentials || {};
-      }
-    } catch (_error) {
-      // If getCredentials fails, use available token data
-      credentials = {};
-    }
-
-    tokenStore.saveToken({
-      service: service.toLowerCase(),
-      account,
-      access_token: accessToken.token || credentials.access_token || "",
-      refresh_token: credentials.refresh_token || "",
-      scopes: requiredScopes,
-      expiry_date: credentials.expiry_date || 0,
-    });
-  }
 }

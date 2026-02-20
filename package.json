@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build src/cli.ts --outfile=dist/cli.js --target=node --minify --external better-sqlite3",
+    "build": "bun build src/cli.ts --outfile=dist/cli.js --target=node --minify --external better-sqlite3 --define __BUILD_TIME__=$(date -u +'\"%Y-%m-%dT%H:%M:%SZ\"')",
     "dev": "bun src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -58,6 +58,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
     "@types/lodash-es": "^4.17.12",
+    "@types/nodemailer": "^7.0.10",
     "eslint": "^9.39.2",
     "globals": "^17.3.0",
     "typescript": "^5.9.3",
@@ -74,6 +75,7 @@
     "google-auth-library": "^10.5.0",
     "googleapis": "^168.0.0",
     "lodash-es": "^4.17.21",
+    "nodemailer": "^8.0.1",
     "ora": "^9.0.0",
     "rrule": "^2.8.1"
   }
