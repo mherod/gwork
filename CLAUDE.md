@@ -137,8 +137,9 @@ const j = await response.json() as any;
 if (j.token) {
   const npmrcPath = `${process.env.HOME}/.npmrc`;
   const existing = await Bun.file(npmrcPath).text().catch(() => "");
+  const authLine = `//registry.npmjs.org/:_authToken=${j.token}`;
   const filtered = existing.split("\n").filter(l => !l.includes("registry.npmjs.org/:_authToken")).join("\n");
-  await Bun.write(npmrcPath, filtered.trim() + "\n//registry.npmjs.org/:_authToken=" + j.token + "\n");
+  await Bun.write(npmrcPath, filtered.trim() + "\n" + authLine + "\n");
 }
 ```
 
