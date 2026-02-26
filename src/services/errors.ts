@@ -91,3 +91,16 @@ export class ArgumentError extends ServiceError {
     Object.setPrototypeOf(this, ArgumentError.prototype);
   }
 }
+
+export class ScopeInsufficientError extends ServiceError {
+  constructor(context: string) {
+    super(
+      `Insufficient authentication scopes for: ${context}`,
+      "SCOPE_INSUFFICIENT",
+      403,
+      false,
+      "Your saved token does not grant access to this API. Re-authenticating with the required scopes..."
+    );
+    Object.setPrototypeOf(this, ScopeInsufficientError.prototype);
+  }
+}

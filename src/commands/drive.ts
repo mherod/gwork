@@ -2,8 +2,9 @@ import chalk from "chalk";
 import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";
 import type { ListFilesOptions } from "../services/drive-service.ts";
 
@@ -273,5 +274,16 @@ export async function handleDriveCommand(
 ) {
   const driveService = serviceFactory(account);
   await ensureInitialized(driveService);
-  await buildDriveRegistry().execute(subcommand, driveService, args);
+  try {
+    await buildDriveRegistry().execute(subcommand, driveService, args);
+  } catch (error) {
+    if (!(error instanceof ScopeInsufficientError)) throw error;
+    // The saved token lacks Drive API scopes. Delete it so AuthManager
+    // triggers a fresh OAuth consent flow with the required scopes.
+    logger.info(error.hint ?? "Re-authenticating with Drive scopes...");
+    TokenStore.getInstance().deleteToken("drive", account);
+    const freshService = serviceFactory(account);
+    await ensureInitialized(freshService);
+    await buildDriveRegistry().execute(subcommand, freshService, args);
+  }
 }
