@@ -91,6 +91,7 @@ Options:
   --html                  Treat body as HTML
   --attach <path>         Attach a file (repeatable)
   --reply-to <messageId>  Send as a reply to an existing message
+  --from-name <name>      Display name in the From header (e.g. "Alice Smith")
   --account <email>       Use a specific Google account
 
 Examples:
@@ -959,6 +960,7 @@ async function handleSendMessage(mailService: MailService, args: string[]) {
   let bodyFile = "";
   let html = false;
   let replyToMessageId = "";
+  let fromName = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -980,6 +982,8 @@ async function handleSendMessage(mailService: MailService, args: string[]) {
       attachments.push(args[++i]!);
     } else if (arg === "--reply-to" && args[i + 1]) {
       replyToMessageId = args[++i]!;
+    } else if (arg === "--from-name" && args[i + 1]) {
+      fromName = args[++i]!;
     }
   }
 
@@ -1039,6 +1043,7 @@ async function handleSendMessage(mailService: MailService, args: string[]) {
     html,
     attachments: attachments.length > 0 ? attachments : undefined,
     replyToMessageId: replyToMessageId || undefined,
+    fromName: fromName || undefined,
   };
 
   const spinner = ora("Sending message...").start();
