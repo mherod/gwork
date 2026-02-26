@@ -32,17 +32,20 @@ export interface SendMessageOptions {
   html?: boolean;
   attachments?: string[];
   replyToMessageId?: string;
+  fromName?: string;
 }
 
 async function buildMimeMessage(options: SendMessageOptions & {
   inReplyTo?: string;
   references?: string;
   threadId?: string;
+  from?: string;
 }): Promise<{ raw: string; threadId?: string }> {
   // Use nodemailer to build a correctly encoded RFC 2822 message
   const transporter = createTransport({ streamTransport: true, newline: "unix" });
 
   const mailOptions: Parameters<typeof transporter.sendMail>[0] = {
+    ...(options.from ? { from: options.from } : {}),
     to: options.to.join(", "),
     cc: options.cc && options.cc.length > 0 ? options.cc.join(", ") : undefined,
     bcc: options.bcc && options.bcc.length > 0 ? options.bcc.join(", ") : undefined,
@@ -734,12 +737,23 @@ export class MailService extends BaseService {
       }
     }
 
+    // Build the From header when a display name is requested.
+    // users.getProfile only returns emailAddress (no display name), so we always
+    // fetch the address and combine it with the caller-supplied name.
+    let fromHeader: string | undefined;
+    if (options.fromName) {
+      const profile = await this.gmail!.users.getProfile({ userId: "me" });
+      const email = profile.data.emailAddress ?? "";
+      fromHeader = `"${options.fromName}" <${email}>`;
+    }
+
     try {
       const { raw, threadId: tid } = await buildMimeMessage({
         ...options,
         inReplyTo,
         references,
         threadId,
+        from: fromHeader,
       });
 
       const requestBody: gmail_v1.Schema$Message = { raw };
