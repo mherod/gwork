@@ -1,3 +1,6 @@
+/** Horizontal rule used throughout CLI output sections. */
+export const SEPARATOR = "─".repeat(80);
+
 import {
   format,
   parseISO,

@@ -4,6 +4,7 @@ import ora from "ora";
 import { TokenStore } from "../services/token-store.ts";
 import { groupBy } from "lodash-es";
 import { logger } from "../utils/logger.ts";
+import { printSectionHeader } from "../utils/output.ts";
 
 /**
  * Formats time remaining until token expiry.
@@ -51,8 +52,7 @@ export async function handleAccountsCommand(args: string[]) {
     // Group tokens by account email
     const accounts = groupBy(tokens, "account");
 
-    logger.info(chalk.bold("\nConfigured Accounts:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nConfigured Accounts:");
 
     Object.entries(accounts).forEach(([email, accountTokens], index) => {
       logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(email)}`);
