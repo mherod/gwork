@@ -15,6 +15,7 @@ import {
   RateLimitError,
   ServiceUnavailableError,
   ScopeInsufficientError,
+  AuthenticationRequiredError,
 } from "../../../src/services/errors.ts";
 
 // ---------------------------------------------------------------------------
@@ -70,12 +71,39 @@ describe("ScopeInsufficientError", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// AuthenticationRequiredError — class shape
+// ---------------------------------------------------------------------------
+describe("AuthenticationRequiredError", () => {
+  it("is an instanceof ServiceError", () => {
+    expect(new AuthenticationRequiredError("list files")).toBeInstanceOf(ServiceError);
+  });
+
+  it("has code AUTHENTICATION_REQUIRED", () => {
+    expect(new AuthenticationRequiredError("list files").code).toBe("AUTHENTICATION_REQUIRED");
+  });
+
+  it("has httpStatus 401", () => {
+    expect(new AuthenticationRequiredError("list files").httpStatus).toBe(401);
+  });
+
+  it("includes the operation context in the message", () => {
+    expect(new AuthenticationRequiredError("get storage quota").message).toContain("get storage quota");
+  });
+
+  it("carries a non-empty hint about re-authenticating", () => {
+    const err = new AuthenticationRequiredError("list files");
+    expect(err.hint).toBeTruthy();
+    expect(err.hint).toContain("Re-authenticating");
+  });
+});
+
 describe("handleGoogleApiError", () => {
   describe("known HTTP status codes", () => {
-    it("throws ServiceError with AUTHENTICATION_REQUIRED for 401", () => {
+    it("throws AuthenticationRequiredError for 401", () => {
       expect(() =>
         handleGoogleApiError({ code: 401, message: "Unauthorized" }, "list events")
-      ).toThrow(ServiceError);
+      ).toThrow(AuthenticationRequiredError);
     });
 
     it("throws NotFoundError for 404", () => {
@@ -252,6 +280,100 @@ describe("handleGoogleApiError", () => {
         thrown = e;
       }
       expect(thrown).toBeInstanceOf(ScopeInsufficientError);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 401 authentication errors: token expired during operation
+  // -------------------------------------------------------------------------
+  describe("401 authentication error handling", () => {
+    it("throws AuthenticationRequiredError for 401 with proper context", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 401, message: "Token expired" }, "list messages");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(AuthenticationRequiredError);
+      expect((thrown as AuthenticationRequiredError).message).toContain("list messages");
+    });
+
+    it("AuthenticationRequiredError carries re-authentication hint", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 401, message: "Access token expired" }, "get contact");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(AuthenticationRequiredError);
+      expect((thrown as AuthenticationRequiredError).hint).toContain("Re-authenticating");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 429 rate limit errors: exponential backoff retry
+  // -------------------------------------------------------------------------
+  describe("429 rate limit error handling", () => {
+    it("RateLimitError is marked as retryable", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 429, message: "Rate limit exceeded" }, "search contacts");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(RateLimitError);
+      expect((thrown as RateLimitError).retryable).toBe(true);
+    });
+
+    it("RateLimitError includes automated retry hint", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 429, message: "Too many requests" }, "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(RateLimitError);
+      expect((thrown as RateLimitError).hint).toContain("Automatically retrying");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 500-503 service unavailable errors: temporary service issues
+  // -------------------------------------------------------------------------
+  describe("500-503 service unavailable error handling", () => {
+    it("ServiceUnavailableError is marked as retryable", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 500, message: "Internal Server Error" }, "get calendar");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(ServiceUnavailableError);
+      expect((thrown as ServiceUnavailableError).retryable).toBe(true);
+    });
+
+    it("ServiceUnavailableError includes automated retry hint", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError({ code: 503, message: "Service Unavailable" }, "list messages");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(ServiceUnavailableError);
+      expect((thrown as ServiceUnavailableError).hint).toContain("Automatically retrying");
+    });
+
+    it("handles different HTTP codes (500, 502, 503) consistently", () => {
+      const codes = [500, 502, 503];
+      for (const code of codes) {
+        let thrown: unknown;
+        try {
+          handleGoogleApiError({ code, message: "Service issue" }, "test operation");
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown).toBeInstanceOf(ServiceUnavailableError);
+      }
     });
   });
 });

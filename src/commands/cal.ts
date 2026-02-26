@@ -4,10 +4,11 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
-import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
 import { logger } from "../utils/logger.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -131,21 +132,34 @@ export async function handleCalCommand(
   account = "default",
   serviceFactory: CalServiceFactory = (acc) => new CalendarService(acc)
 ) {
-  // Create service instance with the specified account
-  const calendarService = serviceFactory(account);
-
-  // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized(calendarService);
+  const executeOperation = async () => {
+    const calendarService = serviceFactory(account);
+    await ensureInitialized(calendarService);
+    return await calRegistry.execute(subcommand, calendarService, args);
+  };
 
   try {
-    await calRegistry.execute(subcommand, calendarService, args);
+    return await retryWithBackoff(executeOperation, `calendar ${subcommand}`);
   } catch (error) {
-    if (!(error instanceof ScopeInsufficientError)) throw error;
-    logger.info(error.hint ?? "Re-authenticating with Calendar scopes...");
-    TokenStore.getInstance().deleteToken("calendar", account);
-    const freshService = serviceFactory(account);
-    await ensureInitialized(freshService);
-    await calRegistry.execute(subcommand, freshService, args);
+    // Handle scope and authentication errors that require fresh tokens
+    if (error instanceof ScopeInsufficientError) {
+      // The saved token lacks Calendar API scopes. Delete it so AuthManager
+      // triggers a fresh OAuth consent flow with the required scopes.
+      logger.info(error.hint ?? "Re-authenticating with Calendar scopes...");
+      TokenStore.getInstance().deleteToken("calendar", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await calRegistry.execute(subcommand, freshService, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      // Authentication expired during operation. Delete token and retry.
+      logger.info(error.hint ?? "Re-authenticating with Calendar...");
+      TokenStore.getInstance().deleteToken("calendar", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await calRegistry.execute(subcommand, freshService, args);
+    } else {
+      throw error;
+    }
   }
 }
 

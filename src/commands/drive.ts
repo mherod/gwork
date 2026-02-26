@@ -2,7 +2,8 @@ import chalk from "chalk";
 import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -272,18 +273,33 @@ export async function handleDriveCommand(
   account = "default",
   serviceFactory: DriveServiceFactory = (acc) => new DriveService(acc)
 ) {
-  const driveService = serviceFactory(account);
-  await ensureInitialized(driveService);
+  const executeOperation = async () => {
+    const driveService = serviceFactory(account);
+    await ensureInitialized(driveService);
+    return await buildDriveRegistry().execute(subcommand, driveService, args);
+  };
+
   try {
-    await buildDriveRegistry().execute(subcommand, driveService, args);
+    return await retryWithBackoff(executeOperation, `drive ${subcommand}`);
   } catch (error) {
-    if (!(error instanceof ScopeInsufficientError)) throw error;
-    // The saved token lacks Drive API scopes. Delete it so AuthManager
-    // triggers a fresh OAuth consent flow with the required scopes.
-    logger.info(error.hint ?? "Re-authenticating with Drive scopes...");
-    TokenStore.getInstance().deleteToken("drive", account);
-    const freshService = serviceFactory(account);
-    await ensureInitialized(freshService);
-    await buildDriveRegistry().execute(subcommand, freshService, args);
+    // Handle scope and authentication errors that require fresh tokens
+    if (error instanceof ScopeInsufficientError) {
+      // The saved token lacks Drive API scopes. Delete it so AuthManager
+      // triggers a fresh OAuth consent flow with the required scopes.
+      logger.info(error.hint ?? "Re-authenticating with Drive scopes...");
+      TokenStore.getInstance().deleteToken("drive", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await buildDriveRegistry().execute(subcommand, freshService, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      // Authentication expired during operation. Delete token and retry.
+      logger.info(error.hint ?? "Re-authenticating with Drive...");
+      TokenStore.getInstance().deleteToken("drive", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await buildDriveRegistry().execute(subcommand, freshService, args);
+    } else {
+      throw error;
+    }
   }
 }

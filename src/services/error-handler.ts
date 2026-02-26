@@ -10,6 +10,7 @@ import {
   ServiceUnavailableError,
   ServiceError,
   ScopeInsufficientError,
+  AuthenticationRequiredError,
 } from "./errors.ts";
 
 type ErrorFactory = (context: string, code: number, originalError: unknown) => ServiceError;
@@ -79,13 +80,8 @@ function get403Reason(error: unknown): string | null {
 const API_NOT_ENABLED_REASONS = new Set(["accessNotConfigured", "SERVICE_DISABLED"]);
 
 const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
-  401: (_ctx, _code, originalError) =>
-    new ServiceError(
-      `Authentication required: ${originalError instanceof Error ? originalError.message : "Login Required"}. Please re-authenticate.`,
-      "AUTHENTICATION_REQUIRED",
-      401,
-      true
-    ),
+  401: (ctx, _code, originalError) =>
+    new AuthenticationRequiredError(ctx),
   403: (ctx, _code, originalError) => {
     const reason = get403Reason(originalError);
     if (reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT") {

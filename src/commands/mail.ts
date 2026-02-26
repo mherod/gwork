@@ -4,7 +4,8 @@ import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";
@@ -262,21 +263,34 @@ export async function handleMailCommand(
     process.exit(0);
   }
 
-  // Create service instance with the specified account
-  const mailService = serviceFactory(account);
-
-  // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized(mailService);
+  const executeOperation = async () => {
+    const mailService = serviceFactory(account);
+    await ensureInitialized(mailService);
+    return await buildMailRegistry(account).execute(subcommand, mailService, args);
+  };
 
   try {
-    await buildMailRegistry(account).execute(subcommand, mailService, args);
+    return await retryWithBackoff(executeOperation, `mail ${subcommand}`);
   } catch (error) {
-    if (!(error instanceof ScopeInsufficientError)) throw error;
-    logger.info(error.hint ?? "Re-authenticating with Gmail scopes...");
-    TokenStore.getInstance().deleteToken("gmail", account);
-    const freshService = serviceFactory(account);
-    await ensureInitialized(freshService);
-    await buildMailRegistry(account).execute(subcommand, freshService, args);
+    // Handle scope and authentication errors that require fresh tokens
+    if (error instanceof ScopeInsufficientError) {
+      // The saved token lacks Gmail API scopes. Delete it so AuthManager
+      // triggers a fresh OAuth consent flow with the required scopes.
+      logger.info(error.hint ?? "Re-authenticating with Gmail scopes...");
+      TokenStore.getInstance().deleteToken("gmail", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await buildMailRegistry(account).execute(subcommand, freshService, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      // Authentication expired during operation. Delete token and retry.
+      logger.info(error.hint ?? "Re-authenticating with Gmail...");
+      TokenStore.getInstance().deleteToken("gmail", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await buildMailRegistry(account).execute(subcommand, freshService, args);
+    } else {
+      throw error;
+    }
   }
 }
 

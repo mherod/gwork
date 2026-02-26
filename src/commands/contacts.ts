@@ -3,7 +3,8 @@ import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";
@@ -115,17 +116,34 @@ export async function handleContactsCommand(
   account = "default",
   serviceFactory: ContactsServiceFactory = (acc) => new ContactsService(acc)
 ) {
-  const contactsService = serviceFactory(account);
-  await ensureInitialized(contactsService);
+  const executeOperation = async () => {
+    const contactsService = serviceFactory(account);
+    await ensureInitialized(contactsService);
+    return await contactsRegistry.execute(subcommand, contactsService, args);
+  };
+
   try {
-    await contactsRegistry.execute(subcommand, contactsService, args);
+    return await retryWithBackoff(executeOperation, `contacts ${subcommand}`);
   } catch (error) {
-    if (!(error instanceof ScopeInsufficientError)) throw error;
-    logger.info(error.hint ?? "Re-authenticating with Contacts scopes...");
-    TokenStore.getInstance().deleteToken("contacts", account);
-    const freshService = serviceFactory(account);
-    await ensureInitialized(freshService);
-    await contactsRegistry.execute(subcommand, freshService, args);
+    // Handle scope and authentication errors that require fresh tokens
+    if (error instanceof ScopeInsufficientError) {
+      // The saved token lacks Contacts API scopes. Delete it so AuthManager
+      // triggers a fresh OAuth consent flow with the required scopes.
+      logger.info(error.hint ?? "Re-authenticating with Contacts scopes...");
+      TokenStore.getInstance().deleteToken("contacts", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await contactsRegistry.execute(subcommand, freshService, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      // Authentication expired during operation. Delete token and retry.
+      logger.info(error.hint ?? "Re-authenticating with Contacts...");
+      TokenStore.getInstance().deleteToken("contacts", account);
+      const freshService = serviceFactory(account);
+      await ensureInitialized(freshService);
+      await contactsRegistry.execute(subcommand, freshService, args);
+    } else {
+      throw error;
+    }
   }
 }
 
