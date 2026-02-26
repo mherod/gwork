@@ -4,7 +4,8 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { logger } from "../utils/logger.ts";
@@ -136,7 +137,16 @@ export async function handleCalCommand(
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(calendarService);
 
-  await calRegistry.execute(subcommand, calendarService, args);
+  try {
+    await calRegistry.execute(subcommand, calendarService, args);
+  } catch (error) {
+    if (!(error instanceof ScopeInsufficientError)) throw error;
+    logger.info(error.hint ?? "Re-authenticating with Calendar scopes...");
+    TokenStore.getInstance().deleteToken("calendar", account);
+    const freshService = serviceFactory(account);
+    await ensureInitialized(freshService);
+    await calRegistry.execute(subcommand, freshService, args);
+  }
 }
 
 async function listEvents(calendarService: CalendarService, args: string[]) {

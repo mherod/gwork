@@ -4,7 +4,8 @@ import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
@@ -267,7 +268,16 @@ export async function handleMailCommand(
   // Ensure service is initialized (checks credentials) before any command
   await ensureInitialized(mailService);
 
-  await buildMailRegistry(account).execute(subcommand, mailService, args);
+  try {
+    await buildMailRegistry(account).execute(subcommand, mailService, args);
+  } catch (error) {
+    if (!(error instanceof ScopeInsufficientError)) throw error;
+    logger.info(error.hint ?? "Re-authenticating with Gmail scopes...");
+    TokenStore.getInstance().deleteToken("gmail", account);
+    const freshService = serviceFactory(account);
+    await ensureInitialized(freshService);
+    await buildMailRegistry(account).execute(subcommand, freshService, args);
+  }
 }
 
 async function listLabels(mailService: MailService, _args: string[]) {

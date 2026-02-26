@@ -3,7 +3,8 @@ import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
@@ -116,7 +117,16 @@ export async function handleContactsCommand(
 ) {
   const contactsService = serviceFactory(account);
   await ensureInitialized(contactsService);
-  await contactsRegistry.execute(subcommand, contactsService, args);
+  try {
+    await contactsRegistry.execute(subcommand, contactsService, args);
+  } catch (error) {
+    if (!(error instanceof ScopeInsufficientError)) throw error;
+    logger.info(error.hint ?? "Re-authenticating with Contacts scopes...");
+    TokenStore.getInstance().deleteToken("contacts", account);
+    const freshService = serviceFactory(account);
+    await ensureInitialized(freshService);
+    await contactsRegistry.execute(subcommand, freshService, args);
+  }
 }
 
 async function listContacts(contactsService: ContactsService, args: string[]) {
