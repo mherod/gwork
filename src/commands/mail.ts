@@ -624,14 +624,27 @@ async function listDrafts(mailService: MailService, args: string[]) {
   await listMessages(mailService, [...args, "--label", "DRAFT"]);
 }
 
+/** Recursively collects all MIME parts from a nested multipart tree. */
+function flattenParts(parts: any[]): any[] {
+  const result: any[] = [];
+  for (const part of parts) {
+    result.push(part);
+    if (part.parts && part.parts.length > 0) {
+      result.push(...flattenParts(part.parts));
+    }
+  }
+  return result;
+}
+
 async function listAttachments(mailService: MailService, messageId: string) {
   const spinner = ora("Fetching attachments...").start();
   try {
     const message = await mailService.getMessage(messageId, "full");
     spinner.succeed("Attachments fetched");
 
-    const parts = message.payload?.parts || [];
-    const attachments = parts.filter((p: any) => p.filename && p.body?.attachmentId);
+    const allParts = flattenParts(message.payload?.parts || []);
+    // Include parts with a filename whether data is inline (body.data) or external (body.attachmentId)
+    const attachments = allParts.filter((p: any) => p.filename && (p.body?.attachmentId || p.body?.data));
 
     if (attachments.length === 0) {
       logger.info(chalk.yellow("No attachments found"));
@@ -646,7 +659,9 @@ async function listAttachments(mailService: MailService, messageId: string) {
       logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan(part.filename)}`);
       logger.info(`   ${chalk.gray("Type:")} ${part.mimeType}`);
       logger.info(`   ${chalk.gray("Size:")} ${sizeMB} MB`);
-      logger.info(`   ${chalk.gray("Attachment ID:")} ${part.body.attachmentId}`);
+      if (part.body?.attachmentId) {
+        logger.info(`   ${chalk.gray("Attachment ID:")} ${part.body.attachmentId}`);
+      }
     });
   } catch (error: unknown) {
     spinner.fail("Failed to fetch attachments");
@@ -657,22 +672,28 @@ async function listAttachments(mailService: MailService, messageId: string) {
 async function downloadAttachment(mailService: MailService, messageId: string, attachmentId: string, filename?: string) {
   const spinner = ora("Downloading attachment...").start();
   try {
-    const attachment = await mailService.getAttachment(messageId, attachmentId);
-    const data = Buffer.from(attachment.data || "", "base64");
+    // Fetch the full message first to check for inline body.data.
+    // Some senders (e.g. GCP billing) attach PDFs as inline MIME parts: Gmail assigns
+    // an attachmentId but stores the data directly in body.data. Calling attachments.get
+    // on such parts fails with "Invalid attachment token". Reading body.data avoids the
+    // extra round-trip and handles that case.
+    const message = await mailService.getMessage(messageId, "full");
+    const allParts = flattenParts(message.payload?.parts || []);
+    const matchingPart = allParts.find((p: any) => p.body?.attachmentId === attachmentId);
+
+    let data: Buffer;
+    if (matchingPart?.body?.data) {
+      // Inline attachment — data already present in the full message response
+      data = Buffer.from(matchingPart.body.data, "base64");
+    } else {
+      // External attachment — fetch via the attachments API
+      const attachment = await mailService.getAttachment(messageId, attachmentId);
+      data = Buffer.from(attachment.data || "", "base64");
+    }
 
     let outputFile = filename;
-    if (!outputFile) {
-      // Try to find the original filename from the message's attachment metadata
-      try {
-        const message = await mailService.getMessage(messageId, "full");
-        const parts = message.payload?.parts || [];
-        const matchingPart = parts.find((p: any) => p.body?.attachmentId === attachmentId);
-        if (matchingPart?.filename && matchingPart.filename.length > 0) {
-          outputFile = matchingPart.filename;
-        }
-      } catch {
-        // Metadata fetch failed — fall through to hash-based fallback
-      }
+    if (!outputFile && matchingPart?.filename && matchingPart.filename.length > 0) {
+      outputFile = matchingPart.filename;
     }
     if (!outputFile) {
       // Fall back to a short, safe hash of the attachment ID
