@@ -14,7 +14,61 @@ import {
   PermissionDeniedError,
   RateLimitError,
   ServiceUnavailableError,
+  ScopeInsufficientError,
 } from "../../../src/services/errors.ts";
+
+// ---------------------------------------------------------------------------
+// Helper: build a GaxiosError-shaped Error for 403 sub-classification tests.
+// Real GaxiosErrors are instanceof Error with extra properties added by gaxios.
+// ---------------------------------------------------------------------------
+function gaxiosError403(reason: string, message = "API error"): Error {
+  return Object.assign(new Error(message), {
+    code: 403,
+    response: {
+      data: {
+        error: { code: 403, message, errors: [{ reason, message, domain: "googleapis.com" }] },
+      },
+    },
+  });
+}
+
+function gaxiosError403ViaDetails(detailReason: string, message = "API error"): Error {
+  return Object.assign(new Error(message), {
+    code: 403,
+    response: {
+      data: {
+        error: { code: 403, message, details: [{ "@type": "type.googleapis.com/...", reason: detailReason }] },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ScopeInsufficientError — class shape
+// ---------------------------------------------------------------------------
+describe("ScopeInsufficientError", () => {
+  it("is an instanceof ServiceError", () => {
+    expect(new ScopeInsufficientError("list files")).toBeInstanceOf(ServiceError);
+  });
+
+  it("has code SCOPE_INSUFFICIENT", () => {
+    expect(new ScopeInsufficientError("list files").code).toBe("SCOPE_INSUFFICIENT");
+  });
+
+  it("has httpStatus 403", () => {
+    expect(new ScopeInsufficientError("list files").httpStatus).toBe(403);
+  });
+
+  it("includes the operation context in the message", () => {
+    expect(new ScopeInsufficientError("get storage quota").message).toContain("get storage quota");
+  });
+
+  it("carries a non-empty hint about re-authenticating", () => {
+    const err = new ScopeInsufficientError("list files");
+    expect(err.hint).toBeTruthy();
+    expect(err.hint).toContain("Re-authenticating");
+  });
+});
 
 describe("handleGoogleApiError", () => {
   describe("known HTTP status codes", () => {
@@ -114,6 +168,90 @@ describe("handleGoogleApiError", () => {
 
     it("re-throws non-Error primitives as-is when no .code present", () => {
       expect(() => handleGoogleApiError("raw string error", "list")).toThrow("raw string error");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 403 sub-classification: scope vs API-disabled vs generic permission error
+  // -------------------------------------------------------------------------
+  describe("403 sub-classification via GaxiosError response body", () => {
+    it("throws ScopeInsufficientError for ACCESS_TOKEN_SCOPE_INSUFFICIENT in errors[0].reason", () => {
+      expect(() =>
+        handleGoogleApiError(gaxiosError403("ACCESS_TOKEN_SCOPE_INSUFFICIENT"), "list files")
+      ).toThrow(ScopeInsufficientError);
+    });
+
+    it("ScopeInsufficientError carries the operation context in its message", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(gaxiosError403("ACCESS_TOKEN_SCOPE_INSUFFICIENT"), "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as ScopeInsufficientError).message).toContain("list files");
+    });
+
+    it("throws ServiceError(API_NOT_ENABLED) for accessNotConfigured in errors[0].reason", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(gaxiosError403("accessNotConfigured", "Drive API not enabled"), "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(ServiceError);
+      expect((thrown as ServiceError).code).toBe("API_NOT_ENABLED");
+    });
+
+    it("API_NOT_ENABLED error surfaces the original Google error message", () => {
+      const googleMsg =
+        "Google Drive API has not been used in project 12345 before or it is disabled.";
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(gaxiosError403("accessNotConfigured", googleMsg), "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as ServiceError).message).toBe(googleMsg);
+    });
+
+    it("API_NOT_ENABLED error includes a hint about enabling the API", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(gaxiosError403("accessNotConfigured"), "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as ServiceError).hint).toContain("Google Cloud Console");
+    });
+
+    it("throws ServiceError(API_NOT_ENABLED) for SERVICE_DISABLED in details[0].reason", () => {
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(gaxiosError403ViaDetails("SERVICE_DISABLED", "Drive API is disabled"), "stats");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(ServiceError);
+      expect((thrown as ServiceError).code).toBe("API_NOT_ENABLED");
+    });
+
+    it("falls back to PermissionDeniedError for generic 403 without structured reason", () => {
+      expect(() =>
+        handleGoogleApiError({ code: 403, message: "Forbidden" }, "delete file")
+      ).toThrow(PermissionDeniedError);
+    });
+
+    it("detects scope insufficiency from the error message when no structured errors present", () => {
+      const msgOnlyError = Object.assign(new Error("Request had insufficient authentication scopes."), {
+        code: 403,
+      });
+      let thrown: unknown;
+      try {
+        handleGoogleApiError(msgOnlyError, "list files");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(ScopeInsufficientError);
     });
   });
 });
