@@ -625,7 +625,7 @@ async function listDrafts(mailService: MailService, args: string[]) {
 }
 
 /** Recursively collects all MIME parts from a nested multipart tree. */
-function flattenParts(parts: any[]): any[] {
+export function flattenParts(parts: any[]): any[] {
   const result: any[] = [];
   for (const part of parts) {
     result.push(part);
