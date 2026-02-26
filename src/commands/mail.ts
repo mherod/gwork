@@ -6,6 +6,8 @@ import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { SEPARATOR } from "../utils/format.ts";
+import { printSectionHeader } from "../utils/output.ts";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import { CommandRegistry } from "./registry.ts";
@@ -279,8 +281,7 @@ async function listLabels(mailService: MailService, _args: string[]) {
       return;
     }
 
-    logger.info(chalk.bold("\nGmail Labels:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nGmail Labels:");
     labels.forEach((label: any) => {
       const name = label.name || "Unknown";
       const type = label.type || "user";
@@ -342,8 +343,7 @@ async function listMessages(mailService: MailService, args: string[]) {
     );
     const messages = await Promise.all(messagePromises);
 
-    logger.info(chalk.bold("\nMessages:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nMessages:");
     messages.forEach((message, index: number) => {
       const headers = message.payload?.headers || [];
       const from = getHeader(headers, "from");
@@ -389,8 +389,7 @@ async function getMessage(mailService: MailService, messageId: string, args: str
     const message = await mailService.getMessage(messageId, "full");
     spinner.succeed("Message fetched");
 
-    logger.info(chalk.bold("\nMessage:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nMessage:");
     logger.info(formatMessage(message, format));
 
     const parts = message.payload?.parts || [];
@@ -456,8 +455,7 @@ async function searchMessages(mailService: MailService, query: string, extraArgs
       return;
     }
 
-    logger.info(chalk.bold(`\nSearch Results for: "${query}"`));
-    logger.info("─".repeat(80));
+    printSectionHeader(`\nSearch Results for: "${query}"`);
     messages.forEach((message, index: number) => {
       const headers = message.payload?.headers || [];
       const from = getHeader(headers, "from");
@@ -487,8 +485,7 @@ async function getStats(mailService: MailService) {
 
     spinner.succeed("Statistics fetched");
 
-    logger.info(chalk.bold("\nGmail Statistics:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nGmail Statistics:");
     logger.info(`${chalk.cyan("Email Address:")} ${profile.emailAddress}`);
     logger.info(`${chalk.cyan("Total Messages:")} ${totalCount}`);
     logger.info(`${chalk.cyan("Unread Messages:")} ${unreadCount}`);
@@ -535,8 +532,7 @@ async function listThreads(mailService: MailService, args: string[]) {
       return;
     }
 
-    logger.info(chalk.bold("\nThreads:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nThreads:");
     result.threads.forEach((thread: any, index: number) => {
       logger.info(`\n${chalk.bold(`${index + 1}.`)} ${chalk.cyan("Thread ID:")} ${thread.id}`);
       logger.info(`   ${chalk.gray("Messages:")} ${thread.messages?.length || 0}`);
@@ -573,15 +569,14 @@ async function getThread(mailService: MailService, threadId: string, args: strin
     const thread = await mailService.getThread(threadId);
     spinner.succeed("Thread fetched");
 
-    logger.info(chalk.bold("\nThread:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nThread:");
     logger.info(`${chalk.cyan("Thread ID:")} ${thread.id}`);
     logger.info(`${chalk.cyan("Messages:")} ${thread.messages?.length || 0}`);
 
     if (thread.messages && thread.messages.length > 0) {
       thread.messages.forEach((message: any, index: number) => {
         logger.info(`\n${chalk.bold(`Message ${index + 1}:`)}`);
-        logger.info("─".repeat(80));
+        logger.info(SEPARATOR);
 
         if (showFullMessages) {
           // Show full message with body
@@ -651,8 +646,7 @@ async function listAttachments(mailService: MailService, messageId: string) {
       return;
     }
 
-    logger.info(chalk.bold("\nAttachments:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nAttachments:");
     attachments.forEach((part: any, index: number) => {
       const size = part.body?.size || 0;
       const sizeMB = (size / 1024 / 1024).toFixed(2);

@@ -5,6 +5,8 @@ import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { SEPARATOR } from "../utils/format.ts";
+import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
 
 const contactsRegistry = new CommandRegistry<ContactsService>()
@@ -153,8 +155,7 @@ async function listContacts(contactsService: ContactsService, args: string[]) {
     if (options.format === "json") {
       logger.info(JSON.stringify(contacts, null, 2));
     } else {
-      logger.info(chalk.bold("\nContacts:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nContacts:");
       contacts.forEach((contact: Person, index: number) => {
         const name = contact.names?.[0]?.displayName || "No name";
         const email = contact.emailAddresses?.[0]?.value || "";
@@ -198,8 +199,7 @@ async function getContact(contactsService: ContactsService, resourceName: string
     if (options.format === "json") {
       logger.info(JSON.stringify(contact, null, 2));
     } else {
-      logger.info(chalk.bold("\nContact Details:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nContact Details:");
 
       const name = contact.names?.[0]?.displayName || "No name";
       logger.info(`${chalk.cyan("Name:")} ${name}`);
@@ -281,8 +281,7 @@ async function searchContacts(contactsService: ContactsService, query: string, a
     if (options.format === "json") {
       logger.info(JSON.stringify(contacts, null, 2));
     } else {
-      logger.info(chalk.bold(`\nSearch Results for "${query}":`));
-      logger.info("─".repeat(80));
+      printSectionHeader(`\nSearch Results for "${query}":`);
       contacts.forEach((contact: Person, index: number) => {
         const name = contact.names?.[0]?.displayName || "No name";
         const email = contact.emailAddresses?.[0]?.value || "";
@@ -311,8 +310,7 @@ async function findContactByEmail(contactsService: ContactsService, email: strin
 
     spinner.succeed("Contact found");
 
-    logger.info(chalk.bold("\nContact Found:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nContact Found:");
 
     const name = contact.names?.[0]?.displayName || "No name";
     logger.info(`${chalk.cyan("Name:")} ${name}`);
@@ -345,8 +343,7 @@ async function findContactByName(contactsService: ContactsService, name: string)
 
     spinner.succeed("Contact found");
 
-    logger.info(chalk.bold("\nContact Found:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nContact Found:");
 
     const displayName = contact.names?.[0]?.displayName || "No name";
     logger.info(`${chalk.cyan("Name:")} ${displayName}`);
@@ -423,7 +420,7 @@ async function createContact(contactsService: ContactsService, args: string[]) {
     spinner.succeed("Contact created successfully");
 
     logger.info(chalk.green("\nCreated Contact:"));
-    logger.info("─".repeat(80));
+    logger.info(SEPARATOR);
     const name = contact.names?.[0]?.displayName || "No name";
     logger.info(`${chalk.cyan("Name:")} ${name}`);
     logger.info(`${chalk.cyan("Resource Name:")} ${contact.resourceName}`);
@@ -483,7 +480,7 @@ async function updateContact(contactsService: ContactsService, resourceName: str
     spinner.succeed("Contact updated successfully");
 
     logger.info(chalk.green("\nUpdated Contact:"));
-    logger.info("─".repeat(80));
+    logger.info(SEPARATOR);
     const name = contact.names?.[0]?.displayName || "No name";
     logger.info(`${chalk.cyan("Name:")} ${name}`);
     logger.info(`${chalk.cyan("Resource Name:")} ${contact.resourceName}`);
@@ -543,8 +540,7 @@ async function listGroups(contactsService: ContactsService, args: string[]) {
     if (options.format === "json") {
       logger.info(JSON.stringify(groups, null, 2));
     } else {
-      logger.info(chalk.bold("\nContact Groups:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nContact Groups:");
       groups.forEach((group: ContactGroup, index: number) => {
         const name = group.name || "No name";
         const memberCount = (group.memberCount || 0).toString();
@@ -575,8 +571,7 @@ async function createGroup(contactsService: ContactsService, name: string, args:
 
     spinner.succeed("Contact group created successfully");
 
-    logger.info(chalk.bold("\nCreated Group:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nCreated Group:");
     logger.info(`${chalk.cyan("Name:")} ${group.name}`);
     logger.info(`${chalk.cyan("Resource Name:")} ${group.resourceName}`);
 
@@ -620,8 +615,7 @@ async function getContactsInGroup(contactsService: ContactsService, groupResourc
       process.exit(0);
     }
 
-    logger.info(chalk.bold("\nContacts in Group:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nContacts in Group:");
     result.contacts.forEach((contact: Person, index: number) => {
       const name = contact.names?.[0]?.displayName || "No name";
       const email = contact.emailAddresses?.[0]?.value || "";
@@ -704,8 +698,7 @@ async function batchCreateContacts(contactsService: ContactsService, jsonFile: s
     }
 
     if (created.length > 0) {
-      logger.info(chalk.bold("\nCreated Contacts:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nCreated Contacts:");
       created.forEach((contact) => {
         const name = contact.names?.[0]?.displayName || "No name";
         logger.info(chalk.cyan(name));
@@ -713,8 +706,7 @@ async function batchCreateContacts(contactsService: ContactsService, jsonFile: s
     }
 
     if (failures.length > 0) {
-      logger.info(chalk.bold("\nFailed Contacts:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nFailed Contacts:");
       failures.forEach(({ index, data, error }) => {
         const name = data.firstName || data.lastName || `index ${index}`;
         const msg = error instanceof Error ? error.message : String(error);
@@ -774,8 +766,7 @@ async function getProfile(contactsService: ContactsService, args: string[]) {
     if (options.format === "json") {
       logger.info(JSON.stringify(profile, null, 2));
     } else {
-      logger.info(chalk.bold("\nYour Profile:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nYour Profile:");
 
       const name = profile.names?.[0]?.displayName || "No name";
       logger.info(`${chalk.cyan("Name:")} ${name}`);
@@ -821,8 +812,7 @@ async function getStats(contactsService: ContactsService, _args: string[]) {
       contactsWithPhotos: contacts.filter((c) => c.photos && c.photos.length > 0).length,
     };
 
-    logger.info(chalk.bold("\nContact Statistics:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nContact Statistics:");
     logger.info(`${chalk.cyan("Total Contacts:")} ${stats.totalContacts}`);
     logger.info(`${chalk.cyan("Total Groups:")} ${stats.totalGroups}`);
     logger.info(`${chalk.cyan("Contacts with Email:")} ${stats.contactsWithEmails}`);
@@ -853,8 +843,7 @@ async function mergeContacts(contactsService: ContactsService, targetResourceNam
 
     spinner.succeed("Contacts merged successfully");
 
-    logger.info(chalk.bold("\nMerge Results:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nMerge Results:");
     const mergedName = result.mergedContact.names?.[0]?.displayName || "No name";
     logger.info(`${chalk.cyan("Target Contact:")} ${mergedName}`);
     logger.info(`${chalk.cyan("Resource Name:")} ${result.mergedContact.resourceName}`);
@@ -924,8 +913,7 @@ async function autoMergeContacts(contactsService: ContactsService, args: string[
         `Found ${result.mergeOperations} merge operations in duplicates`
       );
 
-      logger.info(chalk.bold("\nAuto-Merge Preview:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nAuto-Merge Preview:");
       logger.info(`${chalk.cyan("Merge Operations:")} ${result.mergeOperations}`);
 
       if (result.mergeOperations === 0) {
@@ -940,8 +928,7 @@ async function autoMergeContacts(contactsService: ContactsService, args: string[
     } else {
       spinner.succeed(`Executed ${result.mergeOperations} merge operations`);
 
-      logger.info(chalk.bold("\nAuto-Merge Results:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nAuto-Merge Results:");
       logger.info(`${chalk.cyan("Merge Operations:")} ${result.mergeOperations}`);
 
       if (result.results) {
@@ -1026,8 +1013,7 @@ async function findDuplicates(contactsService: ContactsService, args: string[]) 
       logger.info(JSON.stringify(result, null, 2));
     } else if (options.showDetails) {
       // Detailed format
-      logger.info(chalk.bold("\nDuplicate Analysis:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nDuplicate Analysis:");
       logger.info(`${chalk.cyan("Total Contacts Analyzed:")} ${result.totalContacts}`);
       logger.info(`${chalk.cyan("Duplicate Groups Found:")} ${result.totalDuplicates}`);
       logger.info("");
@@ -1409,8 +1395,7 @@ async function detectMarketing(contactsService: ContactsService, args: string[])
 
           cleanupSpinner.succeed("Cleanup completed");
 
-          logger.info(chalk.bold("\nCleanup Results:"));
-          logger.info("─".repeat(80));
+          printSectionHeader("\nCleanup Results:");
           logger.info(
             `${chalk.green("Deleted:")} ${cleanupResult.deleted}/${result.marketingContacts}`
           );

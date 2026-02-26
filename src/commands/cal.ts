@@ -8,6 +8,7 @@ import { ArgumentError } from "../services/errors.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { logger } from "../utils/logger.ts";
+import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
 
 const calRegistry = new CommandRegistry<CalendarService>()
@@ -315,8 +316,7 @@ async function listEvents(calendarService: CalendarService, args: string[]) {
     if (options.format === "json") {
       logger.info(JSON.stringify(events, null, 2));
     } else {
-      logger.info(chalk.bold("\nEvents:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nEvents:");
       events.forEach((event: Event, index: number) => {
         const start = event.start?.dateTime ?? event.start?.date;
         const end = event.end?.dateTime ?? event.end?.date;
@@ -386,8 +386,7 @@ async function listCalendars(calendarService: CalendarService, args: string[]) {
     if (options.format === "json") {
       logger.info(JSON.stringify(calendars, null, 2));
     } else {
-      logger.info(chalk.bold("\nCalendars:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nCalendars:");
       calendars.forEach((calendar: calendar_v3.Schema$CalendarListEntry) => {
         const accessRole = calendar.accessRole || "unknown";
         const color =
@@ -422,8 +421,7 @@ async function getEvent(calendarService: CalendarService, calendarId: string, ev
     const event = await calendarService.getEvent(calendarId, eventId);
     spinner.succeed("Event details fetched");
 
-    logger.info(chalk.bold("\nEvent Details:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nEvent Details:");
     logger.info(`${chalk.cyan("Title:")} ${event.summary || "No title"}`);
     logger.info(`${chalk.cyan("ID:")} ${event.id}`);
     logger.info(
@@ -718,8 +716,7 @@ async function searchEvents(calendarService: CalendarService, query: string, ext
       return;
     }
 
-    logger.info(chalk.bold(`\nSearch results for: "${query}"`));
-    logger.info("─".repeat(80));
+    printSectionHeader(`\nSearch results for: "${query}"`);
     events.forEach((event: Event, index: number) => {
       const start = event.start?.dateTime ?? event.start?.date;
       const summary = event.summary || "No title";
@@ -759,8 +756,7 @@ async function getFreeBusy(calendarService: CalendarService, start: string, end:
     );
     spinner.succeed("Free/busy information fetched");
 
-    logger.info(chalk.bold("\nFree/Busy Information:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nFree/Busy Information:");
     logger.info(
       `${chalk.cyan("Time Range:")} ${startTime.toISOString()} to ${endTime.toISOString()}`
     );
@@ -889,8 +885,7 @@ async function getStats(calendarService: CalendarService, args: string[]) {
       (stats.totalDuration % (1000 * 60 * 60)) / (1000 * 60)
     );
 
-    logger.info(chalk.bold("\nCalendar Statistics:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nCalendar Statistics:");
     logger.info(`${chalk.cyan("Total Events:")} ${stats.total}`);
     logger.info(`${chalk.cyan("All-day Events:")} ${stats.allDay}`);
     logger.info(`${chalk.cyan("Timed Events:")} ${stats.timed}`);
@@ -1217,8 +1212,7 @@ async function manageReminders(
       const reminders = event.reminders?.overrides || [];
       const useDefault = event.reminders?.useDefault || false;
 
-      logger.info(chalk.bold("\nEvent Reminders:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nEvent Reminders:");
       if (useDefault) {
         logger.info(chalk.cyan("Using default reminders"));
       }
@@ -1593,8 +1587,7 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
 
     spinner.succeed("Conflict check complete");
 
-    logger.info(chalk.bold("\nConflict Check:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nConflict Check:");
     logger.info(
       `${chalk.cyan("Time Range:")} ${startTime.toLocaleString()} to ${endTime.toLocaleString()}`
     );
@@ -1724,8 +1717,7 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
         )
       );
     } else {
-      logger.info(chalk.bold("\nCalendar Comparison:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nCalendar Comparison:");
       logger.info(`${chalk.cyan("Calendar 1:")} ${calendarId1} - ${events1.length} events`);
       logger.info(`${chalk.cyan("Calendar 2:")} ${calendarId2} - ${events2.length} events`);
       logger.info(`${chalk.cyan("Overlapping:")} ${overlapping.length} events`);
@@ -1882,8 +1874,7 @@ async function manageColor(calendarService: CalendarService, args: string[]) {
 
     if (args.length === 0 || args[0] === "list") {
       spinner.succeed("Available colors:");
-      logger.info(chalk.bold("\nGoogle Calendar Colors:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nGoogle Calendar Colors:");
       Object.entries(colorMap).forEach(([id, name]) => {
         const nameStr = typeof name === "string" ? name : String(name);
         logger.info(`  ${id.toString().padStart(2)}. ${startCase(nameStr)}`);
@@ -1930,8 +1921,7 @@ async function workWithRecurrence(args: string[]) {
   const spinner = ora("Working with recurrence...").start();
   try {
     if (args.length === 0 || args[0] === "help") {
-      logger.info(chalk.bold("\nRecurrence Utilities:"));
-      logger.info("─".repeat(80));
+      printSectionHeader("\nRecurrence Utilities:");
       logger.info("Parse RRULE: gwork cal recurrence parse <rrule>");
       logger.info("Show occurrences: gwork cal recurrence occurrences <rrule> [--count N]");
       return;
@@ -2134,8 +2124,7 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
 
     spinner.succeed("Recurrence info fetched");
 
-    logger.info(chalk.bold("\nRecurrence Information:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nRecurrence Information:");
     logger.info(`${chalk.cyan("Event:")} ${event.summary || "No title"}`);
     logger.info(`${chalk.cyan("RRULE:")} ${rruleString}`);
     logger.info(`${chalk.cyan("Natural language:")} ${text}`);
@@ -2156,8 +2145,7 @@ async function showRecurrenceInfo(calendarService: CalendarService, calendarId: 
 
 async function dateUtilities(args: string[]) {
   if (args.length === 0 || args[0] === "help") {
-    logger.info(chalk.bold("\nDate Utilities:"));
-    logger.info("─".repeat(80));
+    printSectionHeader("\nDate Utilities:");
     logger.info("Format: gwork cal date format <date> [--format <format>]");
     logger.info("Parse: gwork cal date parse <dateString>");
     logger.info("Add: gwork cal date add <date> <amount> <unit>");
