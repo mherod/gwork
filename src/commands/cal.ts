@@ -4,7 +4,7 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
@@ -157,6 +157,14 @@ export async function handleCalCommand(
       const freshService = serviceFactory(account);
       await ensureInitialized(freshService);
       await calRegistry.execute(subcommand, freshService, args);
+    } else if (error instanceof RateLimitError) {
+      // retryWithBackoff exhausted all attempts; surface a clear final message.
+      logger.warn("Calendar API rate limit persists after retries. Please wait a moment before trying again.");
+      throw error;
+    } else if (error instanceof ServiceUnavailableError) {
+      // retryWithBackoff exhausted all attempts; service still not responding.
+      logger.warn("Google Calendar service unavailable after retries. Please try again shortly.");
+      throw error;
     } else {
       throw error;
     }

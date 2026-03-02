@@ -3,7 +3,7 @@ import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -298,6 +298,14 @@ export async function handleDriveCommand(
       const freshService = serviceFactory(account);
       await ensureInitialized(freshService);
       await buildDriveRegistry().execute(subcommand, freshService, args);
+    } else if (error instanceof RateLimitError) {
+      // retryWithBackoff exhausted all attempts; surface a clear final message.
+      logger.warn("Drive API rate limit persists after retries. Please wait a moment before trying again.");
+      throw error;
+    } else if (error instanceof ServiceUnavailableError) {
+      // retryWithBackoff exhausted all attempts; service still not responding.
+      logger.warn("Google Drive service unavailable after retries. Please try again shortly.");
+      throw error;
     } else {
       throw error;
     }

@@ -5,7 +5,7 @@ import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";
@@ -288,6 +288,14 @@ export async function handleMailCommand(
       const freshService = serviceFactory(account);
       await ensureInitialized(freshService);
       await buildMailRegistry(account).execute(subcommand, freshService, args);
+    } else if (error instanceof RateLimitError) {
+      // retryWithBackoff exhausted all attempts; surface a clear final message.
+      logger.warn("Gmail API rate limit persists after retries. Please wait a moment before trying again.");
+      throw error;
+    } else if (error instanceof ServiceUnavailableError) {
+      // retryWithBackoff exhausted all attempts; service still not responding.
+      logger.warn("Gmail service unavailable after retries. Please try again shortly.");
+      throw error;
     } else {
       throw error;
     }
