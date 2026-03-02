@@ -168,12 +168,24 @@ pnpm publish --otp=<code>
 
 ### Transitive Dependency Fixes (Vulnerabilities & Deprecations)
 
-Use `pnpm.overrides` in `package.json` to force a safe/newer version of any transitive dep — both for security vulnerabilities and deprecation warnings:
+This project uses **two separate override mechanisms** that affect different lockfiles:
+
+- **`"overrides"` (root-level)** — read by bun; controls `bun.lock` resolution
+- **`"pnpm.overrides"`** — read by pnpm; controls `pnpm-lock.yaml` resolution
+
+**DO** add vulnerability-fixing overrides to the root-level `"overrides"` block (bun reads this, not `pnpm.overrides`). For deprecation-only warnings, `pnpm.overrides` is sufficient.
 
 ```json
+"overrides": {
+  "minimatch": ">=9.0.6",
+  "qs": ">=6.14.1",
+  "ajv": ">=6.14.0 <7"
+},
 "pnpm": {
   "overrides": {
-    "minimatch": ">=10.2.1",
+    "minimatch": ">=9.0.6",
+    "qs": ">=6.14.1",
+    "ajv": ">=6.14.0 <7",
     "glob": ">=13.0.6",
     "rimraf": ">=6.1.3",
     "node-domexception": ">=2.0.2"
@@ -181,7 +193,11 @@ Use `pnpm.overrides` in `package.json` to force a safe/newer version of any tran
 }
 ```
 
-After adding an override, run `pnpm install` to regenerate `pnpm-lock.yaml`, then `pnpm audit --prod` to confirm vulnerabilities are resolved. Commit both files together.
+After adding an override, run `bun install` to regenerate `bun.lock`, then `bun audit` to confirm no vulnerabilities remain.
+
+**DON'T** use open-ended `>=X` semver ranges that cross a major version boundary. For example, `"ajv": ">=6.14.0"` resolves to ajv v8, which has a completely different API and breaks ESLint v9 (which uses ajv v6 internally). Always cap with `<NEXT_MAJOR`: `"ajv": ">=6.14.0 <7"`.
+
+**DON'T** add `node-domexception` to the bun root `"overrides"`. The v2.x package removed the default export that `fetch-blob` (`import DOMException from 'node-domexception'`) depends on — this breaks the production build with `error: No matching export in "node_modules/node-domexception/index.js" for import "default"`. Leave `node-domexception` in `pnpm.overrides` only.
 
 **DON'T** add a package to `peerDependencies` if it's already in `devDependencies` — this produces a spurious `pnpm link --global` warning about unresolved peers. `typescript` belongs only in `devDependencies`.
 
