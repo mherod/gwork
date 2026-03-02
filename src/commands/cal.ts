@@ -1,6 +1,5 @@
 import chalk from "chalk";
 import ora from "ora";
-import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
@@ -13,6 +12,25 @@ import { logger } from "../utils/logger.ts";
 import { logServiceError } from "../utils/command-error-handler.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
+
+function startCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function uniqById<T extends { id?: string | null }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  return arr.filter((item) => {
+    const k = item.id ?? "";
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 const calRegistry = new CommandRegistry<CalendarService>()
   .register("list", (svc, args) => listEvents(svc, args))
@@ -57,7 +75,7 @@ const calRegistry = new CommandRegistry<CalendarService>()
     if (args.length === 0) {
       throw new ArgumentError("Error: title is required", "gwork cal create-calendar <title>");
     }
-    return createCalendar(svc, compact(args).join(" "));
+    return createCalendar(svc, args.filter(Boolean).join(" "));
   })
   .register("stats", (svc, args) => getStats(svc, args))
   .register("duplicate", (svc, args) => {
@@ -582,9 +600,11 @@ async function createEvent(calendarService: CalendarService, calendarId: string,
     }
 
     if (options.attendees) {
-      eventData.attendees = map(
-        compact(options.attendees.split(",").map((e) => e.trim())),
-        (email: string) => ({
+      eventData.attendees = options.attendees
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean)
+        .map((email: string) => ({
           email: email.trim(),
         })
       );
@@ -788,7 +808,7 @@ async function getFreeBusy(calendarService: CalendarService, start: string, end:
       if (args[i] === "-c" || args[i] === "--calendars") {
         const calendarArg = args[++i];
         if (calendarArg) {
-          calendarIds = map(compact(calendarArg.split(",")), (id) => id.trim());
+          calendarIds = calendarArg.split(",").filter(Boolean).map((id: string) => id.trim());
         }
       }
     }
@@ -948,12 +968,10 @@ async function getStats(calendarService: CalendarService, args: string[]) {
       );
     }
 
-    if (!isEmpty(stats.byDay)) {
+    if (Object.keys(stats.byDay).length > 0) {
       logger.info(`\n${chalk.cyan("Events by Day of Week:")}`);
-      const sortedDays = orderBy(
-        Object.entries(stats.byDay),
-        [([, count]) => count],
-        ["desc"]
+      const sortedDays = Object.entries(stats.byDay).sort(
+        ([, a], [, b]) => b - a
       );
       sortedDays.forEach(([day, count]) => {
         const countNum = typeof count === "number" ? count : 0;
@@ -1389,7 +1407,7 @@ async function bulkUpdateEvents(calendarService: CalendarService, calendarId: st
       }
     }
 
-    if (isEmpty(updates)) {
+    if (Object.keys(updates).length === 0) {
       throw new ArgumentError("No updates specified", "Please specify at least one field to update");
     }
 
@@ -1609,7 +1627,7 @@ async function checkConflict(calendarService: CalendarService, calendarId: strin
         if (value) endTime = new Date(value);
       } else if (arg === "--calendars" || arg === "-c") {
         const value = args[++i];
-        if (value) options.calendars = map(compact(value.split(",")), (id: string) => id.trim());
+        if (value) options.calendars = value.split(",").filter(Boolean).map((id: string) => id.trim());
       } else if (arg === "--duration") {
         const value = args[++i];
         if (value) options.duration = parseInt(value, 10);
@@ -1711,8 +1729,8 @@ async function compareCalendars(calendarService: CalendarService, calendarId1: s
     const events1Ids = new Set(events1.map((e) => e.id).filter(Boolean));
     const events2Ids = new Set(events2.map((e) => e.id).filter(Boolean));
 
-    const unique1 = uniqBy(events1.filter((e) => e.id && !events2Ids.has(e.id)), "id");
-    const unique2 = uniqBy(events2.filter((e) => e.id && !events1Ids.has(e.id)), "id");
+    const unique1 = uniqById(events1.filter((e) => e.id && !events2Ids.has(e.id)));
+    const unique2 = uniqById(events2.filter((e) => e.id && !events1Ids.has(e.id)));
 
     // Find overlapping (same time)
     interface Overlap {
@@ -1832,7 +1850,7 @@ async function updateRecurringEvent(calendarService: CalendarService, calendarId
       }
     }
 
-    if (isEmpty(updates)) {
+    if (Object.keys(updates).length === 0) {
       throw new ArgumentError("No updates specified", "Please specify at least one field to update");
     }
 

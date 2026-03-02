@@ -154,6 +154,8 @@ After writing the token, verify with `pnpm whoami` before publishing.
 
 **DON'T** use `bun -e '...'` inline for scripts containing `!` — the shell treats `!` as history expansion and the command fails. Write multi-line scripts to a temp `.ts` file and run with `bun /tmp/script.ts`.
 
+**DON'T** use `python3` or `python` in Bash commands — the system Python version is unreliable across environments and is blocked by a pretooluse hook. Use `bun -e 'console.log(require("./package.json").version)'` for quick one-liners, or write a temp `.ts` file and run with `bun /tmp/script.ts` for multi-line scripts.
+
 ### Publishing
 
 ```bash
