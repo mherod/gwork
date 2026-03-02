@@ -141,4 +141,31 @@ describe("handleMailCommand re-auth retry", () => {
     await handleMailCommand("stats", [], "default", factory);
     expect(deleteTokenCalls).toHaveLength(0);
   });
+
+  it("calls fatalExit when the re-auth retry also fails (max-attempt guard)", async () => {
+    // Both the first and second service throw ScopeInsufficientError —
+    // the handler must not loop; it must call logServiceError and exit.
+    const retryError = new ServiceError("still no scope", "SCOPE_INSUFFICIENT", 403);
+    let callCount = 0;
+    const factory = (_acc: string): MailService => {
+      callCount++;
+      return {
+        getProfile: async () => { throw new ScopeInsufficientError("mail stats"); },
+        listLabels: async () => { throw retryError; },
+      } as unknown as MailService;
+    };
+
+    let exitCode: unknown;
+    const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
+      exitCode = code;
+      return undefined as never;
+    });
+
+    await handleMailCommand("stats", [], "default", factory);
+
+    expect(logServiceErrorCalls).toHaveLength(1);
+    expect(exitCode).toBe(1);
+    expect(callCount).toBe(2); // first attempt + one re-auth retry, no more
+    exitSpy.mockRestore();
+  });
 });

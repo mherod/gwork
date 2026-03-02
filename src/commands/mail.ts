@@ -256,6 +256,29 @@ function fatalExit(error: unknown): never {
   process.exit(1);
 }
 
+/**
+ * Delete the stale token, build a fresh service, and execute the command
+ * exactly once. Any failure in the retry is fatal — no further re-auth loops.
+ */
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: MailServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await buildMailRegistry(account).execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleMailCommand(
   subcommand: string,
   args: string[],
@@ -279,22 +302,12 @@ export async function handleMailCommand(
   try {
     return await retryWithBackoff(executeOperation, `mail ${subcommand}`);
   } catch (error) {
-    // Handle scope and authentication errors that require fresh tokens
+    // Handle scope and authentication errors that require fresh tokens.
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
     if (error instanceof ScopeInsufficientError) {
-      // The saved token lacks Gmail API scopes. Delete it so AuthManager
-      // triggers a fresh OAuth consent flow with the required scopes.
-      logger.info(error.hint ?? "Re-authenticating with Gmail scopes...");
-      TokenStore.getInstance().deleteToken("gmail", account);
-      const freshService = serviceFactory(account);
-      await ensureInitialized(freshService);
-      await buildMailRegistry(account).execute(subcommand, freshService, args);
+      await reAuthAndRetry("gmail", account, error.hint ?? "Re-authenticating with Gmail scopes...", serviceFactory, subcommand, args);
     } else if (error instanceof AuthenticationRequiredError) {
-      // Authentication expired during operation. Delete token and retry.
-      logger.info(error.hint ?? "Re-authenticating with Gmail...");
-      TokenStore.getInstance().deleteToken("gmail", account);
-      const freshService = serviceFactory(account);
-      await ensureInitialized(freshService);
-      await buildMailRegistry(account).execute(subcommand, freshService, args);
+      await reAuthAndRetry("gmail", account, error.hint ?? "Re-authenticating with Gmail...", serviceFactory, subcommand, args);
     } else {
       // All other errors (rate-limit, service-unavailable, any future
       // ServiceError subclass, or unexpected JS errors) are routed through
