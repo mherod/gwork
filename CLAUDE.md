@@ -217,7 +217,8 @@ bunx tsc --noEmit
 
 - **DO** use `pnpm` for installing packages and managing the lockfile. The `npm` command is blocked by a pretooluse hook.
 - **DO** use `bun add <pkg>` to add new dependencies (updates `package.json` and `bun.lock`).
-- **DO** run `pnpm install` after changing `package.json` to regenerate `pnpm-lock.yaml`, then commit it — the stop hook enforces lockfile sync.
+- **DO** run `bun install` after changing `package.json`. Also run `pnpm install` to regenerate `pnpm-lock.yaml`, then commit it — the stop hook enforces lockfile sync.
+- **DO** use `bun run <script>` for running package.json scripts — `pnpm run` is blocked by swiz hooks when a bun lockfile is detected (even though pnpm manages packages). Note: `pnpm link --global` is still valid for global linking.
 - **DON'T** use `npm install` or `npm link`; they are blocked.
 
 ### better-sqlite3 Native Binding (Local Dev)
@@ -245,6 +246,16 @@ const transporter = createTransport({ streamTransport: true, newline: "unix" });
 const info = await transporter.sendMail(mailOptions);
 const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — cast required
 ```
+
+## Shell Scripting Rules
+
+- **DON'T** use `python` or `python3` in Bash commands or scripts. The system Python version is unreliable across environments.
+- **DO** use `bun` for inline scripting: `bun -e 'code'` for expressions, `bun script.ts` for files.
+
+## Task Hygiene
+
+- **DO** call `TaskCreate` then `TaskUpdate` (status: `in_progress`) as the very first actions in every session, even for trivial single-command tasks like `pnpm link --global`. The `pretooluse-require-tasks` hook blocks Bash/Edit immediately if no `in_progress` task exists — there is no grace period.
+- **DON'T** assume that short tasks are exempt. The hook fires regardless of task complexity.
 
 ## Git & Contribution
 

@@ -3,8 +3,11 @@ import ora from "ora";
 import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
+import { logServiceError } from "../utils/command-error-handler.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -108,15 +111,60 @@ const contactsRegistry = new CommandRegistry<ContactsService>()
 
 type ContactsServiceFactory = (account: string) => ContactsService;
 
+/** Log a terminal service error and exit non-zero. Never returns. */
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
+/**
+ * Delete the stale token, build a fresh service, and execute the command
+ * exactly once. Any failure in the retry is fatal — no further re-auth loops.
+ */
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: ContactsServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await contactsRegistry.execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
   account = "default",
   serviceFactory: ContactsServiceFactory = (acc) => new ContactsService(acc)
 ) {
-  const contactsService = serviceFactory(account);
-  await ensureInitialized(contactsService);
-  await contactsRegistry.execute(subcommand, contactsService, args);
+  const executeOperation = async () => {
+    const contactsService = serviceFactory(account);
+    await ensureInitialized(contactsService);
+    return await contactsRegistry.execute(subcommand, contactsService, args);
+  };
+
+  try {
+    return await retryWithBackoff(executeOperation, `contacts ${subcommand}`);
+  } catch (error) {
+    // Handle scope and authentication errors that require fresh tokens.
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
+    if (error instanceof ScopeInsufficientError) {
+      await reAuthAndRetry("contacts", account, error.hint ?? "Re-authenticating with Contacts scopes...", serviceFactory, subcommand, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      await reAuthAndRetry("contacts", account, error.hint ?? "Re-authenticating with Contacts...", serviceFactory, subcommand, args);
+    } else {
+      fatalExit(error);
+    }
+  }
 }
 
 async function listContacts(contactsService: ContactsService, args: string[]) {

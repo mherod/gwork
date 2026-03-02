@@ -52,14 +52,14 @@ export class PermissionDeniedError extends ServiceError {
 
 export class RateLimitError extends ServiceError {
   constructor(message = "Rate limit exceeded") {
-    super(message, "RATE_LIMIT", 429, true, "Please wait a moment and try again.");
+    super(message, "RATE_LIMIT", 429, true, "Rate limit exceeded. Automatically retrying with backoff...");
     Object.setPrototypeOf(this, RateLimitError.prototype);
   }
 }
 
 export class ServiceUnavailableError extends ServiceError {
   constructor(message = "Service temporarily unavailable") {
-    super(message, "SERVICE_UNAVAILABLE", 503, true, "The service is temporarily unavailable. Please try again later.");
+    super(message, "SERVICE_UNAVAILABLE", 503, true, "Google service temporarily unavailable. Automatically retrying...");
     Object.setPrototypeOf(this, ServiceUnavailableError.prototype);
   }
 }
@@ -89,5 +89,31 @@ export class ArgumentError extends ServiceError {
     const fullMessage = usage ? `${message}\nUsage: ${usage}` : message;
     super(fullMessage, "INVALID_ARGUMENTS", 400, false);
     Object.setPrototypeOf(this, ArgumentError.prototype);
+  }
+}
+
+export class ScopeInsufficientError extends ServiceError {
+  constructor(context: string) {
+    super(
+      `Insufficient authentication scopes for: ${context}`,
+      "SCOPE_INSUFFICIENT",
+      403,
+      false,
+      "Your saved token does not grant access to this API. Re-authenticating with the required scopes..."
+    );
+    Object.setPrototypeOf(this, ScopeInsufficientError.prototype);
+  }
+}
+
+export class AuthenticationRequiredError extends ServiceError {
+  constructor(context: string) {
+    super(
+      `Authentication required for: ${context}`,
+      "AUTHENTICATION_REQUIRED",
+      401,
+      false,
+      "Your session has expired. Re-authenticating..."
+    );
+    Object.setPrototypeOf(this, AuthenticationRequiredError.prototype);
   }
 }

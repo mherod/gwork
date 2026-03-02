@@ -4,8 +4,11 @@ import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
+import { logServiceError } from "../utils/command-error-handler.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import fs from "node:fs";
@@ -247,6 +250,35 @@ function buildMailRegistry(account: string): CommandRegistry<MailService> {
 
 type MailServiceFactory = (account: string) => MailService;
 
+/** Log a terminal service error and exit non-zero. Never returns. */
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
+/**
+ * Delete the stale token, build a fresh service, and execute the command
+ * exactly once. Any failure in the retry is fatal — no further re-auth loops.
+ */
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: MailServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await buildMailRegistry(account).execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleMailCommand(
   subcommand: string,
   args: string[],
@@ -261,13 +293,28 @@ export async function handleMailCommand(
     process.exit(0);
   }
 
-  // Create service instance with the specified account
-  const mailService = serviceFactory(account);
+  const executeOperation = async () => {
+    const mailService = serviceFactory(account);
+    await ensureInitialized(mailService);
+    return await buildMailRegistry(account).execute(subcommand, mailService, args);
+  };
 
-  // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized(mailService);
-
-  await buildMailRegistry(account).execute(subcommand, mailService, args);
+  try {
+    return await retryWithBackoff(executeOperation, `mail ${subcommand}`);
+  } catch (error) {
+    // Handle scope and authentication errors that require fresh tokens.
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
+    if (error instanceof ScopeInsufficientError) {
+      await reAuthAndRetry("gmail", account, error.hint ?? "Re-authenticating with Gmail scopes...", serviceFactory, subcommand, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      await reAuthAndRetry("gmail", account, error.hint ?? "Re-authenticating with Gmail...", serviceFactory, subcommand, args);
+    } else {
+      // All other errors (rate-limit, service-unavailable, any future
+      // ServiceError subclass, or unexpected JS errors) are routed through
+      // a single fatal log-and-exit so no error is ever double-logged.
+      fatalExit(error);
+    }
+  }
 }
 
 async function listLabels(mailService: MailService, _args: string[]) {

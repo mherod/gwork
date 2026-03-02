@@ -2,8 +2,11 @@ import chalk from "chalk";
 import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { logServiceError } from "../utils/command-error-handler.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";
 import type { ListFilesOptions } from "../services/drive-service.ts";
 
@@ -265,13 +268,52 @@ function buildDriveRegistry(): CommandRegistry<DriveService> {
 
 type DriveServiceFactory = (account: string) => DriveService;
 
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: DriveServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await buildDriveRegistry().execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleDriveCommand(
   subcommand: string,
   args: string[],
   account = "default",
   serviceFactory: DriveServiceFactory = (acc) => new DriveService(acc)
 ) {
-  const driveService = serviceFactory(account);
-  await ensureInitialized(driveService);
-  await buildDriveRegistry().execute(subcommand, driveService, args);
+  const executeOperation = async () => {
+    const driveService = serviceFactory(account);
+    await ensureInitialized(driveService);
+    return await buildDriveRegistry().execute(subcommand, driveService, args);
+  };
+
+  try {
+    return await retryWithBackoff(executeOperation, `drive ${subcommand}`);
+  } catch (error) {
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
+    if (error instanceof ScopeInsufficientError) {
+      await reAuthAndRetry("drive", account, error.hint ?? "Re-authenticating with Drive scopes...", serviceFactory, subcommand, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      await reAuthAndRetry("drive", account, error.hint ?? "Re-authenticating with Drive...", serviceFactory, subcommand, args);
+    } else {
+      fatalExit(error);
+    }
+  }
 }

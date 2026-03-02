@@ -4,10 +4,13 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
-import { ArgumentError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { TokenStore } from "../services/token-store.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
+import { retryWithBackoff } from "../utils/retry-helper.ts";
 import { logger } from "../utils/logger.ts";
+import { logServiceError } from "../utils/command-error-handler.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
 
@@ -124,19 +127,60 @@ const calRegistry = new CommandRegistry<CalendarService>()
 
 type CalServiceFactory = (account: string) => CalendarService;
 
+/** Log a terminal service error and exit non-zero. Never returns. */
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
+/**
+ * Delete the stale token, build a fresh service, and execute the command
+ * exactly once. Any failure in the retry is fatal — no further re-auth loops.
+ */
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: CalServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await calRegistry.execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleCalCommand(
   subcommand: string,
   args: string[],
   account = "default",
   serviceFactory: CalServiceFactory = (acc) => new CalendarService(acc)
 ) {
-  // Create service instance with the specified account
-  const calendarService = serviceFactory(account);
+  const executeOperation = async () => {
+    const calendarService = serviceFactory(account);
+    await ensureInitialized(calendarService);
+    return await calRegistry.execute(subcommand, calendarService, args);
+  };
 
-  // Ensure service is initialized (checks credentials) before any command
-  await ensureInitialized(calendarService);
-
-  await calRegistry.execute(subcommand, calendarService, args);
+  try {
+    return await retryWithBackoff(executeOperation, `calendar ${subcommand}`);
+  } catch (error) {
+    // Handle scope and authentication errors that require fresh tokens.
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
+    if (error instanceof ScopeInsufficientError) {
+      await reAuthAndRetry("calendar", account, error.hint ?? "Re-authenticating with Calendar scopes...", serviceFactory, subcommand, args);
+    } else if (error instanceof AuthenticationRequiredError) {
+      await reAuthAndRetry("calendar", account, error.hint ?? "Re-authenticating with Calendar...", serviceFactory, subcommand, args);
+    } else {
+      fatalExit(error);
+    }
+  }
 }
 
 async function listEvents(calendarService: CalendarService, args: string[]) {
