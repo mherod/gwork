@@ -20,6 +20,11 @@ void mock.module("ora", () => ({
   default: () => ({ start: () => ({ stop: () => {}, succeed: () => {}, fail: () => {} }) }),
 }));
 
+const logServiceErrorCalls: unknown[] = [];
+void mock.module("../../../src/utils/command-error-handler.ts", () => ({
+  logServiceError: (err: unknown) => { logServiceErrorCalls.push(err); },
+}));
+
 import { handleMailCommand } from "../../../src/commands/mail.ts";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,7 @@ describe("handleMailCommand re-auth retry", () => {
 
   beforeEach(() => {
     deleteTokenCalls = [];
+    logServiceErrorCalls.length = 0;
     originalGetInstance = TokenStore.getInstance;
     TokenStore.getInstance = () =>
       ({
@@ -102,7 +108,7 @@ describe("handleMailCommand re-auth retry", () => {
     expect(result).toBeUndefined();
   });
 
-  it("rethrows non-ScopeInsufficientError without retrying", async () => {
+  it("calls logServiceError and exits for non-scope non-auth errors", async () => {
     let callCount = 0;
     const factory = (_acc: string): MailService => {
       callCount++;
@@ -114,15 +120,20 @@ describe("handleMailCommand re-auth retry", () => {
       } as unknown as MailService;
     };
 
-    let caught: unknown;
-    try {
-      await handleMailCommand("stats", [], "default", factory);
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(ServiceError);
+    let exitCode: unknown;
+    const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
+      exitCode = code;
+      return undefined as never;
+    });
+
+    await handleMailCommand("stats", [], "default", factory);
+
+    expect(logServiceErrorCalls).toHaveLength(1);
+    expect(logServiceErrorCalls[0]).toBeInstanceOf(ServiceError);
+    expect(exitCode).toBe(1);
     expect(callCount).toBe(1);
     expect(deleteTokenCalls).toHaveLength(0);
+    exitSpy.mockRestore();
   });
 
   it("does not call deleteToken when there is no error", async () => {

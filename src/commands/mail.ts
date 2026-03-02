@@ -5,7 +5,7 @@ import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { logServiceError } from "../utils/command-error-handler.ts";
@@ -250,6 +250,12 @@ function buildMailRegistry(account: string): CommandRegistry<MailService> {
 
 type MailServiceFactory = (account: string) => MailService;
 
+/** Log a terminal service error and exit non-zero. Never returns. */
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
 export async function handleMailCommand(
   subcommand: string,
   args: string[],
@@ -289,18 +295,11 @@ export async function handleMailCommand(
       const freshService = serviceFactory(account);
       await ensureInitialized(freshService);
       await buildMailRegistry(account).execute(subcommand, freshService, args);
-    } else if (error instanceof RateLimitError) {
-      // retryWithBackoff exhausted all attempts — handle here so the caller
-      // does not see a double-logged error from main().catch.
-      logServiceError(error);
-      process.exit(1);
-    } else if (error instanceof ServiceUnavailableError) {
-      // retryWithBackoff exhausted all attempts — handle here so the caller
-      // does not see a double-logged error from main().catch.
-      logServiceError(error);
-      process.exit(1);
     } else {
-      throw error;
+      // All other errors (rate-limit, service-unavailable, any future
+      // ServiceError subclass, or unexpected JS errors) are routed through
+      // a single fatal log-and-exit so no error is ever double-logged.
+      fatalExit(error);
     }
   }
 }
