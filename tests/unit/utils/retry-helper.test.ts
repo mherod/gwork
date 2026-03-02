@@ -61,7 +61,9 @@ describe("retryWithBackoff", () => {
       throw new ServiceError("Non-retryable", "NOT_FOUND", 404, false);
     };
 
-    await expect(retryWithBackoff(operation, "test")).rejects.toThrow(ServiceError);
+    let caught: unknown;
+    try { await retryWithBackoff(operation, "test"); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(ServiceError);
   });
 
   it("throws error after exhausting retries", async () => {
@@ -69,7 +71,9 @@ describe("retryWithBackoff", () => {
       throw new ServiceUnavailableError();
     };
 
-    await expect(retryWithBackoff(operation, "test", 2, 1)).rejects.toThrow(ServiceUnavailableError);
+    let caught: unknown;
+    try { await retryWithBackoff(operation, "test", 2, 1); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(ServiceUnavailableError);
   });
 
   it("can configure base delay and max retries", async () => {

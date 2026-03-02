@@ -32,12 +32,12 @@ import { handleDriveCommand } from "../../../src/commands/drive.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-type StorageQuota = {
+interface StorageQuota {
   limit?: string;
   usage?: string;
   usageInDrive?: string;
   usageInDriveTrash?: string;
-};
+}
 
 /**
  * Builds a serviceFactory that tracks how many times it has been called.
@@ -67,7 +67,7 @@ function makeStatsFactory(throwOnFirst: boolean, quota: StorageQuota = {}) {
 
 describe("handleDriveCommand re-auth retry", () => {
   let originalGetInstance: typeof TokenStore.getInstance;
-  let deleteTokenCalls: Array<[string, string]>;
+  let deleteTokenCalls: [string, string][];
   let consoleLogSpy: ReturnType<typeof spyOn>;
   let processExitSpy: ReturnType<typeof spyOn>;
 

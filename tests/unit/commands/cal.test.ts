@@ -60,7 +60,7 @@ function makeCalendarsFactory(throwOnFirst: boolean) {
 
 describe("handleCalCommand re-auth retry", () => {
   let originalGetInstance: typeof TokenStore.getInstance;
-  let deleteTokenCalls: Array<[string, string]>;
+  let deleteTokenCalls: [string, string][];
   let consoleLogSpy: ReturnType<typeof spyOn>;
   let processExitSpy: ReturnType<typeof spyOn>;
 
