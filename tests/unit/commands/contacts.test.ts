@@ -3,7 +3,8 @@
  *
  * When a Contacts API call fails with ScopeInsufficientError, handleContactsCommand
  * must: (1) delete the stale token, (2) create a fresh service via the factory,
- * and (3) retry the command. All other errors must propagate unchanged.
+ * and (3) retry the command. All other errors must route through fatalExit (logServiceError
+ * + process.exit(1)) rather than propagating as thrown exceptions.
  *
  * Note: contacts "stats" calls process.exit(0) on success. The exit spy is
  * installed in beforeEach to prevent the test process from terminating.
@@ -21,6 +22,11 @@ void mock.module("../../../src/utils/command-service.ts", () => ({
 
 void mock.module("ora", () => ({
   default: () => ({ start: () => ({ stop: () => {}, succeed: () => {}, fail: () => {} }) }),
+}));
+
+const logServiceErrorCalls: unknown[] = [];
+void mock.module("../../../src/utils/command-error-handler.ts", () => ({
+  logServiceError: (err: unknown) => { logServiceErrorCalls.push(err); },
 }));
 
 import { handleContactsCommand } from "../../../src/commands/contacts.ts";
@@ -64,6 +70,7 @@ describe("handleContactsCommand re-auth retry", () => {
 
   beforeEach(() => {
     deleteTokenCalls = [];
+    logServiceErrorCalls.length = 0;
     originalGetInstance = TokenStore.getInstance;
     TokenStore.getInstance = () =>
       ({
@@ -107,7 +114,7 @@ describe("handleContactsCommand re-auth retry", () => {
     expect(result).toBeUndefined();
   });
 
-  it("rethrows non-ScopeInsufficientError without retrying", async () => {
+  it("calls logServiceError and exits for non-scope non-auth errors", async () => {
     let callCount = 0;
     const factory = (_acc: string): ContactsService => {
       callCount++;
@@ -119,20 +126,49 @@ describe("handleContactsCommand re-auth retry", () => {
       } as unknown as ContactsService;
     };
 
-    let caught: unknown;
-    try {
-      await handleContactsCommand("stats", [], "default", factory);
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(ServiceError);
+    let exitCode: unknown;
+    const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
+      exitCode = code;
+      return undefined as never;
+    });
+
+    await handleContactsCommand("stats", [], "default", factory);
+
+    expect(logServiceErrorCalls).toHaveLength(1);
+    expect(logServiceErrorCalls[0]).toBeInstanceOf(ServiceError);
+    expect(exitCode).toBe(1);
     expect(callCount).toBe(1);
     expect(deleteTokenCalls).toHaveLength(0);
+    exitSpy.mockRestore();
   });
 
   it("does not call deleteToken when there is no error", async () => {
     const { factory } = makeStatsFactory(false);
     await handleContactsCommand("stats", [], "default", factory);
     expect(deleteTokenCalls).toHaveLength(0);
+  });
+
+  it("calls fatalExit when the re-auth retry also fails (max-attempt guard)", async () => {
+    let callCount = 0;
+    const factory = (_acc: string): ContactsService => {
+      callCount++;
+      return {
+        listContacts: async () => { throw new ScopeInsufficientError("contacts stats"); },
+        getContactGroups: async () => { throw new ScopeInsufficientError("contacts stats"); },
+      } as unknown as ContactsService;
+    };
+
+    let exitCode: unknown;
+    const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
+      exitCode = code;
+      return undefined as never;
+    });
+
+    await handleContactsCommand("stats", [], "default", factory);
+
+    expect(logServiceErrorCalls).toHaveLength(1);
+    expect(exitCode).toBe(1);
+    expect(callCount).toBe(2); // first attempt + one re-auth retry, no more
+    exitSpy.mockRestore();
   });
 });

@@ -4,9 +4,10 @@ import type { Person, ContactGroup } from "../types/google-apis.ts";
 import { ContactsService } from "../services/contacts-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
+import { logServiceError } from "../utils/command-error-handler.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -110,6 +111,35 @@ const contactsRegistry = new CommandRegistry<ContactsService>()
 
 type ContactsServiceFactory = (account: string) => ContactsService;
 
+/** Log a terminal service error and exit non-zero. Never returns. */
+function fatalExit(error: unknown): never {
+  logServiceError(error);
+  process.exit(1);
+}
+
+/**
+ * Delete the stale token, build a fresh service, and execute the command
+ * exactly once. Any failure in the retry is fatal — no further re-auth loops.
+ */
+async function reAuthAndRetry(
+  tokenKey: string,
+  account: string,
+  hint: string,
+  serviceFactory: ContactsServiceFactory,
+  subcommand: string,
+  args: string[]
+): Promise<void> {
+  logger.info(hint);
+  TokenStore.getInstance().deleteToken(tokenKey, account);
+  const freshService = serviceFactory(account);
+  await ensureInitialized(freshService);
+  try {
+    await contactsRegistry.execute(subcommand, freshService, args);
+  } catch (retryError) {
+    fatalExit(retryError);
+  }
+}
+
 export async function handleContactsCommand(
   subcommand: string,
   args: string[],
@@ -125,32 +155,14 @@ export async function handleContactsCommand(
   try {
     return await retryWithBackoff(executeOperation, `contacts ${subcommand}`);
   } catch (error) {
-    // Handle scope and authentication errors that require fresh tokens
+    // Handle scope and authentication errors that require fresh tokens.
+    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
     if (error instanceof ScopeInsufficientError) {
-      // The saved token lacks Contacts API scopes. Delete it so AuthManager
-      // triggers a fresh OAuth consent flow with the required scopes.
-      logger.info(error.hint ?? "Re-authenticating with Contacts scopes...");
-      TokenStore.getInstance().deleteToken("contacts", account);
-      const freshService = serviceFactory(account);
-      await ensureInitialized(freshService);
-      await contactsRegistry.execute(subcommand, freshService, args);
+      await reAuthAndRetry("contacts", account, error.hint ?? "Re-authenticating with Contacts scopes...", serviceFactory, subcommand, args);
     } else if (error instanceof AuthenticationRequiredError) {
-      // Authentication expired during operation. Delete token and retry.
-      logger.info(error.hint ?? "Re-authenticating with Contacts...");
-      TokenStore.getInstance().deleteToken("contacts", account);
-      const freshService = serviceFactory(account);
-      await ensureInitialized(freshService);
-      await contactsRegistry.execute(subcommand, freshService, args);
-    } else if (error instanceof RateLimitError) {
-      // retryWithBackoff exhausted all attempts; surface a clear final message.
-      logger.warn("Contacts API rate limit persists after retries. Please wait a moment before trying again.");
-      throw error;
-    } else if (error instanceof ServiceUnavailableError) {
-      // retryWithBackoff exhausted all attempts; service still not responding.
-      logger.warn("Google Contacts service unavailable after retries. Please try again shortly.");
-      throw error;
+      await reAuthAndRetry("contacts", account, error.hint ?? "Re-authenticating with Contacts...", serviceFactory, subcommand, args);
     } else {
-      throw error;
+      fatalExit(error);
     }
   }
 }
