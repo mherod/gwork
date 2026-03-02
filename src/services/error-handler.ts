@@ -80,7 +80,7 @@ function get403Reason(error: unknown): string | null {
 const API_NOT_ENABLED_REASONS = new Set(["accessNotConfigured", "SERVICE_DISABLED"]);
 
 const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
-  401: (ctx, _code, originalError) =>
+  401: (ctx, _code, _originalError) =>
     new AuthenticationRequiredError(ctx),
   403: (ctx, _code, originalError) => {
     const reason = get403Reason(originalError);
