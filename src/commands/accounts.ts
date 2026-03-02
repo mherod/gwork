@@ -2,7 +2,7 @@
 import chalk from "chalk";
 import ora from "ora";
 import { TokenStore } from "../services/token-store.ts";
-import { groupBy } from "lodash-es";
+import type { TokenData } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { printSectionHeader } from "../utils/output.ts";
 
@@ -50,7 +50,12 @@ export async function handleAccountsCommand(args: string[]) {
     spinner.succeed(`Found ${tokens.length} token(s)`);
 
     // Group tokens by account email
-    const accounts = groupBy(tokens, "account");
+    const accounts = tokens.reduce<Record<string, TokenData[]>>((acc, token) => {
+      const key = token.account;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(token);
+      return acc;
+    }, {});
 
     printSectionHeader("\nConfigured Accounts:");
 

@@ -1,6 +1,5 @@
 import chalk from "chalk";
 import ora from "ora";
-import { find } from "lodash-es";
 import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
@@ -22,7 +21,7 @@ function decodeBase64(data: string): string {
 }
 
 function getHeader(headers: { name?: string | null; value?: string | null }[], name: string): string {
-  const header = find(headers, (h) => h.name?.toLowerCase() === name.toLowerCase());
+  const header = headers.find((h) => h.name?.toLowerCase() === name.toLowerCase());
   return header?.value || "";
 }
 
@@ -526,7 +525,7 @@ async function getStats(mailService: MailService) {
     const profile = await mailService.getProfile();
     const labels = await mailService.listLabels();
 
-    const inboxLabel = find(labels, (l) => l.id === "INBOX");
+    const inboxLabel = labels.find((l) => l.id === "INBOX");
     const unreadCount = inboxLabel?.messagesUnread || 0;
     const totalCount = inboxLabel?.messagesTotal || 0;
 
@@ -883,7 +882,7 @@ async function addLabel(mailService: MailService, messageId: string, labelName: 
   try {
     // First, find the label ID
     const labels = await mailService.listLabels();
-    const label = find(labels, (l) => l.name === labelName || l.id === labelName);
+    const label = labels.find((l) => l.name === labelName || l.id === labelName);
 
     if (!label?.id) {
       spinner.fail("Label not found");
@@ -903,7 +902,7 @@ async function removeLabel(mailService: MailService, messageId: string, labelNam
   const spinner = ora("Removing label...").start();
   try {
     const labels = await mailService.listLabels();
-    const label = find(labels, (l) => l.name === labelName || l.id === labelName);
+    const label = labels.find((l) => l.name === labelName || l.id === labelName);
 
     if (!label?.id) {
       spinner.fail("Label not found");
