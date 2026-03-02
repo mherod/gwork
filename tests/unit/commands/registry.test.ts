@@ -15,10 +15,10 @@ import { ArgumentError } from "../../../src/services/errors.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-type StubService = { name: string };
+interface StubService { name: string }
 
 function makeRegistry() {
-  const calls: Array<{ cmd: string; args: string[] }> = [];
+  const calls: { cmd: string; args: string[] }[] = [];
   const registry = new CommandRegistry<StubService>()
     .register("foo", async (_svc, args) => { calls.push({ cmd: "foo", args }); })
     .register("bar", async (_svc, args) => { calls.push({ cmd: "bar", args }); });
