@@ -3,7 +3,7 @@ import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";

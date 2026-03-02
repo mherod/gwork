@@ -5,7 +5,7 @@ import { MailService } from "../services/mail-service.ts";
 import type { SendMessageOptions } from "../services/mail-service.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { SEPARATOR } from "../utils/format.ts";

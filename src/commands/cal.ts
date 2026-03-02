@@ -4,7 +4,7 @@ import { compact, orderBy, startCase, isEmpty, uniqBy, map } from "lodash-es";
 import type { Event } from "../types/google-apis.ts";
 import type { calendar_v3 } from "googleapis";
 import { CalendarService } from "../services/calendar-service.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError, RateLimitError, ServiceUnavailableError } from "../services/errors.ts";
+import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
