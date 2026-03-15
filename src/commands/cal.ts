@@ -9,7 +9,7 @@ import { formatEventDate, parseDateRange } from "../utils/format.ts";
 import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
 import { logger } from "../utils/logger.ts";
-import { logServiceError } from "../utils/command-error-handler.ts";
+import { handleServiceError } from "../utils/command-error-handler.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import { CommandRegistry } from "./registry.ts";
 
@@ -145,12 +145,6 @@ const calRegistry = new CommandRegistry<CalendarService>()
 
 type CalServiceFactory = (account: string) => CalendarService;
 
-/** Log a terminal service error and exit non-zero. Never returns. */
-function fatalExit(error: unknown): never {
-  logServiceError(error);
-  process.exit(1);
-}
-
 /**
  * Delete the stale token, build a fresh service, and execute the command
  * exactly once. Any failure in the retry is fatal — no further re-auth loops.
@@ -170,7 +164,7 @@ async function reAuthAndRetry(
   try {
     await calRegistry.execute(subcommand, freshService, args);
   } catch (retryError) {
-    fatalExit(retryError);
+    handleServiceError(retryError);
   }
 }
 
@@ -196,7 +190,7 @@ export async function handleCalCommand(
     } else if (error instanceof AuthenticationRequiredError) {
       await reAuthAndRetry("calendar", account, error.hint ?? "Re-authenticating with Calendar...", serviceFactory, subcommand, args);
     } else {
-      fatalExit(error);
+      handleServiceError(error);
     }
   }
 }
