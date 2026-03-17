@@ -13,10 +13,6 @@ import { TokenStore } from "../../../src/services/token-store.ts";
 import type { DriveService } from "../../../src/services/drive-service.ts";
 
 // Hoist module mocks so they take effect before handleDriveCommand is imported.
-void mock.module("../../../src/utils/command-service.ts", () => ({
-  ensureInitialized: async () => {},
-}));
-
 void mock.module("ora", () => ({
   default: () => ({ start: () => ({ stop: () => {} }) }),
 }));
@@ -55,6 +51,7 @@ function makeStatsFactory(throwOnFirst: boolean, quota: StorageQuota = {}) {
     callCount++;
     const thisCall = callCount;
     return {
+      initialize: async () => {},
       getStorageQuota: async (): Promise<StorageQuota> => {
         if (throwOnFirst && thisCall === 1) {
           throw new ScopeInsufficientError("get storage quota");
@@ -127,6 +124,7 @@ describe("handleDriveCommand re-auth retry", () => {
     const factory = (_acc: string): DriveService => {
       callCount++;
       return {
+        initialize: async () => {},
         getStorageQuota: async () => {
           throw new ServiceError("quota exceeded", "RATE_LIMIT", 429);
         },
@@ -160,6 +158,7 @@ describe("handleDriveCommand re-auth retry", () => {
     const factory = (_acc: string): DriveService => {
       callCount++;
       return {
+        initialize: async () => {},
         getStorageQuota: async () => { throw new ScopeInsufficientError("drive stats"); },
       } as unknown as DriveService;
     };

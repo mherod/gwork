@@ -1,12 +1,9 @@
 import chalk from "chalk";
 import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
-import { ensureInitialized } from "../utils/command-service.ts";
-import { retryWithBackoff } from "../utils/retry-helper.ts";
-import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
+import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
-import { handleServiceError } from "../utils/command-error-handler.ts";
-import { TokenStore } from "../services/token-store.ts";
+import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import { CommandRegistry } from "./registry.ts";
 import type { ListFilesOptions } from "../services/drive-service.ts";
 
@@ -266,49 +263,18 @@ function buildDriveRegistry(): CommandRegistry<DriveService> {
     .register("stats", (svc) => driveStats(svc));
 }
 
-type DriveServiceFactory = (account: string) => DriveService;
-
-async function reAuthAndRetry(
-  tokenKey: string,
-  account: string,
-  hint: string,
-  serviceFactory: DriveServiceFactory,
-  subcommand: string,
-  args: string[]
-): Promise<void> {
-  logger.info(hint);
-  TokenStore.getInstance().deleteToken(tokenKey, account);
-  const freshService = serviceFactory(account);
-  await ensureInitialized(freshService);
-  try {
-    await buildDriveRegistry().execute(subcommand, freshService, args);
-  } catch (retryError) {
-    handleServiceError(retryError);
-  }
-}
-
 export async function handleDriveCommand(
   subcommand: string,
   args: string[],
   account = "default",
-  serviceFactory: DriveServiceFactory = (acc) => new DriveService(acc)
+  serviceFactory: (account: string) => DriveService = (acc) => new DriveService(acc)
 ) {
-  const executeOperation = async () => {
-    const driveService = serviceFactory(account);
-    await ensureInitialized(driveService);
-    return await buildDriveRegistry().execute(subcommand, driveService, args);
-  };
-
-  try {
-    return await retryWithBackoff(executeOperation, `drive ${subcommand}`);
-  } catch (error) {
-    // reAuthAndRetry caps at one attempt — any failure there calls fatalExit.
-    if (error instanceof ScopeInsufficientError) {
-      await reAuthAndRetry("drive", account, error.hint ?? "Re-authenticating with Drive scopes...", serviceFactory, subcommand, args);
-    } else if (error instanceof AuthenticationRequiredError) {
-      await reAuthAndRetry("drive", account, error.hint ?? "Re-authenticating with Drive...", serviceFactory, subcommand, args);
-    } else {
-      handleServiceError(error);
-    }
-  }
+  await handleCommandWithRetry({
+    tokenKey: "drive",
+    serviceName: "Drive",
+    account,
+    subcommand,
+    serviceFactory,
+    execute: (svc) => buildDriveRegistry().execute(subcommand, svc, args),
+  });
 }
