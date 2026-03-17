@@ -84,7 +84,7 @@ const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
     new AuthenticationRequiredError(ctx),
   403: (ctx, _code, originalError) => {
     const reason = get403Reason(originalError);
-    if (reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT") {
+    if (reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT" || reason === "insufficientPermissions") {
       return new ScopeInsufficientError(ctx);
     }
     if (reason && API_NOT_ENABLED_REASONS.has(reason)) {

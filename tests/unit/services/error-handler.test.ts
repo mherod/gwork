@@ -209,6 +209,12 @@ describe("handleGoogleApiError", () => {
       ).toThrow(ScopeInsufficientError);
     });
 
+    it("throws ScopeInsufficientError for insufficientPermissions in errors[0].reason", () => {
+      expect(() =>
+        handleGoogleApiError(gaxiosError403("insufficientPermissions"), "list files")
+      ).toThrow(ScopeInsufficientError);
+    });
+
     it("ScopeInsufficientError carries the operation context in its message", () => {
       let thrown: unknown;
       try {
