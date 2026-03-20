@@ -3,6 +3,8 @@
  * This allows the same code to work in both Bun and Node.js environments
  */
 
+import { execFileSync } from "node:child_process";
+
 // Determine runtime
 const isBun = typeof Bun !== "undefined";
 
@@ -12,22 +14,111 @@ let SQLiteModule: any;
 if (isBun) {
   SQLiteModule = await import("bun:sqlite");
 } else {
+  SQLiteModule = await loadBetterSqlite3();
+}
+
+/**
+ * Checks whether an error is a native binding load failure.
+ * These occur when better-sqlite3 was compiled for a different Node.js ABI version.
+ */
+function isBindingError(error: unknown): boolean {
+  const msg = (error as any)?.message || String(error);
+  return msg.includes("Could not locate the bindings file") ||
+    msg.includes("ERR_MODULE_NOT_FOUND") ||
+    msg.includes("better_sqlite3.node") ||
+    msg.includes("NODE_MODULE_VERSION");
+}
+
+/**
+ * Verifies the native binding loads by creating and immediately closing
+ * an in-memory database.
+ */
+function verifyBinding(mod: any): void {
+  const Ctor = mod.default || mod;
+  const testDb = new Ctor(":memory:");
+  testDb.close();
+}
+
+/**
+ * Attempts to rebuild better-sqlite3 native binding using node-gyp.
+ * Returns true on success, false on failure.
+ */
+function tryRebuild(): boolean {
   try {
-    SQLiteModule = await import("better-sqlite3");
+    const pkgPath = require.resolve("better-sqlite3/package.json");
+    const dir = pkgPath.replace(/\/package\.json$/, "");
+    console.error(`  Rebuilding in ${dir}…`);
+    // Try node-gyp directly first, then fall back to npx
+    // node-gyp may not be globally installed
+    try {
+      execFileSync("node-gyp", ["rebuild", "--directory", dir], {
+        stdio: "inherit",
+        timeout: 120_000,
+      });
+      return true;
+    } catch {
+      // node-gyp not found globally — try via npx
+      execFileSync("npx", ["node-gyp", "rebuild", "--directory", dir], {
+        stdio: "inherit",
+        timeout: 120_000,
+      });
+      return true;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function printManualFixMessage(): void {
+  console.error(
+    "\n❌ Error: better-sqlite3 native binding could not be loaded.\n" +
+      "This usually means the binding needs to be compiled for your current Node.js version.\n" +
+      "To fix this, run one of:\n" +
+      "  npm rebuild better-sqlite3\n" +
+      "  pnpm rebuild better-sqlite3\n" +
+      "Or reinstall gwork: npm install -g gwork\n"
+  );
+}
+
+/**
+ * Loads better-sqlite3, auto-rebuilding the native binding if it was compiled
+ * for a different Node.js ABI version.
+ *
+ * Flow:
+ * 1. Import better-sqlite3 and verify the binding loads
+ * 2. If the binding is incompatible, run `node-gyp rebuild`
+ * 3. Re-import and return the fresh module
+ * 4. If rebuild fails, print a manual-fix message and exit
+ */
+async function loadBetterSqlite3(): Promise<any> {
+  try {
+    const mod = await import("better-sqlite3");
+    verifyBinding(mod);
+    return mod;
   } catch (error) {
-    const errorMsg = (error as any)?.message || String(error);
-    if (errorMsg.includes("ERR_MODULE_NOT_FOUND") || errorMsg.includes("better-sqlite3")) {
-      console.error(
-        "\n❌ Error: better-sqlite3 native binding could not be loaded.\n" +
-          "This usually means the binding needs to be compiled for your current Node.js version.\n" +
-          "To fix this, run one of:\n" +
-          "  npm rebuild better-sqlite3\n" +
-          "  pnpm rebuild better-sqlite3\n" +
-          "Or reinstall gwork: npm install -g gwork\n"
-      );
+    if (!isBindingError(error)) {
+      throw error;
+    }
+
+    console.error(
+      "\n⚠ better-sqlite3 native binding is incompatible with Node.js " +
+        process.version + ". Attempting auto-rebuild…\n"
+    );
+
+    if (tryRebuild()) {
+      try {
+        const freshMod = await import("better-sqlite3");
+        verifyBinding(freshMod);
+        console.error("✔ Rebuild succeeded. Continuing…\n");
+        return freshMod;
+      } catch {
+        printManualFixMessage();
+        process.exit(1);
+      }
+    } else {
+      printManualFixMessage();
       process.exit(1);
     }
-    throw error;
   }
 }
 
