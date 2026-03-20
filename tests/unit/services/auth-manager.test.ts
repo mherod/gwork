@@ -93,8 +93,12 @@ describe("AuthManager", () => {
   let authManager: AuthManager;
   let credentialsPath: string;
   let _openSpy: ReturnType<typeof spyOn>;
+  let originalOAuth2: typeof google.auth.OAuth2;
 
   beforeEach(() => {
+    // Save original OAuth2 constructor so direct assignments can be restored
+    originalOAuth2 = google.auth.OAuth2;
+
     // Create mocks
     mockTokenStore = {
       getToken: mock(() => null),
@@ -124,7 +128,8 @@ describe("AuthManager", () => {
   });
 
   afterEach(() => {
-    // spyOn mocks are restored automatically by bun:test
+    // Restore OAuth2 constructor — direct assignments aren't auto-restored by bun:test
+    google.auth.OAuth2 = originalOAuth2;
   });
 
   describe("cleanupInvalidTokens", () => {
@@ -452,6 +457,12 @@ describe("AuthManager", () => {
     });
 
     it("should NOT delete token on non-auth error (transient)", async () => {
+      // Capture local refs before any await — concurrent beforeEach calls can
+      // overwrite the shared describe-level variables mid-test.
+      const localStore = mockTokenStore;
+      const localLogger = mockLogger;
+      const localManager = authManager;
+
       const validToken: TokenData = {
         service: "gmail",
         account: "default",
@@ -463,7 +474,7 @@ describe("AuthManager", () => {
         updated_at: Date.now(),
       };
 
-      (mockTokenStore.getToken as ReturnType<typeof mock>)
+      (localStore.getToken as ReturnType<typeof mock>)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(validToken);
@@ -483,7 +494,7 @@ describe("AuthManager", () => {
         },
       }));
 
-      await authManager.getAuthClient({
+      await localManager.getAuthClient({
         service: "gmail",
         account: "default",
         requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
@@ -491,8 +502,8 @@ describe("AuthManager", () => {
       }).catch(() => {});
 
       // Should NOT delete token for transient errors
-      expect(mockTokenStore.deleteToken).not.toHaveBeenCalledWith("gmail", "default");
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(localStore.deleteToken).not.toHaveBeenCalledWith("gmail", "default");
+      expect(localLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Token not deleted - may be transient error")
       );
     });
@@ -500,6 +511,12 @@ describe("AuthManager", () => {
 
   describe("refreshTokenIfNeeded", () => {
     it("should retry on transient errors with backoff", async () => {
+      // Capture local refs before any await — concurrent beforeEach calls can
+      // overwrite the shared describe-level variables mid-test.
+      const localStore = mockTokenStore;
+      const localLogger = mockLogger;
+      const localManager = authManager;
+
       const validToken: TokenData = {
         service: "gmail",
         account: "default",
@@ -511,7 +528,7 @@ describe("AuthManager", () => {
         updated_at: Date.now(),
       };
 
-      (mockTokenStore.getToken as ReturnType<typeof mock>)
+      (localStore.getToken as ReturnType<typeof mock>)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(validToken);
@@ -535,7 +552,7 @@ describe("AuthManager", () => {
         },
       }));
 
-      const result = await authManager.getAuthClient({
+      const result = await localManager.getAuthClient({
         service: "gmail",
         account: "default",
         requiredScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
@@ -545,11 +562,11 @@ describe("AuthManager", () => {
       // Should have retried 3 times total
       expect(mockAuthClient.getAccessToken.mock.calls.length).toBe(3);
       // Should have saved the token
-      expect(mockTokenStore.saveToken).toHaveBeenCalled();
+      expect(localStore.saveToken).toHaveBeenCalled();
       // Should return the auth client
       expect(result).toBe(mockAuthClient);
       // Should log retry attempts
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(localLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Retrying in")
       );
     });
