@@ -104,23 +104,34 @@ async function searchFiles(svc: DriveService, query: string, args: string[]): Pr
 }
 
 async function downloadFile(svc: DriveService, fileId: string, args: string[]): Promise<void> {
-  const outputFlag = args.indexOf("--output");
-  const destPath = outputFlag !== -1 ? args[outputFlag + 1] : undefined;
+  const path = await import("node:path");
+  const fs = await import("node:fs");
 
-  if (!destPath) {
-    // Get metadata to derive a default filename
-    const file = await svc.getFile(fileId);
-    const safeName = file.name.replace(/[/\\?%*:|"<>]/g, "_");
-    const spinner = ora(`Downloading "${file.name}"…`).start();
-    await svc.downloadFile(fileId, safeName);
-    spinner.stop();
-    console.log(`Downloaded: ${chalk.bold(safeName)}`);
+  // Accept positional dest (first arg that isn't a flag) or --output <path>
+  const outputFlag = args.indexOf("--output");
+  const positionalDest = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  let destPath: string | undefined = outputFlag !== -1 ? args[outputFlag + 1] : positionalDest;
+
+  // Always fetch metadata — needed for filename when dest is a directory or omitted
+  const file = await svc.getFile(fileId);
+  const safeName = file.name.replace(/[/\\?%*:|"<>]/g, "_");
+
+  if (destPath) {
+    const resolved = path.resolve(destPath);
+    // If dest is an existing directory, append the original filename
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      destPath = path.join(resolved, safeName);
+    } else {
+      destPath = resolved;
+    }
   } else {
-    const spinner = ora(`Downloading to "${destPath}"…`).start();
-    await svc.downloadFile(fileId, destPath);
-    spinner.stop();
-    console.log(`Downloaded: ${chalk.bold(destPath)}`);
+    destPath = safeName;
   }
+
+  const spinner = ora(`Downloading "${file.name}"…`).start();
+  await svc.downloadFile(fileId, destPath);
+  spinner.stop();
+  console.log(`Downloaded: ${chalk.bold(destPath)}`);
 }
 
 async function uploadFile(svc: DriveService, filePath: string, args: string[]): Promise<void> {
