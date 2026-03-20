@@ -13,10 +13,6 @@ import { TokenStore } from "../../../src/services/token-store.ts";
 import type { CalendarService } from "../../../src/services/calendar-service.ts";
 
 // Hoist module mocks so they take effect before handleCalCommand is imported.
-void mock.module("../../../src/utils/command-service.ts", () => ({
-  ensureInitialized: async () => {},
-}));
-
 void mock.module("ora", () => ({
   default: () => ({ start: () => ({ stop: () => {}, succeed: () => {}, fail: () => {} }) }),
 }));
@@ -48,6 +44,7 @@ function makeCalendarsFactory(throwOnFirst: boolean) {
     callCount++;
     const thisCall = callCount;
     return {
+      initialize: async () => {},
       listCalendars: async () => {
         if (throwOnFirst && thisCall === 1) {
           throw new ScopeInsufficientError("list calendars");
@@ -120,6 +117,7 @@ describe("handleCalCommand re-auth retry", () => {
     const factory = (_acc: string): CalendarService => {
       callCount++;
       return {
+        initialize: async () => {},
         listCalendars: async () => {
           throw new ServiceError("quota exceeded", "RATE_LIMIT", 429);
         },
@@ -153,6 +151,7 @@ describe("handleCalCommand re-auth retry", () => {
     const factory = (_acc: string): CalendarService => {
       callCount++;
       return {
+        initialize: async () => {},
         listCalendars: async () => { throw new ScopeInsufficientError("calendar list"); },
       } as unknown as CalendarService;
     };

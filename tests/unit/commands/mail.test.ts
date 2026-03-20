@@ -12,10 +12,6 @@ import { TokenStore } from "../../../src/services/token-store.ts";
 import type { MailService } from "../../../src/services/mail-service.ts";
 
 // Hoist module mocks so they take effect before handleMailCommand is imported.
-void mock.module("../../../src/utils/command-service.ts", () => ({
-  ensureInitialized: async () => {},
-}));
-
 void mock.module("ora", () => ({
   default: () => ({ start: () => ({ stop: () => {}, succeed: () => {}, fail: () => {} }) }),
 }));
@@ -49,6 +45,7 @@ function makeStatsFactory(throwOnFirst: boolean) {
     callCount++;
     const thisCall = callCount;
     return {
+      initialize: async () => {},
       getProfile: async () => {
         if (throwOnFirst && thisCall === 1) {
           throw new ScopeInsufficientError("get mail stats");
@@ -118,6 +115,7 @@ describe("handleMailCommand re-auth retry", () => {
     const factory = (_acc: string): MailService => {
       callCount++;
       return {
+        initialize: async () => {},
         getProfile: async () => {
           throw new ServiceError("quota exceeded", "RATE_LIMIT", 429);
         },
@@ -155,6 +153,7 @@ describe("handleMailCommand re-auth retry", () => {
     const factory = (_acc: string): MailService => {
       callCount++;
       return {
+        initialize: async () => {},
         getProfile: async () => { throw new ScopeInsufficientError("mail stats"); },
         listLabels: async () => { throw retryError; },
       } as unknown as MailService;
