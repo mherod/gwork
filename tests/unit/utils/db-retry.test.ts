@@ -46,6 +46,9 @@ describe("Database Retry Utility", () => {
     });
 
     test("retries on database lock error", async () => {
+      // Capture local ref before any await — concurrent afterEach calls can
+      // close the shared db variable mid-test.
+      const localDb = db;
       let attempts = 0;
       const maxAttempts = 3;
 
@@ -58,7 +61,7 @@ describe("Database Retry Utility", () => {
             error.name = "SQLiteError";
             throw error;
           }
-          const stmt = db.prepare("SELECT 1 as value");
+          const stmt = localDb.prepare("SELECT 1 as value");
           return stmt.get();
         },
         { maxRetries: maxAttempts, initialDelay: 10 } // Short delay for testing
