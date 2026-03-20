@@ -94,9 +94,20 @@ const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
           : `The API required for "${ctx}" is not enabled in your Google Cloud project.`;
       return new ServiceError(msg, "API_NOT_ENABLED", 403, false, "Enable the API in Google Cloud Console, then retry.");
     }
-    return new PermissionDeniedError(ctx, "resource");
+    // For Drive file/folder operations, give an actionable account-switching hint
+    const isDriveFileOp = /\b(file|folder|download|upload)\b/i.test(ctx);
+    const hint = isDriveFileOp
+      ? "The file exists but this account does not have access. Try a different --account or request access from the file owner."
+      : "Please check your authentication and permissions.";
+    return new PermissionDeniedError(ctx, "", hint);
   },
-  404: (ctx) => new NotFoundError(ctx, "resource"),
+  404: (ctx) => {
+    // Extract the resource type from the operation context for a clean message:
+    //   "get file" -> "File", "download file" -> "File", "get event" -> "Event"
+    const lastWord = ctx.split(" ").pop() ?? ctx;
+    const resourceType = lastWord.charAt(0).toUpperCase() + lastWord.slice(1);
+    return new NotFoundError(resourceType);
+  },
   429: () => new RateLimitError(),
   500: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),
   502: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),

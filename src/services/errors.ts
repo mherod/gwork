@@ -26,25 +26,21 @@ export class ServiceError extends Error {
 }
 
 export class NotFoundError extends ServiceError {
-  constructor(resource: string, identifier: string) {
-    super(
-      `${resource} not found: ${identifier}`,
-      "NOT_FOUND",
-      404,
-      false
-    );
+  constructor(resource: string, identifier?: string) {
+    const msg = identifier ? `${resource} not found: ${identifier}` : `${resource} not found`;
+    super(msg, "NOT_FOUND", 404, false);
     Object.setPrototypeOf(this, NotFoundError.prototype);
   }
 }
 
 export class PermissionDeniedError extends ServiceError {
-  constructor(resource: string, identifier: string) {
+  constructor(resource: string, identifier: string, hint?: string) {
     super(
-      `Permission denied: You don't have access to ${resource} ${identifier}`,
+      `Permission denied: You don't have access to ${resource} ${identifier}`.trimEnd(),
       "PERMISSION_DENIED",
       403,
       false,
-      "Please check your authentication and permissions."
+      hint ?? "Please check your authentication and permissions."
     );
     Object.setPrototypeOf(this, PermissionDeniedError.prototype);
   }
