@@ -82,6 +82,8 @@ export class DriveService extends BaseService {
         fields: "files(id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared)",
         q,
         orderBy,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
       return (result.data.files || []).map(this.mapFile);
     } catch (error: unknown) {
@@ -97,6 +99,7 @@ export class DriveService extends BaseService {
       const result = await this.drive!.files.get({
         fileId,
         fields: "id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared",
+        supportsAllDrives: true,
       });
       return this.mapFile(result.data);
     } catch (error: unknown) {
@@ -114,6 +117,8 @@ export class DriveService extends BaseService {
         fields: "files(id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared)",
         q: `name contains '${query.replace(/'/g, "\\'")}' and trashed = false`,
         orderBy: "modifiedTime desc",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
       return (result.data.files || []).map(this.mapFile);
     } catch (error: unknown) {
@@ -133,6 +138,7 @@ export class DriveService extends BaseService {
       const meta = await this.drive!.files.get({
         fileId,
         fields: "id,name,mimeType",
+        supportsAllDrives: true,
       });
 
       const mimeType = meta.data.mimeType || "";
@@ -160,7 +166,7 @@ export class DriveService extends BaseService {
         });
       } else {
         const response = await this.drive!.files.get(
-          { fileId, alt: "media" },
+          { fileId, alt: "media", supportsAllDrives: true },
           { responseType: "stream" }
         );
         await new Promise<void>((resolve, reject) => {
@@ -194,6 +200,7 @@ export class DriveService extends BaseService {
           body: fs.createReadStream(path.resolve(options.filePath)),
         },
         fields: "id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared",
+        supportsAllDrives: true,
       });
       return this.mapFile(result.data);
     } catch (error: unknown) {
@@ -206,7 +213,7 @@ export class DriveService extends BaseService {
     this.ensureInitialized();
 
     try {
-      await this.drive!.files.delete({ fileId });
+      await this.drive!.files.delete({ fileId, supportsAllDrives: true });
     } catch (error: unknown) {
       handleGoogleApiError(error, "delete file");
     }
@@ -224,6 +231,7 @@ export class DriveService extends BaseService {
           parents: parentId ? [parentId] : undefined,
         },
         fields: "id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared",
+        supportsAllDrives: true,
       });
       return this.mapFile(result.data);
     } catch (error: unknown) {
@@ -240,6 +248,7 @@ export class DriveService extends BaseService {
       const current = await this.drive!.files.get({
         fileId,
         fields: "parents",
+        supportsAllDrives: true,
       });
       const previousParents = (current.data.parents || []).join(",");
 
@@ -248,6 +257,7 @@ export class DriveService extends BaseService {
         addParents: folderId,
         removeParents: previousParents,
         fields: "id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared",
+        supportsAllDrives: true,
       });
       return this.mapFile(result.data);
     } catch (error: unknown) {
@@ -263,6 +273,7 @@ export class DriveService extends BaseService {
       const result = await this.drive!.permissions.list({
         fileId,
         fields: "permissions(id,type,role,emailAddress,displayName)",
+        supportsAllDrives: true,
       });
       return result.data.permissions || [];
     } catch (error: unknown) {
