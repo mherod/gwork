@@ -5,7 +5,7 @@ import { ensureInitialized } from "../utils/command-service.ts";
 import { retryWithBackoff } from "../utils/retry-helper.ts";
 import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
-import { logServiceError } from "../utils/command-error-handler.ts";
+import { handleServiceError } from "../utils/command-error-handler.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { CommandRegistry } from "./registry.ts";
 import type { ListFilesOptions } from "../services/drive-service.ts";
@@ -268,11 +268,6 @@ function buildDriveRegistry(): CommandRegistry<DriveService> {
 
 type DriveServiceFactory = (account: string) => DriveService;
 
-function fatalExit(error: unknown): never {
-  logServiceError(error);
-  process.exit(1);
-}
-
 async function reAuthAndRetry(
   tokenKey: string,
   account: string,
@@ -288,7 +283,7 @@ async function reAuthAndRetry(
   try {
     await buildDriveRegistry().execute(subcommand, freshService, args);
   } catch (retryError) {
-    fatalExit(retryError);
+    handleServiceError(retryError);
   }
 }
 
@@ -313,7 +308,7 @@ export async function handleDriveCommand(
     } else if (error instanceof AuthenticationRequiredError) {
       await reAuthAndRetry("drive", account, error.hint ?? "Re-authenticating with Drive...", serviceFactory, subcommand, args);
     } else {
-      fatalExit(error);
+      handleServiceError(error);
     }
   }
 }

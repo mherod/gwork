@@ -23,6 +23,11 @@ void mock.module("ora", () => ({
 const logServiceErrorCalls: unknown[] = [];
 void mock.module("../../../src/utils/command-error-handler.ts", () => ({
   logServiceError: (err: unknown) => { logServiceErrorCalls.push(err); },
+  handleServiceError: (err: unknown): never => {
+    logServiceErrorCalls.push(err);
+    process.exit(1);
+    return undefined as never;
+  },
 }));
 
 import { handleMailCommand } from "../../../src/commands/mail.ts";

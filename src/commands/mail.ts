@@ -7,7 +7,7 @@ import { retryWithBackoff } from "../utils/retry-helper.ts";
 import { ArgumentError, ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
 import { TokenStore } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
-import { logServiceError } from "../utils/command-error-handler.ts";
+import { handleServiceError } from "../utils/command-error-handler.ts";
 import { SEPARATOR } from "../utils/format.ts";
 import { printSectionHeader } from "../utils/output.ts";
 import fs from "node:fs";
@@ -249,12 +249,6 @@ function buildMailRegistry(account: string): CommandRegistry<MailService> {
 
 type MailServiceFactory = (account: string) => MailService;
 
-/** Log a terminal service error and exit non-zero. Never returns. */
-function fatalExit(error: unknown): never {
-  logServiceError(error);
-  process.exit(1);
-}
-
 /**
  * Delete the stale token, build a fresh service, and execute the command
  * exactly once. Any failure in the retry is fatal — no further re-auth loops.
@@ -274,7 +268,7 @@ async function reAuthAndRetry(
   try {
     await buildMailRegistry(account).execute(subcommand, freshService, args);
   } catch (retryError) {
-    fatalExit(retryError);
+    handleServiceError(retryError);
   }
 }
 
@@ -311,7 +305,7 @@ export async function handleMailCommand(
       // All other errors (rate-limit, service-unavailable, any future
       // ServiceError subclass, or unexpected JS errors) are routed through
       // a single fatal log-and-exit so no error is ever double-logged.
-      fatalExit(error);
+      handleServiceError(error);
     }
   }
 }
