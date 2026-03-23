@@ -126,7 +126,7 @@ export class DriveService extends BaseService {
     }
   }
 
-  async downloadFile(fileId: string, destPath: string): Promise<void> {
+  async downloadFile(fileId: string, destPath: string, format?: string): Promise<void> {
     await this.initialize();
     this.ensureInitialized();
 
@@ -150,10 +150,26 @@ export class DriveService extends BaseService {
         "application/vnd.google-apps.presentation": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       };
 
+      // Format-specific overrides for Google Sheets
+      const sheetExportFormats: Record<string, { mime: string; ext: string }> = {
+        csv: { mime: "text/csv", ext: ".csv" },
+        tsv: { mime: "text/tab-separated-values", ext: ".tsv" },
+        xlsx: { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: ".xlsx" },
+        pdf: { mime: "application/pdf", ext: ".pdf" },
+      };
+
       const resolvedDest = path.resolve(destPath);
       const dest = fs.createWriteStream(resolvedDest);
 
-      const exportMime = exportMimeMap[mimeType];
+      // Allow format override for Sheets (e.g., --format csv)
+      let exportMime = exportMimeMap[mimeType];
+      if (format && mimeType === "application/vnd.google-apps.spreadsheet") {
+        const formatOverride = sheetExportFormats[format.toLowerCase()];
+        if (formatOverride) {
+          exportMime = formatOverride.mime;
+        }
+      }
+
       if (exportMime) {
         const response = await this.drive!.files.export(
           { fileId, mimeType: exportMime },
