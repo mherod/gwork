@@ -112,9 +112,31 @@ async function downloadFile(svc: DriveService, fileId: string, args: string[]): 
   const positionalDest = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
   let destPath: string | undefined = outputFlag !== -1 ? args[outputFlag + 1] : positionalDest;
 
+  // Check for --format flag (for Google Sheets export as csv/tsv/pdf)
+  const formatIdx = args.indexOf("--format");
+  const format = formatIdx !== -1 ? args[formatIdx + 1] : undefined;
+
+  // Map format to extension for auto-naming
+  const formatExtMap: Record<string, string> = {
+    csv: ".csv",
+    tsv: ".tsv",
+    pdf: ".pdf",
+    xlsx: ".xlsx",
+  };
+
   // Always fetch metadata — needed for filename when dest is a directory or omitted
   const file = await svc.getFile(fileId);
-  const safeName = file.name.replace(/[/\\?%*:|"<>]/g, "_");
+  let safeName = file.name.replace(/[/\\?%*:|"<>]/g, "_");
+
+  // Override extension when --format is used on a Google Sheet
+  if (format && file.mimeType === "application/vnd.google-apps.spreadsheet") {
+    const ext = formatExtMap[format.toLowerCase()];
+    if (ext) {
+      // Replace existing extension or append
+      const base = safeName.replace(/\.[^.]+$/, "");
+      safeName = base + ext;
+    }
+  }
 
   if (destPath) {
     const resolved = path.resolve(destPath);
@@ -129,7 +151,7 @@ async function downloadFile(svc: DriveService, fileId: string, args: string[]): 
   }
 
   const spinner = ora(`Downloading "${file.name}"…`).start();
-  await svc.downloadFile(fileId, destPath);
+  await svc.downloadFile(fileId, destPath, format);
   spinner.stop();
   console.log(`Downloaded: ${chalk.bold(destPath)}`);
 }

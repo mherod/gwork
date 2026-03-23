@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**gwork** is a comprehensive CLI tool for Google Workspace (Calendar + Gmail). It provides 54 fully implemented commands (24 calendar + 30 Gmail) that expose the Google APIs through a developer-friendly command-line interface.
+**gwork** is a comprehensive CLI tool for Google Workspace (Calendar, Gmail, Drive, Contacts). It exposes the Google APIs through a developer-friendly command-line interface.
 
 The codebase is built with TypeScript using Bun as the primary runtime, with additional Node.js compatibility for CLI distribution via npm.
 
@@ -34,7 +34,20 @@ bun run build
 gwork --help
 gwork cal list
 gwork mail messages -n 5
+
+# Drive operations
+gwork drive list
+gwork drive download <fileId>                   # Downloads file; exports Google Docs as .docx
+gwork drive download <fileId> --output ./out.pdf
+gwork drive upload ./file.pdf --name "Report"
 ```
+
+### Extracting File IDs from Google URLs
+
+The `drive download` command takes a file ID, not a URL. Extract the ID from Google Workspace URLs:
+- `docs.google.com/document/d/<fileId>/edit` → use `<fileId>`
+- `docs.google.com/spreadsheets/d/<fileId>/edit` → use `<fileId>`
+- `drive.google.com/file/d/<fileId>/view` → use `<fileId>`
 
 ## Architecture
 
@@ -45,10 +58,18 @@ src/
 ├── cli.ts                      # Entry point; routes commands to handlers
 ├── commands/
 │   ├── accounts.ts             # Accounts command handler
-│   ├── cal.ts                  # Calendar command dispatcher (24 commands)
-│   └── mail.ts                 # Gmail command dispatcher (30 commands)
+│   ├── cal.ts                  # Calendar command dispatcher
+│   ├── contacts.ts             # Contacts command dispatcher
+│   ├── drive.ts                # Drive command dispatcher (list, get, search, download, upload, delete, mkdir, move, share, stats)
+│   ├── mail.ts                 # Gmail command dispatcher
+│   └── registry.ts             # Command registry
 ├── services/
+│   ├── auth-manager.ts         # OAuth2 authentication manager
+│   ├── base-service.ts         # Base service class
 │   ├── calendar-service.ts     # Google Calendar API wrapper
+│   ├── contacts-service.ts     # Google Contacts API wrapper
+│   ├── drive-service.ts        # Google Drive API wrapper
+│   ├── error-handler.ts        # Centralized error handling
 │   ├── mail-service.ts         # Gmail API wrapper
 │   └── token-store.ts          # Multi-account token persistence (SQLite)
 ├── utils/

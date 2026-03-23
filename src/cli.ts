@@ -6,6 +6,7 @@ import { handleCalCommand } from "./commands/cal.ts";
 import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
 import { handleDriveCommand } from "./commands/drive.ts";
+import { handleSheetsCommand } from "./commands/sheets.ts";
 import { CommandRegistry } from "./commands/registry.ts";
 import { parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
@@ -23,6 +24,7 @@ Commands:
   cal            Google Calendar operations
   contacts       Google Contacts operations
   drive          Google Drive operations
+  sheets         Google Sheets operations
   accounts       List configured Google accounts
 
 Options:
@@ -210,7 +212,7 @@ Commands:
   list [options]                  List files and folders
   get <fileId>                    Get metadata for a specific file
   search <query>                  Search files using Drive query syntax
-  download <fileId>               Download a file to local disk
+  download <fileId>               Download a file (Sheets: --format csv|tsv|xlsx|pdf)
   upload <path>                   Upload a local file to Drive
   delete <fileId> --confirm       Delete a file
   mkdir <name>                    Create a new folder
@@ -223,6 +225,7 @@ Options:
   --max-results <number>          Maximum number of results to return (default: 10)
   --folder <folderId>             Filter by folder / set parent folder
   --output <path>                 Destination path for download
+  --format <csv|tsv|xlsx|pdf>     Export format for Google Sheets (default: xlsx)
   --name <name>                   Override file name for upload
 
 Examples:
@@ -232,11 +235,49 @@ Examples:
   gwork drive get <fileId>
   gwork drive download <fileId>
   gwork drive download <fileId> --output ./report.pdf
+  gwork drive download <fileId> --format csv
   gwork drive upload ./report.pdf --name "Q4 Report"
   gwork drive mkdir "Projects"
   gwork drive move <fileId> <folderId>
   gwork drive share <fileId>
   gwork drive stats
+`);
+}
+
+function printSheetsHelp() {
+  console.log(`
+gwork sheets - Google Sheets operations
+
+Usage:
+  gwork sheets <command> [options]
+
+Commands:
+  list <fileId>                     List sheets/tabs in a spreadsheet
+  get <fileId>                      Get spreadsheet metadata
+  read <fileId> [range]             Read and display cell data
+  export <fileId>                   Export sheet data as CSV
+  append <fileId> <range> <values>  Append rows to a sheet
+
+Options:
+  -h, --help                        Show this help message
+
+Read options:
+  --format <table|csv|json>         Output format (default: table)
+  --no-header                       Don't treat first row as header
+
+Export options:
+  --sheet <name>                    Sheet/tab name to export (default: first sheet)
+  --output <path>                   Write to file instead of stdout
+
+Examples:
+  gwork sheets list <fileId>
+  gwork sheets read <fileId>
+  gwork sheets read <fileId> "Sheet1!A1:D10"
+  gwork sheets read <fileId> --format csv
+  gwork sheets read <fileId> --format json
+  gwork sheets export <fileId> --output data.csv
+  gwork sheets export <fileId> --sheet "Sheet2" --output sheet2.csv
+  gwork sheets append <fileId> "Sheet1!A:D" "Alice,30,NYC" "Bob,25,LA"
 `);
 }
 
@@ -323,6 +364,32 @@ async function handleDrive(args: string[]) {
   await handleDriveCommand(subcommand, filteredArgs, account);
 }
 
+async function handleSheets(args: string[]) {
+  // Check for help flag or no subcommand
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    printSheetsHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0];
+  if (!subcommand) {
+    printSheetsHelp();
+    process.exit(0);
+  }
+  const subcommandArgs = args.slice(1);
+
+  // Extract account from subcommand args
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  // If --help/-h appears in subcommand args, show parent help
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printSheetsHelp();
+    process.exit(0);
+  }
+
+  await handleSheetsCommand(subcommand, filteredArgs, account);
+}
+
 async function handleContacts(args: string[]) {
   // Check for help flag or no subcommand
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
@@ -386,6 +453,7 @@ const topLevelRegistry = new CommandRegistry<null>()
   .register("cal", (_svc, args) => handleCal(args))
   .register("contacts", (_svc, args) => handleContacts(args))
   .register("drive", (_svc, args) => handleDrive(args))
+  .register("sheets", (_svc, args) => handleSheets(args))
   .register("accounts", (_svc, args) => handleAccountsCommand(args));
 
 main().catch((error) => {
