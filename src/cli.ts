@@ -322,6 +322,7 @@ Commands:
   get <fileId>                      Get presentation metadata
   list <fileId>                     List all slides with titles
   read <fileId>                     Read slide content and speaker notes
+  create <title>                    Create a new presentation
   thumbnail <fileId> <slideNum>     Get thumbnail URL for a slide
 
 Options:
@@ -337,6 +338,7 @@ Examples:
   gwork slides read <fileId>
   gwork slides read <fileId> --notes
   gwork slides read <fileId> --format json
+  gwork slides create "Quarterly Review"
   gwork slides thumbnail <fileId> 3
 `);
 }

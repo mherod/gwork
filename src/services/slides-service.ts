@@ -33,7 +33,7 @@ export class SlidesService extends BaseService {
     super(
       "Slides",
       [
-        "https://www.googleapis.com/auth/presentations.readonly",
+        "https://www.googleapis.com/auth/presentations",
       ],
       account
     );
@@ -128,6 +128,43 @@ export class SlidesService extends BaseService {
       return result.data.contentUrl || "";
     } catch (error: unknown) {
       handleGoogleApiError(error, "get slide thumbnail");
+    }
+  }
+
+  /**
+   * Create a new presentation.
+   */
+  async createPresentation(title: string): Promise<PresentationMeta> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.slides!.presentations.create({
+        requestBody: { title },
+      });
+
+      const data = result.data;
+      const pageSize = data.pageSize || {};
+      const width = pageSize.width?.magnitude || 0;
+      const height = pageSize.height?.magnitude || 0;
+      const unit = pageSize.width?.unit || "EMU";
+
+      const allSlides = (data.slides || []).map((slide, index) =>
+        this.mapSlide(slide, index)
+      );
+
+      return {
+        presentationId: data.presentationId || "",
+        title: data.title || title,
+        locale: data.locale || "",
+        pageSize: { width, height, unit },
+        slideCount: allSlides.length,
+        slides: allSlides,
+        masterCount: (data.masters || []).length,
+        layoutCount: (data.layouts || []).length,
+      };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "create presentation");
     }
   }
 
