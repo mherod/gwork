@@ -1,6 +1,6 @@
 /**
  * Google Docs service wrapper for Google Docs API v1.
- * Provides methods for reading document content and metadata.
+ * Provides methods for reading and writing document content.
  */
 
 import { google } from "googleapis";
@@ -30,7 +30,7 @@ export class DocsService extends BaseService {
     super(
       "Docs",
       [
-        "https://www.googleapis.com/auth/documents.readonly",
+        "https://www.googleapis.com/auth/documents",
       ],
       account
     );
@@ -117,6 +117,79 @@ export class DocsService extends BaseService {
     } catch (error: unknown) {
       handleGoogleApiError(error, "read document");
     }
+  }
+
+  /**
+   * Create a new Google Doc with the given title.
+   */
+  async createDocument(title: string): Promise<{ documentId: string; title: string }> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.docs!.documents.create({
+        requestBody: { title },
+      });
+
+      return {
+        documentId: result.data.documentId || "",
+        title: result.data.title || title,
+      };
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "create document");
+    }
+  }
+
+  /**
+   * Insert text into a document at the given index.
+   * If no index is provided, text is appended at the end of the document body.
+   */
+  async insertText(
+    documentId: string,
+    text: string,
+    index?: number
+  ): Promise<void> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      // When no index is given, find the end of the document body
+      const insertionIndex = index ?? await this.getEndOfBodyIndex(documentId);
+
+      await this.docs!.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            {
+              insertText: {
+                text,
+                location: { index: insertionIndex },
+              },
+            },
+          ],
+        },
+      });
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "insert text");
+    }
+  }
+
+  /**
+   * Get the index of the end of the document body (before the final newline).
+   */
+  private async getEndOfBodyIndex(documentId: string): Promise<number> {
+    const result = await this.docs!.documents.get({
+      documentId,
+      fields: "body.content",
+    });
+
+    const content = result.data.body?.content;
+    if (!content || content.length === 0) return 1;
+
+    // The last element's endIndex minus 1 gives the position before the trailing newline
+    const lastElement = content[content.length - 1];
+    const endIndex = lastElement?.endIndex ?? 1;
+    return Math.max(endIndex - 1, 1);
   }
 
   /**

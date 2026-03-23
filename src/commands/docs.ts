@@ -57,6 +57,25 @@ function extractFlag(args: string[], flag: string): string | undefined {
   return idx !== -1 ? args[idx + 1] : undefined;
 }
 
+async function createDoc(svc: DocsService, title: string): Promise<void> {
+  const spinner = ora("Creating document…").start();
+  const doc = await svc.createDocument(title);
+  spinner.stop();
+
+  console.log(`Title:       ${chalk.bold(doc.title)}`);
+  console.log(`ID:          ${doc.documentId}`);
+  console.log(`Link:        https://docs.google.com/document/d/${doc.documentId}/edit`);
+}
+
+async function writeDoc(svc: DocsService, documentId: string, text: string): Promise<void> {
+  const spinner = ora("Writing to document…").start();
+  await svc.insertText(documentId, text);
+  spinner.stop();
+
+  console.log(chalk.green("Text appended successfully."));
+  console.log(`Link:        https://docs.google.com/document/d/${documentId}/edit`);
+}
+
 function buildDocsRegistry(): CommandRegistry<DocsService> {
   return new CommandRegistry<DocsService>()
     .register("get", (svc, args) => {
@@ -73,6 +92,21 @@ function buildDocsRegistry(): CommandRegistry<DocsService> {
         );
       }
       return readDoc(svc, args[0]!, args.slice(1));
+    })
+    .register("create", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError("Error: title is required", "gwork docs create <title>");
+      }
+      return createDoc(svc, args.join(" "));
+    })
+    .register("write", (svc, args) => {
+      if (args.length < 2) {
+        throw new ArgumentError(
+          "Error: document ID and text are required",
+          "gwork docs write <fileId> <text>"
+        );
+      }
+      return writeDoc(svc, args[0]!, args.slice(1).join(" "));
     });
 }
 
