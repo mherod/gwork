@@ -40,6 +40,7 @@ export class DocsService extends BaseService {
     await super.initialize();
     this.ensureInitialized();
     this.docs = google.docs({ version: "v1", auth: this.getAuth() });
+    await this.verifyAccount();
   }
 
   /**

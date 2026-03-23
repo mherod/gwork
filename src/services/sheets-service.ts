@@ -50,6 +50,7 @@ export class SheetsService extends BaseService {
     await super.initialize();
     this.ensureInitialized();
     this.sheets = google.sheets({ version: "v4", auth: this.getAuth() });
+    await this.verifyAccount();
   }
 
   /**
