@@ -96,6 +96,17 @@ async function thumbnailSlide(svc: SlidesService, presentationId: string, args: 
   console.log(`Thumbnail: ${chalk.underline(url)}`);
 }
 
+async function createPresentation(svc: SlidesService, title: string): Promise<void> {
+  const spinner = ora(`Creating presentation "${title}"…`).start();
+  const meta = await svc.createPresentation(title);
+  spinner.stop();
+
+  console.log(`Created: ${chalk.bold(meta.title)}`);
+  console.log(`ID:      ${meta.presentationId}`);
+  console.log(`Slides:  ${meta.slideCount}`);
+  console.log(`Link:    https://docs.google.com/presentation/d/${meta.presentationId}/edit`);
+}
+
 function extractFlag(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
   return idx !== -1 ? args[idx + 1] : undefined;
@@ -128,6 +139,15 @@ function buildSlidesRegistry(): CommandRegistry<SlidesService> {
         );
       }
       return readSlides(svc, args[0]!, args.slice(1));
+    })
+    .register("create", (svc, args) => {
+      if (args.length === 0) {
+        throw new ArgumentError(
+          "Error: presentation title is required",
+          'gwork slides create "My Presentation"'
+        );
+      }
+      return createPresentation(svc, args[0]!);
     })
     .register("thumbnail", (svc, args) => {
       if (args.length < 2) {
