@@ -58,6 +58,20 @@ export class DriveService extends BaseService {
     await super.initialize();
     this.ensureInitialized();
     this.drive = google.drive({ version: "v3", auth: this.getAuth() });
+
+    // When a specific account (not "default") is requested, verify the authenticated
+    // token actually belongs to that account. Without this check, a mismatched token
+    // silently queries the wrong user's Drive, returning 404 for shared files.
+    if (this.account !== "default") {
+      const about = await this.drive.about.get({ fields: "user" });
+      const authenticatedEmail = about.data.user?.emailAddress ?? "";
+      if (authenticatedEmail.toLowerCase() !== this.account.toLowerCase()) {
+        throw new Error(
+          `Account mismatch: token is authenticated as "${authenticatedEmail}" but "--account ${this.account}" was requested. ` +
+          `Run "gwork drive list --account ${this.account}" to re-authenticate the correct account.`
+        );
+      }
+    }
   }
 
   // ============= FILE OPERATIONS =============
@@ -82,6 +96,7 @@ export class DriveService extends BaseService {
         fields: "files(id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared)",
         q,
         orderBy,
+        corpora: "allDrives",
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       });
@@ -117,6 +132,7 @@ export class DriveService extends BaseService {
         fields: "files(id,name,mimeType,size,modifiedTime,createdTime,parents,webViewLink,shared)",
         q: `name contains '${query.replace(/'/g, "\\'")}' and trashed = false`,
         orderBy: "modifiedTime desc",
+        corpora: "allDrives",
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       });
