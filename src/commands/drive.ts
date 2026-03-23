@@ -112,7 +112,7 @@ async function downloadFile(svc: DriveService, fileId: string, args: string[]): 
   const positionalDest = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
   let destPath: string | undefined = outputFlag !== -1 ? args[outputFlag + 1] : positionalDest;
 
-  // Check for --format flag (for Google Sheets export as csv/tsv/pdf)
+  // Check for --format flag (for Google Workspace file export)
   const formatIdx = args.indexOf("--format");
   const format = formatIdx !== -1 ? args[formatIdx + 1] : undefined;
 
@@ -122,17 +122,31 @@ async function downloadFile(svc: DriveService, fileId: string, args: string[]): 
     tsv: ".tsv",
     pdf: ".pdf",
     xlsx: ".xlsx",
+    txt: ".txt",
+    text: ".txt",
+    html: ".html",
+    rtf: ".rtf",
+    epub: ".epub",
+    docx: ".docx",
+    pptx: ".pptx",
+    md: ".md",
   };
+
+  // Google Workspace MIME types that support --format
+  const workspaceMimeTypes = [
+    "application/vnd.google-apps.spreadsheet",
+    "application/vnd.google-apps.document",
+    "application/vnd.google-apps.presentation",
+  ];
 
   // Always fetch metadata — needed for filename when dest is a directory or omitted
   const file = await svc.getFile(fileId);
   let safeName = file.name.replace(/[/\\?%*:|"<>]/g, "_");
 
-  // Override extension when --format is used on a Google Sheet
-  if (format && file.mimeType === "application/vnd.google-apps.spreadsheet") {
+  // Override extension when --format is used on a Google Workspace file
+  if (format && workspaceMimeTypes.includes(file.mimeType)) {
     const ext = formatExtMap[format.toLowerCase()];
     if (ext) {
-      // Replace existing extension or append
       const base = safeName.replace(/\.[^.]+$/, "");
       safeName = base + ext;
     }

@@ -150,23 +150,41 @@ export class DriveService extends BaseService {
         "application/vnd.google-apps.presentation": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       };
 
-      // Format-specific overrides for Google Sheets
-      const sheetExportFormats: Record<string, { mime: string; ext: string }> = {
-        csv: { mime: "text/csv", ext: ".csv" },
-        tsv: { mime: "text/tab-separated-values", ext: ".tsv" },
-        xlsx: { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: ".xlsx" },
-        pdf: { mime: "application/pdf", ext: ".pdf" },
+      // Format-specific overrides per Google Workspace file type
+      const formatOverrides: Record<string, Record<string, string>> = {
+        "application/vnd.google-apps.spreadsheet": {
+          csv: "text/csv",
+          tsv: "text/tab-separated-values",
+          xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          pdf: "application/pdf",
+        },
+        "application/vnd.google-apps.document": {
+          txt: "text/plain",
+          text: "text/plain",
+          pdf: "application/pdf",
+          html: "text/html",
+          rtf: "application/rtf",
+          epub: "application/epub+zip",
+          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          md: "text/plain",
+        },
+        "application/vnd.google-apps.presentation": {
+          pdf: "application/pdf",
+          txt: "text/plain",
+          text: "text/plain",
+          pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
       };
 
       const resolvedDest = path.resolve(destPath);
       const dest = fs.createWriteStream(resolvedDest);
 
-      // Allow format override for Sheets (e.g., --format csv)
+      // Allow format override for Workspace files (e.g., --format csv, --format txt)
       let exportMime = exportMimeMap[mimeType];
-      if (format && mimeType === "application/vnd.google-apps.spreadsheet") {
-        const formatOverride = sheetExportFormats[format.toLowerCase()];
-        if (formatOverride) {
-          exportMime = formatOverride.mime;
+      if (format && formatOverrides[mimeType]) {
+        const overrideMime = formatOverrides[mimeType][format.toLowerCase()];
+        if (overrideMime) {
+          exportMime = overrideMime;
         }
       }
 
