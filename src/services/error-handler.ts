@@ -106,7 +106,15 @@ const HTTP_ERROR_MAP: Record<number, ErrorFactory> = {
     //   "get file" -> "File", "download file" -> "File", "get event" -> "Event"
     const lastWord = ctx.split(" ").pop() ?? ctx;
     const resourceType = lastWord.charAt(0).toUpperCase() + lastWord.slice(1);
-    return new NotFoundError(resourceType);
+    // For Drive file/folder operations, a 404 may mean a bad ID *or* no access —
+    // the Drive API returns 404 for both cases.  Give actionable guidance.
+    const isDriveFileOp = /\b(file|folder|download|upload)\b/i.test(ctx);
+    const hint = isDriveFileOp
+      ? "This can mean the ID is wrong or the signed-in account lacks access.\n"
+        + "  • Verify the file/folder ID from the sharing URL.\n"
+        + "  • Confirm the account has at least Viewer access (gwork accounts, --account <email>)."
+      : undefined;
+    return new NotFoundError(resourceType, undefined, hint);
   },
   429: () => new RateLimitError(),
   500: (ctx, code) => new ServiceUnavailableError(`Google ${ctx} service temporarily unavailable (HTTP ${code})`),

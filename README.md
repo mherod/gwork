@@ -377,6 +377,8 @@ gwork contacts detect-marketing --delete --confirm  # Remove marketing contacts
 
 ### Drive (Google Drive) - 10 Commands
 
+> **Note:** Drive support was added in gwork **v0.3.0**. If `gwork drive` is not available, upgrade with `npm i -g gwork@latest`.
+
 **List & Search:**
 ```bash
 gwork drive list                             # List recent files
