@@ -282,6 +282,7 @@ Examples:
   gwork sheets export <fileId> --output data.csv
   gwork sheets export <fileId> --sheet "Sheet2" --output sheet2.csv
   gwork sheets append <fileId> "Sheet1!A:D" "Alice,30,NYC" "Bob,25,LA"
+  gwork sheets append <fileId> "Sheet1!A:C" '["New York, NY","10001","US"]'
 `);
 }
 

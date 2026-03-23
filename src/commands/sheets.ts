@@ -178,13 +178,24 @@ async function appendRows(svc: SheetsService, spreadsheetId: string, args: strin
   if (args.length < 2) {
     throw new ArgumentError(
       "Error: range and values are required",
-      'gwork sheets append <fileId> <range> <value1,value2,...> [<value3,value4,...>]'
+      'gwork sheets append <fileId> <range> <val1,val2,...> or \'["val1","val2",...]\''
     );
   }
 
   const range = args[0]!;
-  // Each remaining arg is a comma-separated row
-  const values = args.slice(1).map((row) => row.split(","));
+  // Each remaining arg is either a JSON array (for values with commas) or comma-separated
+  const values = args.slice(1).map((row) => {
+    const trimmed = row.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed.map(String);
+      } catch {
+        // Fall through to comma-split
+      }
+    }
+    return row.split(",");
+  });
 
   const spinner = ora("Appending rows…").start();
   const result = await svc.appendRows(spreadsheetId, range, values);
