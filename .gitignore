@@ -50,3 +50,6 @@ credentials.json
 *.db
 *.db-shm
 *.db-wal
+
+# Downloaded documents
+*.docx
