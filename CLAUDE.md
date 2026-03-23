@@ -11,7 +11,7 @@ The codebase is built with TypeScript using Bun as the primary runtime, with add
 ## Development Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (required before build — bun run build fails on missing modules)
 bun install
 
 # Run CLI in development mode (direct execution)
@@ -273,6 +273,7 @@ const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — c
 ## Task Hygiene
 
 - **DO** call `TaskCreate` then `TaskUpdate` (status: `in_progress`) as the very first actions in every session, even for trivial single-command tasks like `pnpm link --global`. The `pretooluse-require-tasks` hook blocks Bash/Edit immediately if no `in_progress` task exists — there is no grace period.
+- **DO** always create at least one pending task alongside each in_progress task. CHECK 4 in `pretooluse-require-tasks` blocks Edit/Write/Bash when all incomplete tasks are in_progress and none are pending. Before the first Edit/Bash call, create both the in_progress work task and a pending "Verify changes" or similar next-step task.
 - **DON'T** assume that short tasks are exempt. The hook fires regardless of task complexity.
 
 ## Git & Contribution

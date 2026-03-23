@@ -26,9 +26,9 @@ export class ServiceError extends Error {
 }
 
 export class NotFoundError extends ServiceError {
-  constructor(resource: string, identifier?: string) {
+  constructor(resource: string, identifier?: string, hint?: string) {
     const msg = identifier ? `${resource} not found: ${identifier}` : `${resource} not found`;
-    super(msg, "NOT_FOUND", 404, false);
+    super(msg, "NOT_FOUND", 404, false, hint);
     Object.setPrototypeOf(this, NotFoundError.prototype);
   }
 }
