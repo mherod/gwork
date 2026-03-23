@@ -7,6 +7,8 @@ import { handleContactsCommand } from "./commands/contacts.ts";
 import { handleAccountsCommand } from "./commands/accounts.ts";
 import { handleDriveCommand } from "./commands/drive.ts";
 import { handleSheetsCommand } from "./commands/sheets.ts";
+import { handleDocsCommand } from "./commands/docs.ts";
+import { handleSlidesCommand } from "./commands/slides.ts";
 import { CommandRegistry } from "./commands/registry.ts";
 import { parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
@@ -25,6 +27,8 @@ Commands:
   contacts       Google Contacts operations
   drive          Google Drive operations
   sheets         Google Sheets operations
+  docs           Google Docs operations
+  slides         Google Slides operations
   accounts       List configured Google accounts
 
 Options:
@@ -281,6 +285,62 @@ Examples:
 `);
 }
 
+function printDocsHelp() {
+  console.log(`
+gwork docs - Google Docs operations
+
+Usage:
+  gwork docs <command> [options]
+
+Commands:
+  get <fileId>                      Get document metadata
+  read <fileId>                     Read and display document content as text
+
+Options:
+  -h, --help                        Show this help message
+
+Read options:
+  --headers                         Show only headings (table of contents)
+  --format <text|json>              Output format (default: text)
+
+Examples:
+  gwork docs get <fileId>
+  gwork docs read <fileId>
+  gwork docs read <fileId> --headers
+  gwork docs read <fileId> --format json
+`);
+}
+
+function printSlidesHelp() {
+  console.log(`
+gwork slides - Google Slides operations
+
+Usage:
+  gwork slides <command> [options]
+
+Commands:
+  get <fileId>                      Get presentation metadata
+  list <fileId>                     List all slides with titles
+  read <fileId>                     Read slide content and speaker notes
+  thumbnail <fileId> <slideNum>     Get thumbnail URL for a slide
+
+Options:
+  -h, --help                        Show this help message
+
+Read options:
+  --notes                           Show only slides with speaker notes
+  --format <text|json>              Output format (default: text)
+
+Examples:
+  gwork slides get <fileId>
+  gwork slides list <fileId>
+  gwork slides read <fileId>
+  gwork slides read <fileId> --notes
+  gwork slides read <fileId> --format json
+  gwork slides thumbnail <fileId> 3
+`);
+}
+
 function printVersion() {
   const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
   console.log(`gwork version 0.3.2${buildTime}`);
@@ -390,6 +450,50 @@ async function handleSheets(args: string[]) {
   await handleSheetsCommand(subcommand, filteredArgs, account);
 }
 
+async function handleDocs(args: string[]) {
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    printDocsHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0];
+  if (!subcommand) {
+    printDocsHelp();
+    process.exit(0);
+  }
+  const subcommandArgs = args.slice(1);
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printDocsHelp();
+    process.exit(0);
+  }
+
+  await handleDocsCommand(subcommand, filteredArgs, account);
+}
+
+async function handleSlides(args: string[]) {
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    printSlidesHelp();
+    process.exit(0);
+  }
+
+  const subcommand = args[0];
+  if (!subcommand) {
+    printSlidesHelp();
+    process.exit(0);
+  }
+  const subcommandArgs = args.slice(1);
+  const { account, args: filteredArgs } = parseAccount(subcommandArgs);
+
+  if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
+    printSlidesHelp();
+    process.exit(0);
+  }
+
+  await handleSlidesCommand(subcommand, filteredArgs, account);
+}
+
 async function handleContacts(args: string[]) {
   // Check for help flag or no subcommand
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
@@ -454,6 +558,8 @@ const topLevelRegistry = new CommandRegistry<null>()
   .register("contacts", (_svc, args) => handleContacts(args))
   .register("drive", (_svc, args) => handleDrive(args))
   .register("sheets", (_svc, args) => handleSheets(args))
+  .register("docs", (_svc, args) => handleDocs(args))
+  .register("slides", (_svc, args) => handleSlides(args))
   .register("accounts", (_svc, args) => handleAccountsCommand(args));
 
 main().catch((error) => {
