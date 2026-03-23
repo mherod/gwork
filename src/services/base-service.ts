@@ -8,6 +8,7 @@
  * - Simple and testable with mocked AuthManager
  */
 
+import { google } from "googleapis";
 import { ensureCredentialsExist } from "../utils/setup-guide.ts";
 import { InitializationError } from "./errors.ts";
 import { logger as defaultLogger } from "../utils/logger.ts";
@@ -108,5 +109,27 @@ export abstract class BaseService {
       throw new InitializationError(this.serviceName);
     }
     return this.auth;
+  }
+
+  /**
+   * Verifies that the authenticated token belongs to the requested account.
+   * Uses the OAuth2 userinfo endpoint which works with any Google API token.
+   * Subclasses should call this in initialize() when account !== "default".
+   *
+   * @throws {Error} If the token's email doesn't match the requested account
+   */
+  protected async verifyAccount(): Promise<void> {
+    if (this.account === "default") return;
+
+    const oauth2 = google.oauth2({ version: "v2", auth: this.getAuth() });
+    const userinfo = await oauth2.userinfo.get();
+    const authenticatedEmail = userinfo.data.email ?? "";
+
+    if (authenticatedEmail.toLowerCase() !== this.account.toLowerCase()) {
+      throw new Error(
+        `Account mismatch: token is authenticated as "${authenticatedEmail}" but "--account ${this.account}" was requested. ` +
+        `Run "gwork ${this.serviceName.toLowerCase()} --account ${this.account}" to re-authenticate the correct account.`
+      );
+    }
   }
 }

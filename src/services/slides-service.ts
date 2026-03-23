@@ -43,6 +43,7 @@ export class SlidesService extends BaseService {
     await super.initialize();
     this.ensureInitialized();
     this.slides = google.slides({ version: "v1", auth: this.getAuth() });
+    await this.verifyAccount();
   }
 
   /**
