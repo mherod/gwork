@@ -2,6 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { DocsService } from "../services/docs-service.ts";
 import { ArgumentError } from "../services/errors.ts";
+import { extractFlag } from "../utils/args.ts";
 import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import { CommandRegistry } from "./registry.ts";
 
@@ -50,11 +51,6 @@ async function readDoc(svc: DocsService, documentId: string, args: string[]): Pr
   } else {
     console.log(content.bodyText);
   }
-}
-
-function extractFlag(args: string[], flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  return idx !== -1 ? args[idx + 1] : undefined;
 }
 
 async function createDoc(svc: DocsService, title: string): Promise<void> {
