@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { parseAccount } from "../../../src/utils/args.ts";
+import { normalizeArgs, parseAccount } from "../../../src/utils/args.ts";
 
 describe("parseAccount", () => {
   test("extracts account flag from beginning of args", () => {
@@ -90,6 +90,40 @@ describe("parseAccount", () => {
     });
   });
 
+  describe("equals-form syntax", () => {
+    test("extracts --account=email form", () => {
+      const result = parseAccount(["--account=matthew.herod@gmail.com", "list"]);
+      expect(result.account).toBe("matthew.herod@gmail.com");
+      expect(result.args).toEqual(["list"]);
+    });
+
+    test("extracts --account=value from middle of args", () => {
+      const result = parseAccount([
+        "search",
+        "rail",
+        "--account=user@gmail.com",
+      ]);
+      expect(result.account).toBe("user@gmail.com");
+      expect(result.args).toEqual(["search", "rail"]);
+    });
+
+    test("treats empty value (--account=) as empty string", () => {
+      const result = parseAccount(["--account=", "list"]);
+      expect(result.account).toBe("");
+      expect(result.args).toEqual(["list"]);
+    });
+
+    test("last form wins when both space- and equals-forms appear", () => {
+      const result = parseAccount([
+        "--account",
+        "first@example.com",
+        "--account=second@example.com",
+      ]);
+      expect(result.account).toBe("second@example.com");
+      expect(result.args).toEqual([]);
+    });
+  });
+
   describe("edge cases", () => {
     test("ignores --account without value (no extraction)", () => {
       const result = parseAccount(["list", "--account"]);
@@ -131,6 +165,61 @@ describe("parseAccount", () => {
       ]);
       expect(result.account).toBe("work@example.com");
       expect(result.args).toEqual(["contacts", "list"]);
+    });
+  });
+
+  describe("normalizeArgs", () => {
+    test("splits --flag=value into two tokens", () => {
+      expect(normalizeArgs(["--account=user@gmail.com"])).toEqual([
+        "--account",
+        "user@gmail.com",
+      ]);
+    });
+
+    test("splits short -x=value", () => {
+      expect(normalizeArgs(["-n=5"])).toEqual(["-n", "5"]);
+    });
+
+    test("preserves space-form --flag value", () => {
+      expect(normalizeArgs(["--account", "user@gmail.com"])).toEqual([
+        "--account",
+        "user@gmail.com",
+      ]);
+    });
+
+    test("preserves positional args containing '='", () => {
+      expect(normalizeArgs(["search", "foo=bar"])).toEqual([
+        "search",
+        "foo=bar",
+      ]);
+    });
+
+    test("leaves --flag (no value) untouched", () => {
+      expect(normalizeArgs(["--today"])).toEqual(["--today"]);
+    });
+
+    test("preserves -- separator", () => {
+      expect(normalizeArgs(["--", "--account=x"])).toEqual([
+        "--",
+        "--account=x",
+      ]);
+    });
+
+    test("yields empty value for --flag=", () => {
+      expect(normalizeArgs(["--account="])).toEqual(["--account", ""]);
+    });
+
+    test("splits at first '=' only (value may contain '=')", () => {
+      expect(normalizeArgs(["--query=key=value"])).toEqual([
+        "--query",
+        "key=value",
+      ]);
+    });
+
+    test("after normalize, literal --flag matcher reads value", () => {
+      const args = normalizeArgs(["--account=matthew.herod@gmail.com", "list"]);
+      const result = parseAccount(args);
+      expect(result.account).toBe("matthew.herod@gmail.com");
     });
   });
 

@@ -10,7 +10,7 @@ import { handleSheetsCommand } from "./commands/sheets.ts";
 import { handleDocsCommand } from "./commands/docs.ts";
 import { handleSlidesCommand } from "./commands/slides.ts";
 import { CommandRegistry } from "./commands/registry.ts";
-import { parseAccount } from "./utils/args.ts";
+import { normalizeArgs, parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
 import { logger } from "./utils/logger.ts";
 
@@ -524,7 +524,7 @@ async function handleContacts(args: string[]) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = normalizeArgs(process.argv.slice(2));
 
   // Extract and parse global flags
   const verbose = args.includes("--verbose");

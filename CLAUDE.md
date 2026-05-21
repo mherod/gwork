@@ -53,40 +53,15 @@ The `drive download` command takes a file ID, not a URL. Extract the ID from Goo
 
 ### Core Structure
 
-```
-src/
-├── cli.ts                      # Entry point; routes commands to handlers
-├── commands/
-│   ├── accounts.ts             # Accounts command handler
-│   ├── cal.ts                  # Calendar command dispatcher
-│   ├── contacts.ts             # Contacts command dispatcher
-│   ├── drive.ts                # Drive command dispatcher (list, get, search, download, upload, delete, mkdir, move, share, stats)
-│   ├── mail.ts                 # Gmail command dispatcher
-│   └── registry.ts             # Command registry
-├── services/
-│   ├── auth-manager.ts         # OAuth2 authentication manager
-│   ├── base-service.ts         # Base service class
-│   ├── calendar-service.ts     # Google Calendar API wrapper
-│   ├── contacts-service.ts     # Google Contacts API wrapper
-│   ├── drive-service.ts        # Google Drive API wrapper
-│   ├── error-handler.ts        # Centralized error handling
-│   ├── mail-service.ts         # Gmail API wrapper
-│   └── token-store.ts          # Multi-account token persistence (SQLite)
-├── utils/
-│   ├── sqlite-wrapper.ts       # Bun/Node.js SQLite abstraction layer
-│   ├── setup-guide.ts          # User onboarding for credentials setup
-│   └── format.ts               # Date/time formatting utilities
-└── types/
-    └── google-apis.ts          # TypeScript types for Google API responses
-```
+- `src/cli.ts` — entry point; routes top-level commands.
+- `src/commands/{accounts,cal,contacts,drive,mail,sheets,docs,slides}.ts` — command dispatchers; `registry.ts` is the shared registry.
+- `src/services/{auth-manager,base-service,calendar-service,contacts-service,drive-service,error-handler,mail-service,token-store}.ts` — Google API wrappers; `token-store.ts` is the SQLite-backed multi-account store.
+- `src/utils/{args,sqlite-wrapper,setup-guide,format,logger,output,...}.ts` — argument parsing, SQLite abstraction (Bun/Node), credentials onboarding, formatting.
+- `src/types/google-apis.ts` — Google API response types.
 
 ### Data Flow
 
-1. **CLI Entry** (`src/cli.ts`): Routes top-level commands (mail/cal) to handlers
-2. **Command Handlers** (`src/commands/*.ts`): Parse arguments and call service methods
-3. **Services** (`src/services/*.ts`): Google API wrappers; call `initialize()` first (checks credentials, loads/refreshes tokens)
-4. **Token Management** (`src/services/token-store.ts`): Singleton that manages SQLite database at `~/.gwork_tokens.db` with support for multiple accounts per service
-5. **Setup Flow** (`src/utils/setup-guide.ts`): Friendly onboarding if credentials missing
+`cli.ts` → command handler → service `initialize()` (credentials check, token load/refresh) → Google API call. Tokens persist in `~/.gwork_tokens.db` keyed by `(service, account)`; missing credentials trigger the setup guide.
 
 ### Token Management & Authentication
 
@@ -144,38 +119,13 @@ bun run build
 
 ### npm Authentication (Non-Interactive)
 
-`npm login` and `pnpm login` are interactive and cannot be automated in a non-interactive Claude Code session. Use the npm registry REST API instead:
+`npm login` / `pnpm login` are interactive. Use the registry REST API: write a temp `bun` script that `PUT`s to `https://registry.npmjs.org/-/user/org.couchdb.user:mherod` with `Content-Type: application/json` and `npm-otp: <OTP>` headers and body `{ name, password, type: "user" }`, then append `//registry.npmjs.org/:_authToken=<token>` to `~/.npmrc`. Verify with `pnpm whoami`.
 
-```typescript
-// Write to /tmp/set-npm-token.ts, then run: bun /tmp/set-npm-token.ts <OTP>
-const otp = process.argv[2];
-const response = await fetch("https://registry.npmjs.org/-/user/org.couchdb.user:mherod", {
-  method: "PUT",
-  headers: { "Content-Type": "application/json", "npm-otp": otp },
-  body: JSON.stringify({ name: "mherod", password: "<password>", type: "user" }),
-});
-const j = await response.json() as any;
-if (j.token) {
-  const npmrcPath = `${process.env.HOME}/.npmrc`;
-  const existing = await Bun.file(npmrcPath).text().catch(() => "");
-  const authLine = `//registry.npmjs.org/:_authToken=${j.token}`;
-  const filtered = existing.split("\n").filter(l => !l.includes("registry.npmjs.org/:_authToken")).join("\n");
-  await Bun.write(npmrcPath, filtered.trim() + "\n" + authLine + "\n");
-}
-```
+Credentials from 1Password: `op item get npmjs.com --fields Username` / `--fields password --reveal` / `--otp`.
 
-Retrieve credentials and OTP from 1Password:
-```bash
-op item get npmjs.com --fields Username       # username
-op item get npmjs.com --fields password --reveal  # password
-op item get npmjs.com --otp                   # one-time password
-```
+**DON'T** use `bun -e '...'` for scripts containing `!` — `!` triggers shell history expansion. Write to a temp `.ts` file and run with `bun /tmp/script.ts`.
 
-After writing the token, verify with `pnpm whoami` before publishing.
-
-**DON'T** use `bun -e '...'` inline for scripts containing `!` — the shell treats `!` as history expansion and the command fails. Write multi-line scripts to a temp `.ts` file and run with `bun /tmp/script.ts`.
-
-**DON'T** use `python3` or `python` in Bash commands — the system Python version is unreliable across environments and is blocked by a pretooluse hook. Use `bun -e 'console.log(require("./package.json").version)'` for quick one-liners, or write a temp `.ts` file and run with `bun /tmp/script.ts` for multi-line scripts.
+**DON'T** use `python` / `python3` — unreliable and blocked by a pretooluse hook. Use `bun -e` for one-liners or temp `.ts` files for multi-line.
 
 ### Publishing
 
@@ -226,23 +176,7 @@ After adding an override, run `bun install` to regenerate `bun.lock`, then `bun 
 
 ### Build Timestamp Injection
 
-The build script injects the current UTC timestamp as a compile-time constant via `bun --define`:
-
-```bash
---define __BUILD_TIME__=$(date -u +'"%Y-%m-%dT%H:%M:%SZ"')
-```
-
-In source files, declare it at the top before use:
-
-```typescript
-declare const __BUILD_TIME__: string | undefined;
-```
-
-Then guard with `typeof` before reading (the constant is undefined in dev/test mode):
-
-```typescript
-const buildTime = typeof __BUILD_TIME__ !== "undefined" ? ` (built ${__BUILD_TIME__})` : "";
-```
+Build injects `__BUILD_TIME__` via `bun --define __BUILD_TIME__=$(date -u +'"%Y-%m-%dT%H:%M:%SZ"')`. In source: `declare const __BUILD_TIME__: string | undefined;` then guard with `typeof __BUILD_TIME__ !== "undefined"` — the constant is undefined in dev/test.
 
 ### Type Checking
 
