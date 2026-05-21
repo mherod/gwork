@@ -234,17 +234,17 @@ export class Database {
   private wrapBetterSqlite3Statement(stmt: any): Statement {
     return {
       run: (params?: Record<string, any>) => {
-        const result = stmt.run(params);
+        const result = params === undefined ? stmt.run() : stmt.run(params);
         return {
           changes: result.changes,
           lastInsertRowid: result.lastInsertRowid,
         };
       },
       get: (params?: Record<string, any>) => {
-        return stmt.get(params);
+        return params === undefined ? stmt.get() : stmt.get(params);
       },
       all: (params?: Record<string, any>) => {
-        return stmt.all(params);
+        return params === undefined ? stmt.all() : stmt.all(params);
       },
       finalize: () => {
         // better-sqlite3 doesn't require explicit finalization
