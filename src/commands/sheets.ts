@@ -2,6 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { SheetsService } from "../services/sheets-service.ts";
 import { ArgumentError } from "../services/errors.ts";
+import { extractFlag } from "../utils/args.ts";
 import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import { CommandRegistry } from "./registry.ts";
 
@@ -202,14 +203,6 @@ async function appendRows(svc: SheetsService, spreadsheetId: string, args: strin
   spinner.stop();
 
   console.log(`Appended ${chalk.bold(String(result.updatedRows))} row(s) to ${chalk.cyan(result.updatedRange)}`);
-}
-
-/**
- * Extract a flag value from args (e.g., --format csv → "csv").
- */
-function extractFlag(args: string[], flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  return idx !== -1 ? args[idx + 1] : undefined;
 }
 
 function buildSheetsRegistry(): CommandRegistry<SheetsService> {

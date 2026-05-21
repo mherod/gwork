@@ -11,6 +11,14 @@ export interface ParsedArgs {
 // downstream parser that only matches the literal `--flag` token still finds
 // its value. Tokens not starting with `-` and tokens without `=` are left
 // untouched. Used at the CLI entry point as a single normalization pass.
+// Looks up `--flag` in args and returns the following token, or undefined if
+// the flag is missing or has no value. Assumes args have been normalized by
+// `normalizeArgs` so `--flag=value` callers don't need a separate code path.
+export function extractFlag(args: string[], flag: string): string | undefined {
+  const idx = args.indexOf(flag);
+  return idx !== -1 ? args[idx + 1] : undefined;
+}
+
 export function normalizeArgs(args: string[]): string[] {
   const out: string[] = [];
   let sawDoubleDash = false;

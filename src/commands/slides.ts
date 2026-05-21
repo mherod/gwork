@@ -2,6 +2,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { SlidesService } from "../services/slides-service.ts";
 import { ArgumentError } from "../services/errors.ts";
+import { extractFlag } from "../utils/args.ts";
 import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import { CommandRegistry } from "./registry.ts";
 
@@ -105,11 +106,6 @@ async function createPresentation(svc: SlidesService, title: string): Promise<vo
   console.log(`ID:      ${meta.presentationId}`);
   console.log(`Slides:  ${meta.slideCount}`);
   console.log(`Link:    https://docs.google.com/presentation/d/${meta.presentationId}/edit`);
-}
-
-function extractFlag(args: string[], flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  return idx !== -1 ? args[idx + 1] : undefined;
 }
 
 function truncate(text: string, max: number): string {
