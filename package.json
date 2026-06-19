@@ -88,7 +88,7 @@
     "date-fns": "^4.1.0",
     "google-auth-library": "^10.5.0",
     "googleapis": "^168.0.0",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^9.0.1",
     "open": "^11.0.0",
     "ora": "^9.0.0",
     "rrule": "^2.8.1"
