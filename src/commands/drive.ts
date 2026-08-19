@@ -3,6 +3,7 @@ import ora from "ora";
 import { DriveService } from "../services/drive-service.ts";
 import { ArgumentError } from "../services/errors.ts";
 import { logger } from "../utils/logger.ts";
+import { extractFlag } from "../utils/args.ts";
 import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import { CommandRegistry } from "./registry.ts";
 import type { ListFilesOptions } from "../services/drive-service.ts";
@@ -39,8 +40,8 @@ function formatMimeType(mimeType: string): string {
 }
 
 async function listFiles(svc: DriveService, args: string[]): Promise<void> {
-  const maxResults = parseInt(args[args.indexOf("--max-results") + 1] ?? "10", 10) || 10;
-  const folderId = args[args.indexOf("--folder") + 1];
+  const maxResults = parseInt(extractFlag(args, "--max-results") ?? "10", 10) || 10;
+  const folderId = extractFlag(args, "--folder");
 
   const spinner = ora("Fetching files…").start();
   const options: ListFilesOptions = { maxResults };
@@ -82,7 +83,7 @@ async function getFile(svc: DriveService, fileId: string): Promise<void> {
 }
 
 async function searchFiles(svc: DriveService, query: string, args: string[]): Promise<void> {
-  const maxResults = parseInt(args[args.indexOf("--max-results") + 1] ?? "10", 10) || 10;
+  const maxResults = parseInt(extractFlag(args, "--max-results") ?? "10", 10) || 10;
 
   const spinner = ora(`Searching for "${query}"…`).start();
   const files = await svc.searchFiles(query, maxResults);
