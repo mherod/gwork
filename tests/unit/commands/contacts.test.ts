@@ -48,7 +48,7 @@ function makeStatsFactory(throwOnFirst: boolean) {
     const thisCall = callCount;
     return {
       initialize: async () => {},
-      listContacts: async () => {
+      listAllContacts: async () => {
         if (throwOnFirst && thisCall === 1) {
           throw new ScopeInsufficientError("list contacts");
         }
@@ -122,7 +122,7 @@ describe("handleContactsCommand re-auth retry", () => {
       callCount++;
       return {
         initialize: async () => {},
-        listContacts: async () => {
+        listAllContacts: async () => {
           throw new ServiceError("quota exceeded", "RATE_LIMIT", 429);
         },
         getContactGroups: async () => [],
@@ -157,7 +157,7 @@ describe("handleContactsCommand re-auth retry", () => {
       callCount++;
       return {
         initialize: async () => {},
-        listContacts: async () => { throw new ScopeInsufficientError("contacts stats"); },
+        listAllContacts: async () => { throw new ScopeInsufficientError("contacts stats"); },
         getContactGroups: async () => { throw new ScopeInsufficientError("contacts stats"); },
       } as unknown as ContactsService;
     };
@@ -174,5 +174,66 @@ describe("handleContactsCommand re-auth retry", () => {
     expect(exitCode).toBe(1);
     expect(callCount).toBe(2); // first attempt + one re-auth retry, no more
     exitSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: stats must not request a page larger than the API allows
+// ---------------------------------------------------------------------------
+
+describe("handleContactsCommand stats paging", () => {
+  let originalGetInstance: typeof TokenStore.getInstance;
+  let consoleLogSpy: ReturnType<typeof spyOn>;
+  let processExitSpy: ReturnType<typeof spyOn>;
+  let logged: string[];
+
+  beforeEach(() => {
+    logged = [];
+    logServiceErrorCalls.length = 0;
+    originalGetInstance = TokenStore.getInstance;
+    TokenStore.getInstance = () =>
+      ({ deleteToken: () => true }) as unknown as TokenStore;
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logged.push(args.join(" "));
+    });
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    TokenStore.getInstance = originalGetInstance;
+    consoleLogSpy.mockRestore();
+    processExitSpy.mockRestore();
+  });
+
+  it("collects every contact via listAllContacts rather than one oversized page", async () => {
+    // Regression: stats called listContacts({ pageSize: 10000 }), which the
+    // service rejects (`pageSize` is capped), so the command always failed
+    // with "Validation error for pageSize: Must be between 1 and 2000".
+    const listContactsCalls: unknown[] = [];
+    let listAllCalled = false;
+    const factory = (_acc: string): ContactsService =>
+      ({
+        initialize: async () => {},
+        listContacts: async (options: unknown) => {
+          listContactsCalls.push(options);
+          return [];
+        },
+        listAllContacts: async () => {
+          listAllCalled = true;
+          return [
+            { emailAddresses: [{ value: "a@example.com" }] },
+            { phoneNumbers: [{ value: "123" }] },
+          ];
+        },
+        getContactGroups: async () => [{ name: "Friends" }],
+      }) as unknown as ContactsService;
+
+    await handleContactsCommand("stats", [], "default", factory);
+
+    expect(listAllCalled).toBe(true);
+    expect(listContactsCalls).toHaveLength(0);
+    const output = logged.join("\n");
+    expect(output).toContain("Total Contacts: 2");
+    expect(output).toContain("Total Groups: 1");
   });
 });

@@ -477,24 +477,37 @@ async function getStats(mailService: MailService) {
     const profile = await mailService.getProfile();
     const labels = await mailService.listLabels();
 
-    const inboxLabel = labels.find((l) => l.id === "INBOX");
-    const unreadCount = inboxLabel?.messagesUnread || 0;
-    const totalCount = inboxLabel?.messagesTotal || 0;
+    // Mailbox-wide totals come from the profile. Per-label counters are only
+    // returned by users.labels.get — users.labels.list omits them entirely.
+    const totalCount = profile.messagesTotal || 0;
+    const threadCount = profile.threadsTotal || 0;
+    const inbox = await mailService.getLabel("INBOX");
+    const inboxTotal = inbox.messagesTotal || 0;
+    const inboxUnread = inbox.messagesUnread || 0;
+
+    const userLabels = labels.filter((l) => l.type === "user");
+    const shownLabels = userLabels.slice(0, 10);
+    const shownCounts = await Promise.all(
+      shownLabels.map(async (label) => {
+        const detail = await mailService.getLabel(label.id!);
+        return { name: label.name, count: detail.messagesTotal || 0 };
+      })
+    );
 
     spinner.succeed("Statistics fetched");
 
     printSectionHeader("\nGmail Statistics:");
     logger.info(`${chalk.cyan("Email Address:")} ${profile.emailAddress}`);
     logger.info(`${chalk.cyan("Total Messages:")} ${totalCount}`);
-    logger.info(`${chalk.cyan("Unread Messages:")} ${unreadCount}`);
-    logger.info(`${chalk.cyan("Read Messages:")} ${totalCount - unreadCount}`);
+    logger.info(`${chalk.cyan("Total Threads:")} ${threadCount}`);
+    logger.info(`${chalk.cyan("Inbox Messages:")} ${inboxTotal}`);
+    logger.info(`${chalk.cyan("Inbox Unread:")} ${inboxUnread}`);
+    logger.info(`${chalk.cyan("Inbox Read:")} ${inboxTotal - inboxUnread}`);
 
-    const userLabels = labels.filter((l: any) => l.type === "user");
     if (userLabels.length > 0) {
       logger.info(`\n${chalk.cyan("User Labels:")} ${userLabels.length}`);
-      userLabels.slice(0, 10).forEach((label: any) => {
-        const count = label.messagesTotal || 0;
-        logger.info(`  - ${label.name}: ${count} messages`);
+      shownCounts.forEach(({ name, count }) => {
+        logger.info(`  - ${name}: ${count} messages`);
       });
       if (userLabels.length > 10) {
         logger.info(chalk.gray(`  ... and ${userLabels.length - 10} more`));

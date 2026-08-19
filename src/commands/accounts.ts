@@ -34,6 +34,8 @@ function formatTimeRemaining(expiryDate: Date): string {
 }
 
 export async function handleAccountsCommand(args: string[]) {
+  const isVerbose =
+    args.includes("-v") || args.includes("--verbose") || logger.getConfig().verbose;
   const spinner = ora("Fetching configured accounts...").start();
 
   try {
@@ -83,8 +85,11 @@ export async function handleAccountsCommand(args: string[]) {
         logger.info(`   ${chalk.gray("Status:")}  ${statusColor(statusText)}`);
         logger.info(`   ${chalk.gray("Expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
 
-        // Show scopes in a condensed way if verbose flag is present
-        if (args.includes("-v") || args.includes("--verbose")) {
+        // Show scopes in a condensed way if verbose flag is present.
+        // `--verbose` is consumed as a global flag in main() and stripped from
+        // args before dispatch, so the logger config is the only place it
+        // survives when invoked through the CLI. `-v` still arrives in args.
+        if (isVerbose) {
             logger.info(`   ${chalk.gray("Scopes:")}`);
             token.scopes.forEach(scope => {
                 logger.info(`     - ${scope}`);

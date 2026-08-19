@@ -177,3 +177,78 @@ describe("handleDriveCommand re-auth retry", () => {
     exitSpy.mockRestore();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: flag parsing must not misread the next flag as a value
+// ---------------------------------------------------------------------------
+
+describe("handleDriveCommand list flag parsing", () => {
+  let originalGetInstance: typeof TokenStore.getInstance;
+  let consoleLogSpy: ReturnType<typeof spyOn>;
+  let processExitSpy: ReturnType<typeof spyOn>;
+
+  /**
+   * Captures the ListFilesOptions the command layer builds, so the assertions
+   * describe what Drive would actually be asked for.
+   */
+  function makeListFactory(captured: Record<string, unknown>[]) {
+    return (_acc: string): DriveService =>
+      ({
+        initialize: async () => {},
+        listFiles: async (options: Record<string, unknown> = {}) => {
+          captured.push(options);
+          return [];
+        },
+      }) as unknown as DriveService;
+  }
+
+  beforeEach(() => {
+    logServiceErrorCalls.length = 0;
+    originalGetInstance = TokenStore.getInstance;
+    TokenStore.getInstance = () =>
+      ({ deleteToken: () => true }) as unknown as TokenStore;
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    TokenStore.getInstance = originalGetInstance;
+    consoleLogSpy.mockRestore();
+    processExitSpy.mockRestore();
+  });
+
+  it("does not set folderId when --folder is absent", async () => {
+    // Regression: args.indexOf("--folder") returns -1 when the flag is absent,
+    // so args[-1 + 1] read args[0] — turning "--max-results" into a folder ID
+    // and making `drive list --max-results N` fail with "Files not found".
+    const captured: Record<string, unknown>[] = [];
+    await handleDriveCommand("list", ["--max-results", "3"], "default", makeListFactory(captured));
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.folderId).toBeUndefined();
+    expect(captured[0]?.maxResults).toBe(3);
+  });
+
+  it("still honours --folder when it is provided", async () => {
+    const captured: Record<string, unknown>[] = [];
+    await handleDriveCommand("list", ["--folder", "abc123"], "default", makeListFactory(captured));
+    expect(captured[0]?.folderId).toBe("abc123");
+  });
+
+  it("honours --folder and --max-results together", async () => {
+    const captured: Record<string, unknown>[] = [];
+    await handleDriveCommand(
+      "list",
+      ["--max-results", "5", "--folder", "abc123"],
+      "default",
+      makeListFactory(captured)
+    );
+    expect(captured[0]?.folderId).toBe("abc123");
+    expect(captured[0]?.maxResults).toBe(5);
+  });
+
+  it("defaults maxResults to 10 when --max-results is absent", async () => {
+    const captured: Record<string, unknown>[] = [];
+    await handleDriveCommand("list", ["--folder", "abc123"], "default", makeListFactory(captured));
+    expect(captured[0]?.maxResults).toBe(10);
+  });
+});
