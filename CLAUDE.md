@@ -94,9 +94,11 @@ This abstraction normalizes parameter syntax (`@param` for both, internally conv
 - **Runtime**: Run tests with `bun test`.
 - **Mocking**: Use `bun:test` primitives (`mock`, `spyOn`).
 - **Database in Tests**:
-  - **DON'T** access the real SQLite database in unit tests. It causes "database is locked" errors due to concurrency.
+  - **DON'T** access the real SQLite database in unit tests. `saveToken` is `ON CONFLICT(service, account) DO UPDATE`, so a fixture write silently replaces a live OAuth credential; it also causes "database is locked" errors.
   - **DO** mock `TokenStore.getInstance()` and its methods (e.g., `listTokens`) to return fixture data.
+  - **DO** set `GWORK_TOKENS_DB` to a temp path when a test must exercise the real SQLite layer. `resolveTokenDbPath()` in `src/services/token-store.ts` owns that resolution; `tests/unit/services/token-store.test.ts` shows the pattern and throws if the path sits inside `os.homedir()`.
   - **DO** restore mocks and singletons in `afterEach` to prevent test pollution.
+  - **DON'T** run `bun test --parallel=<n>`. Workers fail to load the SQLite binding (`SQLiteModule.default` undefined), failing every SQLite-backed test: `tests/unit/utils/sqlite-wrapper.test.ts` passes 31/0 alone, 31/31 fail under `--parallel=4`. Run files individually.
 
 ## Build & Publishing
 

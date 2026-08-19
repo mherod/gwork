@@ -1,6 +1,39 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, afterAll } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { TokenData } from "../../../src/services/token-store.ts";
-import { TokenStore } from "../../../src/services/token-store.ts";
+import {
+  TOKEN_DB_PATH_ENV,
+  TokenStore,
+  resolveTokenDbPath,
+} from "../../../src/services/token-store.ts";
+
+// These tests exercise the real SQLite layer, so they must never touch the developer's
+// store at ~/.gwork_tokens.db — saveToken upserts on (service, account) and would
+// overwrite live OAuth credentials. Point the store at a throwaway file first.
+const TEST_DB_PATH = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), "gwork-token-store-")),
+  "tokens.db"
+);
+process.env[TOKEN_DB_PATH_ENV] = TEST_DB_PATH;
+
+// Fail fast rather than let a misconfigured run write to the real store.
+const resolvedDbPath = resolveTokenDbPath();
+if (resolvedDbPath.startsWith(os.homedir() + path.sep)) {
+  throw new Error(
+    `Refusing to run token-store tests against a database inside the home directory: ${resolvedDbPath}. ` +
+      `Set ${TOKEN_DB_PATH_ENV} to a temporary path.`
+  );
+}
+
+afterAll(() => {
+  // Remove the database and the WAL/SHM siblings that journal_mode=WAL creates.
+  for (const suffix of ["", "-wal", "-shm"]) {
+    fs.rmSync(`${TEST_DB_PATH}${suffix}`, { force: true });
+  }
+  fs.rmSync(path.dirname(TEST_DB_PATH), { recursive: true, force: true });
+});
 
 describe("TokenStore", () => {
   let originalInstance: any;
@@ -38,6 +71,51 @@ describe("TokenStore", () => {
     test("initializes database on first getInstance()", () => {
       const store = TokenStore.getInstance();
       expect(store).toBeDefined();
+    });
+  });
+
+  describe("database location", () => {
+    test("resolves the override instead of the home-directory default", () => {
+      expect(resolveTokenDbPath()).toBe(TEST_DB_PATH);
+    });
+
+    test("this suite never resolves a database inside the home directory", () => {
+      expect(resolveTokenDbPath().startsWith(os.homedir() + path.sep)).toBe(false);
+    });
+
+    test("writes land in the override file, not the default store", () => {
+      const store = TokenStore.getInstance();
+      store.saveToken({
+        service: "calendar",
+        account: "default",
+        access_token: "access123",
+        refresh_token: "refresh123",
+        expiry_date: Date.now() + 3600000,
+        scopes: ["https://www.googleapis.com/auth/calendar"],
+      });
+
+      expect(fs.existsSync(TEST_DB_PATH)).toBe(true);
+      expect(store.getToken("calendar", "default")?.access_token).toBe("access123");
+    });
+
+    test("falls back to the home-directory default when the override is unset", () => {
+      const override = process.env[TOKEN_DB_PATH_ENV];
+      delete process.env[TOKEN_DB_PATH_ENV];
+      try {
+        expect(resolveTokenDbPath()).toBe(path.join(os.homedir(), ".gwork_tokens.db"));
+      } finally {
+        process.env[TOKEN_DB_PATH_ENV] = override;
+      }
+    });
+
+    test("ignores a blank override so the default still applies", () => {
+      const override = process.env[TOKEN_DB_PATH_ENV];
+      process.env[TOKEN_DB_PATH_ENV] = "   ";
+      try {
+        expect(resolveTokenDbPath()).toBe(path.join(os.homedir(), ".gwork_tokens.db"));
+      } finally {
+        process.env[TOKEN_DB_PATH_ENV] = override;
+      }
     });
   });
 
@@ -188,7 +266,7 @@ describe("TokenStore", () => {
     });
 
     test("lists all tokens for specific service", () => {
-      const testId = `test-${Date.now()}`;
+      const testId = "test-list-tokens";
 
       store.saveToken({
         service: testId,
@@ -357,7 +435,7 @@ describe("TokenStore", () => {
     // TODO: Fix by implementing transaction support in sqlite-wrapper
     /*
     test("deletes token successfully", () => {
-      const testService = `delete-test-${Date.now()}`;
+      const testService = "delete-test-service";
 
       store.saveToken({
         service: testService,

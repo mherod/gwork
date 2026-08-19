@@ -25,7 +25,8 @@
  * - **WAL mode enabled:** Better concurrent read performance
  * - **busy_timeout: 5 seconds:** SQLite waits up to 5s for locks to clear
  * - **Retry logic:** Additional layer above SQLite's busy_timeout
- * - **Location:** `~/.gwork_tokens.db` (user's home directory)
+ * - **Location:** `~/.gwork_tokens.db` (user's home directory), or the path in
+ *   `GWORK_TOKENS_DB` when that variable is set — see `resolveTokenDbPath()`
  * 
  * **OPERATIONS WITH RETRY PROTECTION:**
  * 
@@ -87,6 +88,26 @@ import { Database } from "../utils/sqlite-wrapper.ts";
 import { withDbRetrySync } from "../utils/db-retry.ts";
 import { defaultLogger } from "./logger.ts";
 
+/** Environment variable that overrides the token database location. */
+export const TOKEN_DB_PATH_ENV = "GWORK_TOKENS_DB";
+
+/**
+ * Resolves the token database location.
+ *
+ * Defaults to `~/.gwork_tokens.db`. Set `GWORK_TOKENS_DB` to point at a different
+ * file — tests use this to stay off the developer's real store, which they would
+ * otherwise overwrite through the `(service, account)` upsert in `saveToken`.
+ *
+ * This is the single definition of where the store lives; callers that need to
+ * reason about the path (such as the test-suite safety guard) must use it rather
+ * than rebuilding the default themselves.
+ */
+export function resolveTokenDbPath(): string {
+  const override = process.env[TOKEN_DB_PATH_ENV];
+  if (override && override.trim() !== "") return override;
+  return path.join(os.homedir(), ".gwork_tokens.db");
+}
+
 export interface TokenData {
   service: string;
   account: string;
@@ -122,7 +143,7 @@ export class TokenStore {
    * @internal
    */
   private constructor() {
-    const dbPath = path.join(os.homedir(), ".gwork_tokens.db");
+    const dbPath = resolveTokenDbPath();
     this.db = new Database(dbPath, { create: true });
 
     // Enable WAL mode for better performance and concurrent access
