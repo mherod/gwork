@@ -144,14 +144,14 @@ export class AuthManager {
     // Clean up token with empty scopes for this service/account
     const existingToken = tokenStore.getToken(serviceKey, account);
     if (existingToken) {
-      const hasEmptyScopes = !existingToken.scopes || 
+      const hasEmptyScopes = !existingToken.scopes ||
                              (Array.isArray(existingToken.scopes) && existingToken.scopes.length === 0);
       if (hasEmptyScopes) {
         logger.info(`Removing token with empty scopes for ${service} (account: ${account})`);
         tokenStore.deleteToken(serviceKey, account);
       }
     }
-    
+
     // Clean up legacy tokens with empty account strings
     if (account === "default") {
       const emptyAccountToken = tokenStore.getToken(serviceKey, "");
@@ -475,6 +475,24 @@ export class AuthManager {
 
       // Listen on the redirect URI port (or default 3000)
       const port = redirectUri.port ? parseInt(redirectUri.port, 10) : 3000;
+
+      // Without an 'error' listener, a failure to bind (commonly EADDRINUSE when
+      // a dev server already holds the port) is emitted as an unhandled 'error'
+      // event and crashes the process with a raw Node stack trace.
+      server.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          reject(
+            new Error(
+              `Cannot complete sign-in: port ${port} is already in use by another process.\n` +
+                `The OAuth redirect URI in your credentials file points at this port, so it cannot be changed automatically.\n` +
+                `Free the port (e.g. \`lsof -nP -iTCP:${port} -sTCP:LISTEN\`, then stop that process) and run the command again.`
+            )
+          );
+          return;
+        }
+        reject(err);
+      });
+
       server.listen(port, () => {
         // Update redirect_uri with actual port before opening browser
         redirectUri.port = String((server.address() as { port: number }).port);
