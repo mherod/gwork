@@ -138,6 +138,38 @@ export class MailService extends BaseService {
   }
 
   /**
+   * Fetches a single label including its message/thread counters.
+   *
+   * `users.labels.list` returns only id/name/type — the `messagesTotal`,
+   * `messagesUnread`, `threadsTotal` and `threadsUnread` counters are populated
+   * exclusively by `users.labels.get`. Reading counts off a listed label always
+   * yields `undefined`, so use this method whenever counts are needed.
+   *
+   * @param labelId - Label ID (e.g. "INBOX" or a user label ID)
+   * @returns Label object including counters
+   *
+   * @example
+   * ```typescript
+   * const inbox = await mail.getLabel("INBOX");
+   * console.log(`${inbox.messagesUnread} unread of ${inbox.messagesTotal}`);
+   * ```
+   */
+  async getLabel(labelId: string): Promise<Label> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    try {
+      const result = await this.gmail!.users.labels.get({
+        userId: "me",
+        id: labelId,
+      });
+      return result.data;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, `get label ${labelId}`);
+    }
+  }
+
+  /**
    * Creates a new label.
    *
    * @param labelData - Label properties (name, labelListVisibility, etc.)

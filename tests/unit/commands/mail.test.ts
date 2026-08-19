@@ -53,6 +53,7 @@ function makeStatsFactory(throwOnFirst: boolean) {
         return STUB_PROFILE;
       },
       listLabels: async () => [],
+      getLabel: async (id: string) => ({ id, messagesTotal: 0, messagesUnread: 0 }),
     } as unknown as MailService;
   };
   return { factory, getCallCount: () => callCount };
@@ -171,5 +172,79 @@ describe("handleMailCommand re-auth retry", () => {
     expect(exitCode).toBe(1);
     expect(callCount).toBe(2); // first attempt + one re-auth retry, no more
     exitSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: stats must read counts from sources that actually populate them
+// ---------------------------------------------------------------------------
+
+describe("handleMailCommand stats counts", () => {
+  let originalGetInstance: typeof TokenStore.getInstance;
+  let consoleLogSpy: ReturnType<typeof spyOn>;
+  let processExitSpy: ReturnType<typeof spyOn>;
+  let logged: string[];
+
+  beforeEach(() => {
+    logged = [];
+    logServiceErrorCalls.length = 0;
+    originalGetInstance = TokenStore.getInstance;
+    TokenStore.getInstance = () =>
+      ({ deleteToken: () => true }) as unknown as TokenStore;
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logged.push(args.join(" "));
+    });
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    TokenStore.getInstance = originalGetInstance;
+    consoleLogSpy.mockRestore();
+    processExitSpy.mockRestore();
+  });
+
+  /**
+   * Mirrors the real Gmail API: users.labels.list returns labels WITHOUT
+   * counters, while users.labels.get returns them. Reading counts off the
+   * listed labels is what made `mail stats` report 0 for every figure.
+   */
+  function makeCountingFactory() {
+    return (_acc: string): MailService =>
+      ({
+        initialize: async () => {},
+        getProfile: async () => ({
+          emailAddress: "test@example.com",
+          messagesTotal: 2493,
+          threadsTotal: 2149,
+        }),
+        listLabels: async () => [
+          { id: "INBOX", name: "INBOX", type: "system" },
+          { id: "Label_1", name: "Project X", type: "user" },
+        ],
+        getLabel: async (id: string) =>
+          id === "INBOX"
+            ? { id, name: "INBOX", messagesTotal: 120, messagesUnread: 7 }
+            : { id, name: "Project X", messagesTotal: 42, messagesUnread: 0 },
+      }) as unknown as MailService;
+  }
+
+  it("reports the mailbox total from the profile, not from listed labels", async () => {
+    await handleMailCommand("stats", [], "default", makeCountingFactory());
+    const output = logged.join("\n");
+    expect(output).toContain("2493");
+    expect(output).toContain("2149");
+  });
+
+  it("reports inbox counts from labels.get", async () => {
+    await handleMailCommand("stats", [], "default", makeCountingFactory());
+    const output = logged.join("\n");
+    expect(output).toContain("120");
+    expect(output).toContain("7");
+  });
+
+  it("reports per-user-label counts from labels.get", async () => {
+    await handleMailCommand("stats", [], "default", makeCountingFactory());
+    const output = logged.join("\n");
+    expect(output).toContain("Project X: 42 messages");
   });
 });
