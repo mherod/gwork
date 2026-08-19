@@ -800,7 +800,9 @@ async function getProfile(contactsService: ContactsService, args: string[]) {
 async function getStats(contactsService: ContactsService, _args: string[]) {
   const spinner = ora("Fetching contact statistics...").start();
   try {
-    const contacts = await contactsService.listContacts({ pageSize: 10000 });
+    // Pages internally: a single listContacts call cannot exceed the People API
+    // page-size cap, so asking for one big page failed validation outright.
+    const contacts = await contactsService.listAllContacts();
     const groups = await contactsService.getContactGroups();
 
     spinner.succeed("Statistics fetched successfully");

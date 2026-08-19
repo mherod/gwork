@@ -31,6 +31,9 @@ export interface ContactsServiceDeps {
   analyzer?: ContactAnalyzer;
 }
 
+/** Maximum `pageSize` the People API accepts for people.connections.list. */
+const CONTACTS_MAX_PAGE_SIZE = 1000;
+
 export class ContactsService extends BaseService {
   private people: PeopleClient | null = null;
 
@@ -154,6 +157,57 @@ export class ContactsService extends BaseService {
       );
     } catch (error: unknown) {
       handleGoogleApiError(error, "list contacts");
+    }
+  }
+
+  /**
+   * Lists every contact, following pagination until the connection list is
+   * exhausted.
+   *
+   * `listContacts` returns a single page and drops `nextPageToken`, so callers
+   * that need a complete set (counts, exports, duplicate scans) cannot page for
+   * themselves. The People API caps `pageSize` at 1000, so asking for more in a
+   * single call fails validation rather than returning everything.
+   *
+   * @param personFields - Comma-separated fields to request; defaults to the
+   *   service defaults
+   * @returns Every Person in the account's connections
+   *
+   * @example
+   * ```typescript
+   * const all = await contacts.listAllContacts();
+   * console.log(`${all.length} contacts`);
+   * ```
+   */
+  async listAllContacts(personFields?: string): Promise<Person[]> {
+    await this.initialize();
+    this.ensureInitialized();
+
+    const fields = personFields ?? this.DEFAULT_PERSON_FIELDS;
+    const all: Person[] = [];
+    let pageToken: string | undefined;
+
+    try {
+      do {
+        const result = await withRetry(
+          async () =>
+            await this.people!.people.connections.list({
+              resourceName: "people/me",
+              pageSize: CONTACTS_MAX_PAGE_SIZE,
+              pageToken,
+              personFields: fields,
+              sortOrder: "LAST_NAME_ASCENDING",
+            }),
+          { maxRetries: 3 }
+        );
+
+        all.push(...(result.data.connections || []));
+        pageToken = result.data.nextPageToken || undefined;
+      } while (pageToken);
+
+      return all;
+    } catch (error: unknown) {
+      handleGoogleApiError(error, "list all contacts");
     }
   }
 
