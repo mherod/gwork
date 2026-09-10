@@ -14,6 +14,8 @@ import { normalizeArgs, parseAccount } from "./utils/args.ts";
 import { logServiceError } from "./utils/command-error-handler.ts";
 import { logger } from "./utils/logger.ts";
 
+const accountHelp = "  --account <email>       Use a specific Google account (default: \"default\")";
+
 function printHelp() {
   console.log(`
 gwork - Swiss Army knife for Google Workspace
@@ -29,12 +31,12 @@ Commands:
   sheets         Google Sheets operations
   docs           Google Docs operations
   slides         Google Slides operations
-  accounts       List configured Google accounts
+  accounts       Manage configured Google accounts
 
 Options:
   -h, --help              Show this help message
   -v, --version           Show version
-  --account <email>       Use a specific Google account (default: "default")
+${accountHelp}
 
 Examples:
   gwork mail --help
@@ -86,6 +88,7 @@ Commands:
 
 Options:
   -h, --help                              Show this help message
+${accountHelp}
   --max-results <number>                  Maximum number of results to return (default: 10)
   --json                                  Structured output for get and attachments
   --format <plain|html|auto>              Body format for get and thread (default: auto)
@@ -105,6 +108,7 @@ Send options:
 
 Examples:
   gwork mail messages
+  gwork mail messages --account work@example.com
   gwork mail search "from:example@gmail.com"
   gwork mail unread
   gwork mail stats
@@ -148,9 +152,11 @@ Commands:
 
 Options:
   -h, --help                              Show this help message
+${accountHelp}
 
 Examples:
   gwork cal list
+  gwork cal list --account work@example.com
   gwork cal calendars
   gwork cal search "meeting"
   gwork cal stats
@@ -197,10 +203,11 @@ Advanced:
 
 Options:
   -h, --help                                  Show this help message
-  --account <email>                           Use a specific Google account
+${accountHelp}
 
 Examples:
   gwork contacts list -n 100
+  gwork contacts list --account work@example.com
   gwork contacts search "john"
   gwork contacts find-email "john@example.com"
   gwork contacts create --first-name John --last-name Doe --email john@example.com --confirm
@@ -230,6 +237,7 @@ Commands:
 
 Options:
   -h, --help                      Show this help message
+${accountHelp}
   --max-results <number>          Maximum number of results to return (default: 10)
   --folder <folderId>             Filter by folder / set parent folder
   --output <path>                 Destination path for download
@@ -238,6 +246,7 @@ Options:
 
 Examples:
   gwork drive list
+  gwork drive list --account work@example.com
   gwork drive list --max-results 25
   gwork drive search "quarterly report"
   gwork drive get <fileId>
@@ -268,6 +277,7 @@ Commands:
 
 Options:
   -h, --help                        Show this help message
+${accountHelp}
 
 Read options:
   --format <table|csv|json>         Output format (default: table)
@@ -279,6 +289,7 @@ Export options:
 
 Examples:
   gwork sheets list <fileId>
+  gwork sheets list <fileId> --account work@example.com
   gwork sheets read <fileId>
   gwork sheets read <fileId> "Sheet1!A1:D10"
   gwork sheets read <fileId> --format csv
@@ -305,6 +316,7 @@ Commands:
 
 Options:
   -h, --help                        Show this help message
+${accountHelp}
 
 Read options:
   --headers                         Show only headings (table of contents)
@@ -312,6 +324,7 @@ Read options:
 
 Examples:
   gwork docs get <fileId>
+  gwork docs get <fileId> --account work@example.com
   gwork docs read <fileId>
   gwork docs read <fileId> --headers
   gwork docs read <fileId> --format json
@@ -336,6 +349,7 @@ Commands:
 
 Options:
   -h, --help                        Show this help message
+${accountHelp}
 
 Read options:
   --notes                           Show only slides with speaker notes
@@ -343,12 +357,43 @@ Read options:
 
 Examples:
   gwork slides get <fileId>
+  gwork slides get <fileId> --account work@example.com
   gwork slides list <fileId>
   gwork slides read <fileId>
   gwork slides read <fileId> --notes
   gwork slides read <fileId> --format json
   gwork slides create "Quarterly Review"
   gwork slides thumbnail <fileId> 3
+`);
+}
+
+function printAccountsHelp() {
+  console.log(`
+gwork accounts - Manage locally stored Google accounts
+
+Usage:
+  gwork accounts [list]
+  gwork accounts remove <account> [--service <name>] [--confirm]
+  gwork accounts prune [--include-test-fixtures] [--confirm]
+
+Options:
+  -h, --help                 Show this help message
+  --verbose                  Show detailed token status when listing
+  --service <name>           Remove only the exact account/service pair
+  --confirm                  Apply the displayed removal plan (default: preview)
+  --include-test-fixtures    Also prune services named test-<digits>
+
+Prune selects rows with a blank account or empty scopes. Access-token expiry
+alone does not select a row: its refresh token may still be usable.
+Removal affects local tokens only; it does not revoke access at Google.
+
+Examples:
+  gwork accounts
+  gwork accounts list --verbose
+  gwork accounts remove work@example.com --service gmail
+  gwork accounts remove work@example.com --service gmail --confirm
+  gwork accounts prune
+  gwork accounts prune --include-test-fixtures --confirm
 `);
 }
 
@@ -571,7 +616,10 @@ const topLevelRegistry = new CommandRegistry<null>()
   .register("sheets", (_svc, args) => handleSheets(args))
   .register("docs", (_svc, args) => handleDocs(args))
   .register("slides", (_svc, args) => handleSlides(args))
-  .register("accounts", (_svc, args) => handleAccountsCommand(args));
+  .register("accounts", async (_svc, args) => {
+    if (args.includes("--help") || args.includes("-h")) return printAccountsHelp();
+    return handleAccountsCommand(args);
+  });
 
 main().catch((error) => {
   logServiceError(error);

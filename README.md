@@ -66,24 +66,19 @@ pnpm overrides live in `pnpm-workspace.yaml`, as required by
 
 ### Native binding (pnpm / Node version changes)
 
-`gwork` uses `better-sqlite3` for token storage, which requires a native `.node` binding compiled for your current Node.js ABI. If you see an error like:
+Node uses `better-sqlite3` for token storage. Its native binding must match the
+Node version running the CLI. After a missing-binding or ABI error, gwork tries
+one repair using that exact Node executable, version, and architecture.
 
-```
-Error: Could not locate the bindings file. Tried: .../better_sqlite3.node
-```
+Repair requires an installed `node-gyp`, Python, and a C++ build toolchain. It
+builds in a temporary directory and opens an in-memory database with the new
+binding before replacing the installed file. A failed build or verification
+leaves the existing binding intact; repair does not open your token database.
+No package manager or automatic package download is used to find `node-gyp`.
 
-Rebuild the native binding using the script included in `package.json`:
-
-```bash
-pnpm run rebuild-sqlite3
-```
-
-This uses `node-gyp rebuild` with the exact path to `better-sqlite3` under your package manager's store, which is more reliable than `pnpm rebuild better-sqlite3` (the latter silently exits 0 without rebuilding when the path isn't found).
-
-You may need to rebuild after:
-- Running `pnpm install` (can wipe `build/Release/` for native deps)
-- Switching Node.js versions (ABI mismatch)
-- First cloning the repo with pnpm (binding not pre-compiled)
+If repair fails, install the missing build prerequisites and retry with the
+intended Node executable. The error includes its path and version. From a
+source checkout, `bun src/cli.ts <command>` uses Bun's built-in SQLite instead.
 
 ## Usage
 
@@ -95,7 +90,7 @@ Commands:
   cal            Google Calendar operations
   contacts       Google Contacts operations
   drive          Google Drive operations
-  accounts       List configured Google accounts
+  accounts       Manage configured Google accounts
 
 Options:
   -h, --help              Show help message
@@ -127,6 +122,12 @@ To use calendar, Gmail, and Contacts features, you need OAuth2 credentials from 
 
 **On first run**, the CLI will display a friendly setup guide if credentials are missing, walking you through the process step-by-step.
 
+Desktop OAuth clients automatically select a free callback port when their
+configured port is occupied. Set `GWORK_OAUTH_PORT=4567` to require a particular
+port, or `GWORK_OAUTH_PORT=0` to request an available port immediately. Web clients
+require an exact registered redirect URI: overrides must select a URI listed in
+the credentials file, and occupied ports must be freed.
+
 ### Token Management
 
 Tokens are securely stored in a local SQLite database at `~/.gwork_tokens.db`:
@@ -148,6 +149,27 @@ bun run src/scripts/list-tokens.ts
 ```
 
 When you use the `--account` flag, the CLI will authenticate with that account (if not already authenticated) and store the token separately. You can easily switch between accounts.
+
+### Account cleanup
+
+`gwork accounts` and `gwork accounts list` show stored accounts. A refreshable
+token remains usable even when its access token has expired. Use `--verbose`
+for detailed status.
+
+Removal and pruning show a preview unless you add `--confirm`:
+
+```bash
+gwork accounts remove work@example.com --service gmail
+gwork accounts remove work@example.com --service gmail --confirm
+gwork accounts prune
+gwork accounts prune --include-test-fixtures --confirm
+```
+
+Remove matches the exact account; omit `--service` to select all its services.
+Prune selects blank accounts or empty scopes. `--include-test-fixtures` also
+selects service names matching `test-<digits>`. Access-token expiry alone never
+selects a row. These commands delete local token rows without revoking access
+at Google or affecting other accounts.
 
 ## Commands
 
