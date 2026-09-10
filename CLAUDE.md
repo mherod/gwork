@@ -1,12 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Repository guidance for Claude Code (claude.ai/code).
 
 ## Project Overview
 
-**gwork** is a comprehensive CLI tool for Google Workspace (Calendar, Gmail, Drive, Contacts). It exposes the Google APIs through a developer-friendly command-line interface.
-
-The codebase is built with TypeScript using Bun as the primary runtime, with additional Node.js compatibility for CLI distribution via npm.
+**gwork** exposes Google Workspace APIs (Calendar, Gmail, Drive, Contacts) through a TypeScript CLI. Use Bun for development; distribute Node.js-compatible bundles via npm.
 
 ## Development Commands
 
@@ -70,16 +68,16 @@ The `drive download` command takes a file ID, not a URL. Extract the ID from Goo
 - **Multi-account**: Supports separate tokens for different Google accounts (e.g., "default", "work", "personal")
 - **Token Refresh**: Google's local-auth library handles automatic refresh before expiry
 - **Setup Detection**: Both `CalendarService` and `MailService` check for credentials on initialization and display friendly setup guide if missing
-- **Account verification**: `MailService.initialize()` calls `gmail.users.getProfile({ userId: "me" })` after auth and throws a clear mismatch error if the token's `emailAddress` doesn't match the requested `--account`. DON'T skip this check — the Gmail API `userId: "me"` does not filter by email; without it, a mismatched token silently queries the wrong mailbox.
-- **Account scoping in search results**: `searchMessages` in `src/commands/mail.ts` filters fetched messages by `To`/`Delivered-To` headers when `account !== "default"`. This is defence-in-depth: always filter results client-side when account isolation is required, even when the token lookup is expected to be correct.
+- **Account verification**: DON'T skip `MailService.initialize()`'s post-auth `gmail.users.getProfile({ userId: "me" })` check comparing `emailAddress` with `--account`. `userId: "me"` does not filter email; mismatched tokens query the wrong mailbox.
+- **Account scoping**: `searchMessages` in `src/commands/mail.ts` matches parsed `From`/`To`/`Cc`/`Delivered-To` addresses when `account !== "default"`. Preserve client-side filtering for account isolation even with correct token lookup.
 
 ### SQLite Abstraction Layer
 
-The `sqlite-wrapper.ts` provides a unified interface that works in both:
+`sqlite-wrapper.ts` unifies:
 - **Bun runtime** (development, scripts): Uses native `bun:sqlite`
 - **Node.js runtime** (CLI distribution): Uses `better-sqlite3` npm package
 
-This abstraction normalizes parameter syntax (`@param` for both, internally converts to `$param` for Bun) and method names, keeping business logic clean of runtime conditionals.
+Use its normalized methods and `@param` syntax (internally `$param` for Bun) to avoid runtime conditionals.
 
 ## Key Design Patterns
 
