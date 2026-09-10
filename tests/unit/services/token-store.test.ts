@@ -429,11 +429,6 @@ describe("TokenStore", () => {
       store.close();
     });
 
-    // Note: This test is skipped due to SQLite WAL mode transaction issues
-    // The delete operation works correctly (verified separately), but there's a timing issue
-    // when querying immediately after deletion in test context
-    // TODO: Fix by implementing transaction support in sqlite-wrapper
-    /*
     test("deletes token successfully", () => {
       const testService = "delete-test-service";
 
@@ -455,8 +450,8 @@ describe("TokenStore", () => {
 
       const retrieved = store.getToken(testService, "to-delete");
       expect(retrieved).toBeNull();
+      expect(store.deleteToken(testService, "to-delete")).toBe(false);
     });
-    */
 
     test("returns false when deleting non-existent token", () => {
       const deleted = store.deleteToken("calendar", "non-existent");

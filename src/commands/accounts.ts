@@ -5,6 +5,115 @@ import { TokenStore } from "../services/token-store.ts";
 import type { TokenData } from "../services/token-store.ts";
 import { logger } from "../utils/logger.ts";
 import { printSectionHeader } from "../utils/output.ts";
+import { ArgumentError } from "../services/errors.ts";
+import { CommandRegistry } from "./registry.ts";
+
+const REMOVE_USAGE = "gwork accounts remove <account> [--service <name>] [--confirm]";
+const PRUNE_USAGE = "gwork accounts prune [--include-test-fixtures] [--confirm]";
+
+const accountsRegistry = new CommandRegistry<TokenStore>()
+  .register("list", listAccounts)
+  .register("remove", removeAccount)
+  .register("prune", pruneAccounts);
+
+export async function handleAccountsCommand(args: string[]) {
+  const hasSubcommand = args[0] !== undefined && !args[0].startsWith("-");
+  const subcommand = hasSubcommand ? args[0]! : "list";
+  const commandArgs = hasSubcommand ? args.slice(1) : args;
+
+  // Reject unknown commands before opening (and potentially creating) the store.
+  if (!accountsRegistry.commands().includes(subcommand)) {
+    throw new ArgumentError(`Unknown subcommand: ${subcommand}`, "gwork accounts [list|remove|prune]");
+  }
+
+  const tokenStore = TokenStore.getInstance();
+  try {
+    await accountsRegistry.execute(subcommand, tokenStore, commandArgs);
+  } finally {
+    tokenStore.close();
+  }
+}
+
+interface RemovalCandidate {
+  token: TokenData;
+  reason: string;
+}
+
+function applyRemovalPlan(tokenStore: TokenStore, candidates: RemovalCandidate[], confirm: boolean): void {
+  if (candidates.length === 0) {
+    logger.info("No matching tokens found. Nothing to remove.");
+    return;
+  }
+
+  logger.info(`Tokens selected for removal (${candidates.length}):`);
+  for (const { token, reason } of candidates) {
+    // Quote identifiers so an empty account and any whitespace remain visible.
+    logger.info(`  ${JSON.stringify(token.account)} / ${JSON.stringify(token.service)} — ${reason}`);
+  }
+
+  if (!confirm) {
+    logger.info("Preview only. Re-run with --confirm to remove these tokens.");
+    return;
+  }
+
+  for (const { token } of candidates) {
+    const deleted = tokenStore.deleteToken(token.service, token.account);
+    const result = deleted ? "Removed" : "Already absent";
+    logger.info(`${result}: ${JSON.stringify(token.account)} / ${JSON.stringify(token.service)}`);
+  }
+}
+
+async function removeAccount(tokenStore: TokenStore, args: string[]): Promise<void> {
+  let account: string | undefined;
+  let service: string | undefined;
+  let confirm = false;
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--confirm") {
+      confirm = true;
+    } else if (arg === "--service") {
+      const value = args[++index];
+      if (!value?.trim() || value.startsWith("-") || service !== undefined) {
+        throw new ArgumentError("--service requires one service name", REMOVE_USAGE);
+      }
+      service = value;
+    } else if (arg.startsWith("-") || account !== undefined) {
+      throw new ArgumentError(`Unexpected argument: ${arg}`, REMOVE_USAGE);
+    } else {
+      account = arg;
+    }
+  }
+
+  if (account === undefined) {
+    throw new ArgumentError("An account is required", REMOVE_USAGE);
+  }
+
+  const candidates = tokenStore.listTokens()
+    .filter(token => token.account === account && (service === undefined || token.service === service))
+    .map(token => ({ token, reason: "selected account" }));
+  applyRemovalPlan(tokenStore, candidates, confirm);
+}
+
+async function pruneAccounts(tokenStore: TokenStore, args: string[]): Promise<void> {
+  for (const arg of args) {
+    if (arg !== "--confirm" && arg !== "--include-test-fixtures") {
+      throw new ArgumentError(`Unexpected argument: ${arg}`, PRUNE_USAGE);
+    }
+  }
+
+  const includeTestFixtures = args.includes("--include-test-fixtures");
+  const candidates: RemovalCandidate[] = [];
+  for (const token of tokenStore.listTokens()) {
+    const reasons: string[] = [];
+    if (!token.account.trim()) reasons.push("empty account name");
+    if (!token.scopes.some(scope => scope.trim())) reasons.push("empty scopes");
+    if (includeTestFixtures && /^test-\d+$/.test(token.service)) reasons.push("test fixture service");
+    // Access expiry alone does not make a stored grant unusable: it may refresh.
+    if (reasons.length > 0) candidates.push({ token, reason: reasons.join(", ") });
+  }
+  applyRemovalPlan(tokenStore, candidates, args.includes("--confirm"));
+}
 
 /**
  * Formats time remaining until token expiry.
@@ -33,13 +142,17 @@ function formatTimeRemaining(expiryDate: Date): string {
   return `${diffMins} minute${diffMins === 1 ? "" : "s"} remaining`;
 }
 
-export async function handleAccountsCommand(args: string[]) {
+async function listAccounts(tokenStore: TokenStore, args: string[]) {
+  for (const arg of args) {
+    if (arg !== "-v" && arg !== "--verbose") {
+      throw new ArgumentError(`Unexpected argument: ${arg}`, "gwork accounts list [--verbose]");
+    }
+  }
   const isVerbose =
     args.includes("-v") || args.includes("--verbose") || logger.getConfig().verbose;
   const spinner = ora("Fetching configured accounts...").start();
 
   try {
-    const tokenStore = TokenStore.getInstance();
     const tokens = tokenStore.listTokens();
 
     if (tokens.length === 0) {
@@ -100,8 +213,6 @@ export async function handleAccountsCommand(args: string[]) {
       });
     });
 
-    // Clean up
-    tokenStore.close();
   } catch (error: unknown) {
     spinner.fail("Failed to list accounts");
     throw error;
