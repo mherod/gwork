@@ -105,6 +105,26 @@ describe("handleSlidesCommand", () => {
     expect(output()).toContain("https://example.com/thumbnail");
   });
 
+  for (const number of ["1.5", "1junk", "1e2", "0x1", "+1", " 1", "1 ", "1\n", "", "9007199254740992"]) {
+    it(`rejects malformed thumbnail slide number ${JSON.stringify(number)} before fetching data`, async () => {
+      await handleSlidesCommand("thumbnail", ["deck", number], "default", factory);
+      expect(errors[0]).toBeInstanceOf(ArgumentError);
+      expect((errors[0] as Error).message).toContain("slide number must be a positive integer");
+      expect(getPresentation).not.toHaveBeenCalled();
+      expect(getSlideThumbnail).not.toHaveBeenCalled();
+      expect(exit).toHaveBeenCalledWith(1);
+    });
+  }
+
+  for (const [number, objectId] of [["1", "first"], ["02", "second"]] as const) {
+    it(`preserves valid one-based thumbnail slide ${number}`, async () => {
+      await handleSlidesCommand("thumbnail", ["deck", number], "default", factory);
+      expect(getSlideThumbnail).toHaveBeenCalledWith("deck", objectId);
+      expect(errors).toEqual([]);
+      expect(exit).not.toHaveBeenCalled();
+    });
+  }
+
   for (const number of ["0", "-1", "invalid", "3"]) {
     it(`rejects unavailable thumbnail slide ${number}`, async () => {
       await handleSlidesCommand("thumbnail", ["deck", number], "default", factory);

@@ -72,8 +72,9 @@ async function readSlides(svc: SlidesService, presentationId: string, args: stri
 }
 
 async function thumbnailSlide(svc: SlidesService, presentationId: string, args: string[]): Promise<void> {
-  const slideIndex = parseInt(args[0] || "1", 10);
-  if (isNaN(slideIndex) || slideIndex < 1) {
+  const slideNumber = args[0] ?? "";
+  const slideIndex = Number(slideNumber);
+  if (/\D/.test(slideNumber) || !Number.isSafeInteger(slideIndex) || slideIndex < 1) {
     throw new ArgumentError("Error: slide number must be a positive integer", "gwork slides thumbnail <fileId> <slideNumber>");
   }
 
