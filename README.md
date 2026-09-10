@@ -134,12 +134,15 @@ See [FEATURES.md](FEATURES.md) for complete feature list and implementation stat
 **Core Operations:**
 ```bash
 gwork mail labels                           # List all labels
+gwork mail labels --counts                  # Include message/unread counts (extra request per label)
 gwork mail messages -n 20                   # List 20 most recent messages
 gwork mail get <messageId>                  # Get full message details
 gwork mail get <messageId> --raw            # Preserve HTML markup for debugging
 gwork mail search "from:example@gmail.com"  # Search messages
 gwork mail stats                            # Gmail statistics
 ```
+
+Label counts report individual messages. Gmail's conversation view may show fewer rows when it groups messages into threads.
 
 **Quick Filters:**
 ```bash

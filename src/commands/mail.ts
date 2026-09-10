@@ -349,10 +349,14 @@ export async function handleMailCommand(
   }
 }
 
-async function listLabels(mailService: MailService, _args: string[]) {
+async function listLabels(mailService: MailService, args: string[]) {
   const spinner = ora("Fetching labels...").start();
   try {
-    const labels = await mailService.listLabels();
+    const includeCounts = args.includes("--counts");
+    const listedLabels = await mailService.listLabels();
+    const labels = includeCounts ? await Promise.all(listedLabels.map(async label => ({
+      ...label, ...await mailService.getLabel(label.id!),
+    }))) : listedLabels;
     spinner.succeed(`Found ${labels.length} label(s)`);
 
     if (labels.length === 0) {
@@ -365,8 +369,6 @@ async function listLabels(mailService: MailService, _args: string[]) {
       const name = label.name || "Unknown";
       const type = label.type || "user";
       const color = label.color?.backgroundColor || "";
-      const count = label.messagesTotal || 0;
-      const unread = label.messagesUnread || 0;
 
       let labelColor = chalk.white;
       if (color) {
@@ -375,8 +377,8 @@ async function listLabels(mailService: MailService, _args: string[]) {
 
       logger.info(`\n${labelColor(name)}`);
       logger.info(`  ${chalk.gray("Type:")} ${type}`);
-      if (count > 0) {
-        logger.info(`  ${chalk.gray("Messages:")} ${count} (${unread} unread)`);
+      if (includeCounts) {
+        logger.info(`  ${chalk.gray("Messages:")} ${label.messagesTotal ?? 0} (${label.messagesUnread ?? 0} unread)`);
       }
     });
   } catch (error: unknown) {

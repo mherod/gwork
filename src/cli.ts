@@ -90,6 +90,7 @@ Options:
   --json                                  Structured output for get and attachments
   --format <plain|html|auto>              Body format for get and thread (default: auto)
   --raw                                   Preserve HTML markup in get and thread
+  --counts                                Include label counts (one extra request per label)
 
 Send options:
   --to <address>                          Recipient (repeatable)

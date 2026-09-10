@@ -29,6 +29,33 @@ void mock.module("../../../src/utils/command-error-handler.ts", () => ({
 
 import { handleMailCommand } from "../../../src/commands/mail.ts";
 
+describe("mail label counts", () => {
+  let log: ReturnType<typeof spyOn>;
+  let output: string[];
+  beforeEach(() => {
+    output = [];
+    log = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+  });
+  afterEach(() => log.mockRestore());
+  for (const counts of [false, true]) {
+    it(`${counts ? "fetches" : "omits"} counts when --counts is ${counts ? "present" : "absent"}`, async () => {
+      const listLabels = mock(async () => [{ id: "INBOX", name: "INBOX", type: "system" }, { id: "Label_1", name: "Empty", type: "user" }]);
+      const getLabel = mock(async (id: string) => ({ id, messagesTotal: id === "INBOX" ? 17 : 0, messagesUnread: id === "INBOX" ? 3 : 0 }));
+      await handleMailCommand("labels", counts ? ["--counts"] : [], "default", () => ({ initialize: async () => {}, listLabels, getLabel }) as unknown as MailService);
+      expect(listLabels).toHaveBeenCalledTimes(1);
+      if (counts) {
+        expect(getLabel.mock.calls).toEqual([["INBOX"], ["Label_1"]]);
+        expect(output.join("\n")).toContain("Messages: 17 (3 unread)");
+        expect(output.join("\n")).toContain("Messages: 0 (0 unread)");
+        expect(output.join("\n")).toContain("Empty");
+      } else {
+        expect(getLabel).not.toHaveBeenCalled();
+        expect(output.join("\n")).not.toContain("Messages:");
+      }
+    });
+  }
+});
+
 describe("mail search account filtering", () => {
   let output: string[];
   let logSpy: ReturnType<typeof spyOn>;
