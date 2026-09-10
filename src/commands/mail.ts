@@ -10,6 +10,9 @@ import { handleCommandWithRetry } from "../utils/command-handler.ts";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import { CommandRegistry } from "./registry.ts";
+import addressparser from "nodemailer/lib/addressparser/index.js";
+import type { Message } from "../types/google-apis.ts";
+import { validateMaxResults } from "../services/validators.ts";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
 
@@ -409,44 +412,67 @@ async function getMessage(mailService: MailService, messageId: string, args: str
 async function searchMessages(mailService: MailService, query: string, extraArgs: string[], account = "default") {
   const spinner = ora("Searching messages...").start();
   try {
-    const options: any = { maxResults: 10 };
+    let maxResults = 10;
+    let pageToken: string | undefined;
 
     for (let i = 0; i < extraArgs.length; i++) {
       if (extraArgs[i] === "--max-results" || extraArgs[i] === "-n") {
-        if (i + 1 < extraArgs.length) {
-          const parsed = parseInt(extraArgs[++i]!, 10);
-          if (!isNaN(parsed)) options.maxResults = parsed;
-        }
+        maxResults = Number(extraArgs[++i]);
+        if (!Number.isInteger(maxResults)) throw new ArgumentError("--max-results requires an integer between 1 and 500");
       } else if (extraArgs[i] === "--page-token") {
-        if (i + 1 < extraArgs.length) {
-          options.pageToken = extraArgs[++i]!;
-        }
+        pageToken = extraArgs[++i];
+        if (!pageToken) throw new ArgumentError("--page-token requires a value");
+      }
+    }
+    validateMaxResults(maxResults, 500);
+
+    const messages: Message[] = [];
+    const seenIds = new Set<string>();
+    const seenPages = new Set<string | undefined>();
+    const accountLower = account.toLowerCase();
+    let scanned = 0;
+    let incomplete = "";
+
+    while (messages.length < maxResults && scanned < 500 && seenPages.size < 500) {
+      if (seenPages.has(pageToken)) {
+        incomplete = "repeated page token; results incomplete";
+        break;
+      }
+      seenPages.add(pageToken);
+      const result = await mailService.searchMessages(query, {
+        maxResults: Math.min(maxResults - messages.length, 500 - scanned),
+        ...(pageToken ? { pageToken } : {}),
+      });
+      const candidates = result.messages.slice(0, 500 - scanned);
+      scanned += candidates.length;
+      const details = await Promise.all(candidates.filter(msg => {
+        if (!msg.id || seenIds.has(msg.id)) return false;
+        seenIds.add(msg.id);
+        return true;
+      }).map(msg => mailService.getMessage(msg.id!, "metadata")));
+
+      // Defence in depth: retain mail sent by or addressed to the account.
+      // Parse addresses so a display name or substring cannot match another mailbox.
+      const matching = account === "default" ? details : details.filter(message =>
+        (message.payload?.headers ?? []).some(header =>
+          ["from", "to", "delivered-to", "cc"].includes(header.name?.toLowerCase() ?? "") &&
+          addressparser(header.value ?? "", { flatten: true }).some(address => address.address.toLowerCase() === accountLower)
+        )
+      );
+      messages.push(...matching.slice(0, maxResults - messages.length));
+      pageToken = result.nextPageToken ?? undefined;
+      if (!pageToken) break;
+      if (messages.length >= maxResults) incomplete = `truncated at ${maxResults}-result limit; more matches may exist`;
+      else if (scanned >= 500) incomplete = "500-message scan limit reached; results incomplete";
+      else if (seenPages.size >= 500) incomplete = "500-page scan limit reached; results incomplete";
+      if (account === "default") {
+        incomplete ||= "more pages available";
+        break;
       }
     }
 
-    const result = await mailService.searchMessages(query, options);
-
-    const messagePromises = result.messages.map((msg) =>
-      mailService.getMessage(msg.id ?? "", "metadata")
-    );
-    const allMessages = await Promise.all(messagePromises);
-
-    // Filter results to only include messages addressed to/from the specified account.
-    // This is a defence-in-depth measure: even if the token lookup returned the correct
-    // mailbox, we never surface messages whose To/Delivered-To headers don't match the
-    // requested account (when a specific account was given).
-    const messages = account === "default"
-      ? allMessages
-      : allMessages.filter((message) => {
-          const headers = message.payload?.headers || [];
-          const to = getHeader(headers, "to");
-          const deliveredTo = getHeader(headers, "delivered-to");
-          const accountLower = account.toLowerCase();
-          return to.toLowerCase().includes(accountLower) ||
-            deliveredTo.toLowerCase().includes(accountLower);
-        });
-
-    spinner.succeed(`Found ${messages.length} message(s) matching "${query}"`);
+    spinner.stop();
+    logger.info(`Found ${messages.length} message(s) matching "${query}"${incomplete ? ` (${incomplete})` : ""}`);
 
     if (messages.length === 0) {
       logger.info(chalk.yellow("No messages found"));
