@@ -173,10 +173,10 @@ Build injects `__BUILD_TIME__` via `bun --define __BUILD_TIME__=$(date -u +'"%Y-
 
 ### Type Checking
 
-There is no `typecheck` script in `package.json`. Run type checks with:
+Run type checks with:
 
 ```bash
-bunx tsc --noEmit
+bun run typecheck
 ```
 
 ### Package Manager
@@ -189,13 +189,9 @@ bunx tsc --noEmit
 
 ### better-sqlite3 Native Binding (Local Dev)
 
-After `pnpm install` (or when switching Node.js versions), the `better-sqlite3` native binding may be missing or stale. Run:
+Node startup repairs missing or stale bindings using the current Node executable, version, and architecture. It builds in a temporary directory, verifies an in-memory database, then atomically replaces the binding. Failed repairs preserve existing bytes. Install `node-gyp`, Python, and a C++ toolchain first; Bun uses built-in SQLite.
 
-```bash
-pnpm run rebuild-sqlite3
-```
-
-**DON'T** use `pnpm rebuild better-sqlite3` — it silently exits 0 without rebuilding under pnpm's virtual store layout. The `rebuild-sqlite3` script uses `node-gyp rebuild --directory <resolved-path>` which is reliable.
+**DON'T** use `pnpm rebuild better-sqlite3` — it can silently exit 0 without rebuilding under pnpm's virtual store layout.
 
 **DON'T** put `npm rebuild better-sqlite3` in scripts — `npm` is blocked by a pretooluse hook.
 
@@ -226,12 +222,8 @@ const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — c
 
 ## Git & Contribution
 
-- **Branching**:
-  - **DO** create feature branches for all changes (e.g., `feat/add-accounts`, `fix/token-refresh`).
-  - **DON'T** push directly to `main`. Repository rules block direct pushes — this applies to release commits too. Create a `chore/release-X.Y.Z` branch, push it, open a PR, and merge via `gh pr merge --squash`.
-- **Pull Requests**:
-  - **DO** use `gh pr create` to submit changes.
-  - **DO** ensure all CI checks pass (`bun test`, `bun run lint`) before merging.
+- **Trunk delivery**: Work on `main` in the primary checkout. Review unpushed commits, run tests, lint, typecheck and build, then push normally. The owner authorized direct pushes; the GitHub ruleset retains deletion protection, linear history and force-push protection. Do not open a PR for trunk-mode work.
+- **Existing pull requests**: Review and validate before integrating; use squash merges to preserve linear history. Keep both supported lockfiles synchronized for dependency updates.
 - **CI polling**: Poll with `sleep N && gh pr checks <PR>` in a foreground call. DON'T use `gh pr checks --watch` as a background task — it produces no actionable output until it finishes, leaving a dangling process.
 - **Rebasing already-merged commits**: When rebasing a feature branch onto main and a commit was already incorporated via another PR (e.g., the commit's changes are already in main), use `git rebase --skip` to skip that commit rather than attempting to re-resolve its conflicts.
 
