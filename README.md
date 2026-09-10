@@ -40,6 +40,30 @@ gwork contacts --help
 gwork drive --help
 ```
 
+### Dependency updates and Dependabot
+
+Commit both `bun.lock` (development and CI) and `pnpm-lock.yaml` (pnpm tooling)
+when changing dependencies. npm remains a distribution channel; this repository
+does not maintain `package-lock.json`.
+
+After reviewing a Dependabot update on its feature branch, use Bun and pnpm
+11.9.0 to regenerate and validate both lockfiles:
+
+```bash
+bun run lockfiles:sync
+bun run lockfiles:check
+git diff -- package.json bun.lock pnpm-lock.yaml
+```
+
+The sync command updates lockfiles without running package lifecycle scripts.
+Review and commit its changes on the same PR, then run the normal tests, lint,
+type check and build. Keep frozen installs enabled in CI: an outdated Bun
+lockfile must be repaired before merging a dependency PR. CI also validates
+the pnpm lockfile without replacing the Bun-installed dependency tree.
+
+pnpm overrides live in `pnpm-workspace.yaml`, as required by
+[pnpm's settings](https://pnpm.io/settings). Bun overrides remain in `package.json`.
+
 ### Native binding (pnpm / Node version changes)
 
 `gwork` uses `better-sqlite3` for token storage, which requires a native `.node` binding compiled for your current Node.js ABI. If you see an error like:

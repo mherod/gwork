@@ -145,33 +145,25 @@ pnpm publish --otp=<code>
 This project uses **two separate override mechanisms** that affect different lockfiles:
 
 - **`"overrides"` (root-level)** — read by bun; controls `bun.lock` resolution
-- **`"pnpm.overrides"`** — read by pnpm; controls `pnpm-lock.yaml` resolution
+- **`overrides` in `pnpm-workspace.yaml`** — read by pnpm; controls `pnpm-lock.yaml` resolution. pnpm 11 ignores the old `package.json` `pnpm.overrides` field.
 
-**DO** add vulnerability-fixing overrides to the root-level `"overrides"` block (bun reads this, not `pnpm.overrides`). For deprecation-only warnings, `pnpm.overrides` is sufficient.
+**DO** add vulnerability-fixing overrides to both override maps. For deprecation-only warnings, the pnpm workspace override map is sufficient.
 
 ```json
 "overrides": {
   "minimatch": ">=9.0.6",
   "qs": ">=6.14.1",
   "ajv": ">=6.14.0 <7"
-},
-"pnpm": {
-  "overrides": {
-    "minimatch": ">=9.0.6",
-    "qs": ">=6.14.1",
-    "ajv": ">=6.14.0 <7",
-    "glob": ">=13.0.6",
-    "rimraf": ">=6.1.3",
-    "node-domexception": ">=2.0.2"
-  }
 }
 ```
 
-After adding an override, run `bun install` to regenerate `bun.lock`, then `bun audit` to confirm no vulnerabilities remain.
+In `pnpm-workspace.yaml`, keep the same vulnerability constraints under `overrides`; keep `node-domexception: '>=1.0.0 <2'` there for compatibility with `fetch-blob`.
+
+After adding an override, run `bun run lockfiles:sync` and `bun run lockfiles:check`, then `bun audit` to review remaining vulnerabilities.
 
 **DON'T** use open-ended `>=X` semver ranges that cross a major version boundary. For example, `"ajv": ">=6.14.0"` resolves to ajv v8, which has a completely different API and breaks ESLint v9 (which uses ajv v6 internally). Always cap with `<NEXT_MAJOR`: `"ajv": ">=6.14.0 <7"`.
 
-**DON'T** add `node-domexception` to the bun root `"overrides"`. The v2.x package removed the default export that `fetch-blob` (`import DOMException from 'node-domexception'`) depends on — this breaks the production build with `error: No matching export in "node_modules/node-domexception/index.js" for import "default"`. Leave `node-domexception` in `pnpm.overrides` only.
+**DON'T** add `node-domexception` to the bun root `"overrides"`. The v2.x package removed the default export that `fetch-blob` (`import DOMException from 'node-domexception'`) depends on — this breaks the production build with `error: No matching export in "node_modules/node-domexception/index.js" for import "default"`. Leave `node-domexception` in the pnpm workspace overrides only.
 
 **DON'T** add a package to `peerDependencies` if it's already in `devDependencies` — this produces a spurious `pnpm link --global` warning about unresolved peers. `typescript` belongs only in `devDependencies`.
 
@@ -193,7 +185,7 @@ bunx tsc --noEmit
 
 - **DO** use `pnpm` for installing packages and managing the lockfile. The `npm` command is blocked by a pretooluse hook.
 - **DO** use `bun add <pkg>` to add new dependencies (updates `package.json` and `bun.lock`).
-- **DO** run `bun install` after changing `package.json`. Also run `pnpm install` to regenerate `pnpm-lock.yaml`, then commit it — the stop hook enforces lockfile sync.
+- **DO** run `bun run lockfiles:sync` after dependency or override changes, including Dependabot PRs. Use pnpm 11.9.0, review both generated locks, and commit them together; `bun run lockfiles:check` and CI must pass with frozen locks. These scripts do not execute install hooks.
 - **DO** use `bun run <script>` for running package.json scripts — `pnpm run` is blocked by swiz hooks when a bun lockfile is detected (even though pnpm manages packages). Note: `pnpm link --global` is still valid for global linking.
 - **DON'T** use `npm install` or `npm link`; they are blocked.
 
@@ -248,7 +240,7 @@ const stream = info.message as NodeJS.ReadableStream; // Buffer | Readable — c
 ## Important Notes
 
 - Default to Bun for development; the CLI distributes as a Node.js bundle
-- ESLint uses flat config in `eslint.config.js`; update both `bun.lock` and `package-lock.json` when adding or changing dependencies
+- ESLint uses flat config in `eslint.config.js`; update both `bun.lock` and `pnpm-lock.yaml` when adding or changing dependencies. Do not track `package-lock.json`; npm installation is not a repository development workflow.
 - Don't use better-sqlite3 in Bun scripts (use native `bun:sqlite` via the wrapper)
 - Don't use dotenv; Bun automatically loads `.env` files
 - All sensitive files (`.credentials.json`, `~/.gwork_tokens.db`) are properly ignored in `.gitignore`
