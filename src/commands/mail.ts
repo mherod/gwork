@@ -13,9 +13,21 @@ import { CommandRegistry } from "./registry.ts";
 import addressparser from "nodemailer/lib/addressparser/index.js";
 import type { Message } from "../types/google-apis.ts";
 import { validateMaxResults } from "../services/validators.ts";
+import { compile } from "html-to-text";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
 type MessagePart = NonNullable<Message["payload"]>;
+
+const htmlToReadableText = compile({
+  wordwrap: false,
+  selectors: [
+    { selector: "script", format: "skip" },
+    { selector: "style", format: "skip" },
+    { selector: "head", format: "skip" },
+    { selector: "img", format: "skip" },
+    { selector: "a", options: { linkBrackets: ["(", ")"], hideLinkHrefIfSameAsText: true } },
+  ],
+});
 
 function structuredPart(part: MessagePart): object {
   return {
@@ -41,44 +53,21 @@ function getHeader(headers: { name?: string | null; value?: string | null }[], n
   return header?.value || "";
 }
 
-function formatMessage(message: any, format: EmailBodyFormat = "auto"): string {
+function formatMessage(message: Message, format: EmailBodyFormat = "auto", raw = false): string {
   const headers = message.payload?.headers || [];
   const from = getHeader(headers, "from");
   const to = getHeader(headers, "to");
   const subject = getHeader(headers, "subject");
   const date = getHeader(headers, "date");
 
-  let body = "";
-  if (message.payload?.body?.data) {
-    body = decodeBase64(message.payload.body.data);
-  } else if (message.payload?.parts) {
-    const parts = message.payload.parts;
-
-    switch (format) {
-      case "plain": {
-        const plainPart = parts.find((p: any) => p.mimeType === "text/plain" && p.body?.data);
-        if (plainPart) body = decodeBase64(plainPart.body.data);
-        break;
-      }
-
-      case "html": {
-        const htmlPart = parts.find((p: any) => p.mimeType === "text/html" && p.body?.data);
-        if (htmlPart) body = decodeBase64(htmlPart.body.data);
-        break;
-      }
-
-      case "auto":
-      default:
-        // Current behavior: prefer plain, fallback to html
-        for (const part of parts) {
-          if (part.mimeType === "text/plain" && part.body?.data) {
-            body = decodeBase64(part.body.data);
-            break;
-          } else if (part.mimeType === "text/html" && part.body?.data && !body) {
-            body = decodeBase64(part.body.data);
-          }
-        }
-    }
+  const parts = flattenParts(message.payload ? [message.payload] : []) as MessagePart[];
+  const bodyParts = parts.filter(part => !part.filename && part.body?.data);
+  const plain = bodyParts.find(part => part.mimeType === "text/plain");
+  const html = bodyParts.find(part => part.mimeType === "text/html");
+  const selected = format === "plain" ? plain : format === "html" ? html : plain ?? html;
+  let body = selected?.body?.data ? decodeBase64(selected.body.data) : "";
+  if (body && selected?.mimeType === "text/html" && format === "auto" && !raw) {
+    body = htmlToReadableText(body);
   }
 
   // Add warning if requested format not available
@@ -425,7 +414,7 @@ async function getMessage(mailService: MailService, messageId: string, args: str
     spinner.succeed("Message fetched");
 
     printSectionHeader("\nMessage:");
-    logger.info(formatMessage(message, format));
+    logger.info(formatMessage(message, format, args.includes("--raw")));
 
     const parts = message.payload?.parts || [];
     if (parts.length > 0) {
@@ -618,7 +607,7 @@ async function getThread(mailService: MailService, threadId: string, args: strin
   const spinner = ora("Fetching thread...").start();
   try {
     let format: EmailBodyFormat = "auto";
-    let showFullMessages = false;
+    let showFullMessages = args.includes("--raw");
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--format" || args[i] === "-f") {
@@ -651,7 +640,7 @@ async function getThread(mailService: MailService, threadId: string, args: strin
 
         if (showFullMessages) {
           // Show full message with body
-          logger.info(formatMessage(message, format));
+          logger.info(formatMessage(message, format, args.includes("--raw")));
         } else {
           // Current snippet preview behavior (unchanged)
           const headers = message.payload?.headers || [];

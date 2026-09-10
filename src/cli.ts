@@ -88,6 +88,8 @@ Options:
   -h, --help                              Show this help message
   --max-results <number>                  Maximum number of results to return (default: 10)
   --json                                  Structured output for get and attachments
+  --format <plain|html|auto>              Body format for get and thread (default: auto)
+  --raw                                   Preserve HTML markup in get and thread
 
 Send options:
   --to <address>                          Recipient (repeatable)

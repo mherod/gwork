@@ -136,6 +136,7 @@ See [FEATURES.md](FEATURES.md) for complete feature list and implementation stat
 gwork mail labels                           # List all labels
 gwork mail messages -n 20                   # List 20 most recent messages
 gwork mail get <messageId>                  # Get full message details
+gwork mail get <messageId> --raw            # Preserve HTML markup for debugging
 gwork mail search "from:example@gmail.com"  # Search messages
 gwork mail stats                            # Gmail statistics
 ```
