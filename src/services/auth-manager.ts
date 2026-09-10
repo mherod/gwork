@@ -403,20 +403,49 @@ export class AuthManager {
 
     const credentialsContent = await fs.readFile(credentialsPath, "utf8");
     const credentialsFile = JSON.parse(credentialsContent);
+    const installedClient = Boolean(credentialsFile.installed);
     const clientConfig = credentialsFile.installed || credentialsFile.web;
 
-    if (!clientConfig.redirect_uris || clientConfig.redirect_uris.length === 0) {
+    if (!clientConfig?.redirect_uris || clientConfig.redirect_uris.length === 0) {
       throw new Error(
         "No redirect_uris found in credentials file. Please reconfigure your OAuth client."
       );
     }
 
-    const redirectUri = new URL(clientConfig.redirect_uris[0] ?? "http://localhost");
-    if (redirectUri.hostname !== "localhost") {
+    const portOverride = process.env["GWORK_OAUTH_PORT"];
+    if (portOverride !== undefined && (!/^\d+$/.test(portOverride) || Number(portOverride) > 65535)) {
+      throw new Error("GWORK_OAUTH_PORT must be an integer from 0 to 65535 (0 selects a free port for desktop clients).");
+    }
+
+    let redirectUrl: string = clientConfig.redirect_uris[0];
+    if (!installedClient && portOverride !== undefined) {
+      const registeredUri = clientConfig.redirect_uris.find((uri: string) => {
+        const candidate = new URL(uri);
+        return candidate.protocol === "http:" &&
+          ["localhost", "127.0.0.1", "[::1]"].includes(candidate.hostname) &&
+          Number(candidate.port || 80) === Number(portOverride);
+      });
+      if (!registeredUri) {
+        throw new Error(
+          `Cannot use GWORK_OAUTH_PORT=${portOverride}: a web OAuth client requires an exact registered redirect URI. ` +
+          `Use the port of ${redirectUrl}, or register a matching localhost URI and update the credentials file.`
+        );
+      }
+      redirectUrl = registeredUri;
+    }
+
+    const redirectUri = new URL(redirectUrl);
+    if (redirectUri.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(redirectUri.hostname)) {
       throw new Error(
-        "redirect_uri must point to localhost for local authentication."
+        "redirect_uri must point to localhost or a loopback IP over HTTP for local authentication."
       );
     }
+    const port = portOverride !== undefined ? Number(portOverride) :
+      Number(redirectUri.port || (installedClient ? 3000 : 80));
+    if (!installedClient && port === 0) {
+      throw new Error("A web OAuth client requires a registered redirect URI with a fixed port; port 0 is only supported for desktop clients.");
+    }
+    const host = redirectUri.hostname === "[::1]" ? "::1" : redirectUri.hostname;
 
     const oauthClient = new google.auth.OAuth2(
       clientConfig.client_id,
@@ -447,7 +476,7 @@ export class AuthManager {
           }
           const tokenResponse = await oauthClient.getToken({
             code,
-            redirect_uri: redirectUri.toString(),
+            redirect_uri: redirectUrl,
           });
           res.end("Authentication successful! Please return to the console.");
           resolve(tokenResponse.tokens);
@@ -458,18 +487,25 @@ export class AuthManager {
         }
       });
 
-      // Listen on the redirect URI port (or default 3000)
-      const port = redirectUri.port ? parseInt(redirectUri.port, 10) : 3000;
-
-      // Without an 'error' listener, a failure to bind (commonly EADDRINUSE when
-      // a dev server already holds the port) is emitted as an unhandled 'error'
-      // event and crashes the process with a raw Node stack trace.
+      // Desktop clients allow any loopback port. Web clients must use a
+      // registered URI, and an explicit override must not silently change ports.
+      let canRetryOnFreePort = installedClient && portOverride === undefined && port !== 0;
       server.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE" && canRetryOnFreePort) {
+          canRetryOnFreePort = false;
+          logger.info(`OAuth callback port ${port} is in use; selecting a free loopback port.`);
+          server.listen(0, host);
+          return;
+        }
         if (err.code === "EADDRINUSE") {
           reject(
             new Error(
               `Cannot complete sign-in: port ${port} is already in use by another process.\n` +
-                `The OAuth redirect URI in your credentials file points at this port, so it cannot be changed automatically.\n` +
+                (installedClient
+                  ? (portOverride !== undefined
+                    ? `GWORK_OAUTH_PORT explicitly selects this port. Change or unset it to select another port.\n`
+                    : `Could not bind a free loopback port for the desktop OAuth callback.\n`)
+                  : `The web OAuth client requires the registered redirect URI ${redirectUrl}; its port cannot be changed automatically.\n`) +
                 `Free the port (e.g. \`lsof -nP -iTCP:${port} -sTCP:LISTEN\`, then stop that process) and run the command again.`
             )
           );
@@ -478,9 +514,12 @@ export class AuthManager {
         reject(err);
       });
 
-      server.listen(port, () => {
-        // Update redirect_uri with actual port before opening browser
-        redirectUri.port = String((server.address() as { port: number }).port);
+      // Register once across both bind attempts so fallback opens one browser.
+      server.once("listening", () => {
+        if (installedClient) {
+          redirectUri.port = String((server.address() as { port: number }).port);
+          redirectUrl = redirectUri.toString();
+        }
 
         // prompt: 'consent' forces Google to show the full consent screen and issue
         // a fresh refresh_token covering all requested scopes. Without this, Google
@@ -489,13 +528,14 @@ export class AuthManager {
           access_type: "offline",
           prompt: "consent",
           scope: requiredScopes,
-          redirect_uri: redirectUri.toString(),
+          redirect_uri: redirectUrl,
         });
 
         open(authUrl, { wait: false }).then((cp) => cp.unref()).catch(() => {
           logger.info(`Open this URL to authenticate: ${authUrl}`);
         });
       });
+      server.listen(port, host);
     });
     oauthClient.setCredentials(grantedTokens);
 

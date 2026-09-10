@@ -21,6 +21,16 @@ import * as fs from "fs/promises";
 import { google } from "googleapis";
 import * as http from "http";
 import * as openModule from "open";
+import { EventEmitter } from "node:events";
+
+function makeFakeHttpServer() {
+  const server = Object.assign(new EventEmitter(), {
+    listen: mock((_port: number, _host: string) => { server.emit("listening"); return server; }),
+    close: mock(() => {}),
+    address: mock(() => ({ port: 49152 })),
+  });
+  return server;
+}
 
 // Helper: build a mock OAuth2 client that includes generateAuthUrl and getToken
 function makeMockOAuth2Client(credentials?: {
@@ -52,16 +62,7 @@ function makeMockOAuth2Client(credentials?: {
 // without binding to any real port.
 function mockHttpServerSuccess(fakeCode = "mock-auth-code") {
   // Build a fake server object
-  const fakeServer = {
-    listen: mock(function (this: typeof fakeServer, _port: number, cb?: () => void) {
-      // Simulate the server starting and call the listen callback
-      if (cb) cb();
-      return fakeServer;
-    }),
-    close: mock(() => {}),
-    address: mock(() => ({ port: 49152 })),
-    on: mock(() => fakeServer),
-  };
+  const fakeServer = makeFakeHttpServer();
 
   // We intercept createServer and capture the request handler,
   // then call it with a fake IncomingMessage containing ?code=<fakeCode>
@@ -709,15 +710,7 @@ describe("AuthManager", () => {
       }));
 
       // Mock server that sends error param instead of code
-      const fakeServer = {
-        listen: mock(function (this: typeof fakeServer, _port: number, cb?: () => void) {
-          if (cb) cb();
-          return fakeServer;
-        }),
-        close: mock(() => {}),
-        address: mock(() => ({ port: 49152 })),
-        on: mock(() => fakeServer),
-      };
+      const fakeServer = makeFakeHttpServer();
 
       spyOn(http, "createServer").mockImplementation(
         (handler: http.RequestListener) => {
@@ -756,15 +749,7 @@ describe("AuthManager", () => {
         },
       }));
 
-      const fakeServer = {
-        listen: mock(function (this: typeof fakeServer, _port: number, cb?: () => void) {
-          if (cb) cb();
-          return fakeServer;
-        }),
-        close: mock(() => {}),
-        address: mock(() => ({ port: 49152 })),
-        on: mock(() => fakeServer),
-      };
+      const fakeServer = makeFakeHttpServer();
 
       spyOn(http, "createServer").mockImplementation(
         (handler: http.RequestListener) => {
