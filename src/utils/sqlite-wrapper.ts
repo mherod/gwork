@@ -3,7 +3,7 @@
  * This allows the same code to work in both Bun and Node.js environments
  */
 
-import { execFileSync } from "node:child_process";
+import { rebuildNativeSqlite } from "./native-sqlite-rebuild.ts";
 
 // Determine runtime
 const isBun = typeof Bun !== "undefined";
@@ -39,44 +39,14 @@ function verifyBinding(mod: any): void {
   testDb.close();
 }
 
-/**
- * Attempts to rebuild better-sqlite3 native binding using node-gyp.
- * Returns true on success, false on failure.
- */
-function tryRebuild(): boolean {
-  try {
-    const pkgPath = require.resolve("better-sqlite3/package.json");
-    const dir = pkgPath.replace(/\/package\.json$/, "");
-    console.error(`  Rebuilding in ${dir}…`);
-    // Try node-gyp directly first, then fall back to npx
-    // node-gyp may not be globally installed
-    try {
-      execFileSync("node-gyp", ["rebuild", "--directory", dir], {
-        stdio: "inherit",
-        timeout: 120_000,
-      });
-      return true;
-    } catch {
-      // node-gyp not found globally — try via npx
-      execFileSync("npx", ["node-gyp", "rebuild", "--directory", dir], {
-        stdio: "inherit",
-        timeout: 120_000,
-      });
-      return true;
-    }
-  } catch {
-    return false;
-  }
-}
-
 function printManualFixMessage(): void {
   console.error(
     "\n❌ Error: better-sqlite3 native binding could not be loaded.\n" +
-      "This usually means the binding needs to be compiled for your current Node.js version.\n" +
-      "To fix this, run one of:\n" +
-      "  npm rebuild better-sqlite3\n" +
-      "  pnpm rebuild better-sqlite3\n" +
-      "Or reinstall gwork: npm install -g gwork\n"
+      `Running Node ${process.version} at ${process.execPath}.\n` +
+      "Ensure node-gyp and its compiler prerequisites are installed, then retry.\n" +
+      "If compilation fails against this Node version, use a Node version supported by the installed better-sqlite3 package.\n" +
+      "For a manual rebuild, invoke node-gyp's JavaScript entry point with this exact Node executable and target version.\n" +
+      "Alternatively run the CLI with Bun, which uses bun:sqlite and does not rebuild native modules.\n"
   );
 }
 
@@ -86,7 +56,7 @@ function printManualFixMessage(): void {
  *
  * Flow:
  * 1. Import better-sqlite3 and verify the binding loads
- * 2. If the binding is incompatible, run `node-gyp rebuild`
+ * 2. Compile and verify a staged binding with the current Node executable
  * 3. Re-import and return the fresh module
  * 4. If rebuild fails, print a manual-fix message and exit
  */
@@ -105,7 +75,7 @@ async function loadBetterSqlite3(): Promise<any> {
         process.version + ". Attempting auto-rebuild…\n"
     );
 
-    if (tryRebuild()) {
+    if (rebuildNativeSqlite()) {
       try {
         const freshMod = await import("better-sqlite3");
         verifyBinding(freshMod);
