@@ -53,8 +53,8 @@ export abstract class BaseService {
    *
    * @throws {InitializationError} If credentials missing or authentication fails
    */
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
+  async initialize(forceReauth = false): Promise<void> {
+    if (this.initialized && !forceReauth) return;
 
     const CREDENTIALS_PATH = path.join(os.homedir(), ".credentials.json");
 
@@ -70,6 +70,7 @@ export abstract class BaseService {
         account: this.account,
         requiredScopes: this.SCOPES,
         credentialsPath: CREDENTIALS_PATH,
+        forceReauth,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

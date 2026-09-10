@@ -86,8 +86,8 @@ export class MailService extends BaseService {
     );
   }
 
-  override async initialize(): Promise<void> {
-    await super.initialize();
+  override async initialize(forceReauth = false): Promise<void> {
+    await super.initialize(forceReauth);
     this.ensureInitialized();
     // Initialize Gmail client - auth is guaranteed non-null after ensureInitialized()
     this.gmail = google.gmail({ version: "v1", auth: this.getAuth() });

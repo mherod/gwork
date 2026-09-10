@@ -147,7 +147,6 @@ export async function handleCalCommand(
   serviceFactory: (account: string) => CalendarService = (acc) => new CalendarService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "calendar",
     serviceName: "Calendar",
     account,
     subcommand,

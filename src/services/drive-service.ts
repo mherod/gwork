@@ -54,8 +54,8 @@ export class DriveService extends BaseService {
     );
   }
 
-  override async initialize(): Promise<void> {
-    await super.initialize();
+  override async initialize(forceReauth = false): Promise<void> {
+    await super.initialize(forceReauth);
     this.ensureInitialized();
     this.drive = google.drive({ version: "v3", auth: this.getAuth() });
 

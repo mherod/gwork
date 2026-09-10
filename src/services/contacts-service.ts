@@ -78,8 +78,8 @@ export class ContactsService extends BaseService {
    *
    * @throws {InitializationError} If credentials missing or authentication fails
    */
-  override async initialize(): Promise<void> {
-    await super.initialize();
+  override async initialize(forceReauth = false): Promise<void> {
+    await super.initialize(forceReauth);
     this.ensureInitialized();
     // Initialize People API client - auth is guaranteed non-null after ensureInitialized()
     this.people = google.people({ version: "v1", auth: this.getAuth() });

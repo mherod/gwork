@@ -212,7 +212,7 @@ describe("handleDocsCommand — re-auth retry", () => {
 
     expect(getCallCount()).toBe(2);
     expect(createCalls).toEqual(["Retry Doc"]);
-    expect(deleteTokenCalls).toEqual([["docs", "default"]]);
+    expect(deleteTokenCalls).toEqual([]);
   });
 
   it("retries write on ScopeInsufficientError with a fresh service", async () => {
@@ -221,6 +221,6 @@ describe("handleDocsCommand — re-auth retry", () => {
 
     expect(getCallCount()).toBe(2);
     expect(insertCalls).toEqual([{ documentId: "doc-abc", text: "retry text" }]);
-    expect(deleteTokenCalls).toEqual([["docs", "default"]]);
+    expect(deleteTokenCalls).toEqual([]);
   });
 });

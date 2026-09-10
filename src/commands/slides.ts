@@ -163,7 +163,6 @@ export async function handleSlidesCommand(
   serviceFactory: (account: string) => SlidesService = (acc) => new SlidesService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "slides",
     serviceName: "Slides",
     account,
     subcommand,

@@ -36,8 +36,8 @@ export class DocsService extends BaseService {
     );
   }
 
-  override async initialize(): Promise<void> {
-    await super.initialize();
+  override async initialize(forceReauth = false): Promise<void> {
+    await super.initialize(forceReauth);
     this.ensureInitialized();
     this.docs = google.docs({ version: "v1", auth: this.getAuth() });
     await this.verifyAccount();

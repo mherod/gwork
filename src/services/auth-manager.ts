@@ -42,6 +42,7 @@ export interface GetAuthClientOptions {
   account: string;
   requiredScopes: string[];
   credentialsPath: string;
+  forceReauth?: boolean;
 }
 
 /**
@@ -99,11 +100,11 @@ export class AuthManager {
     const { service, account, requiredScopes, credentialsPath } = options;
     const { tokenStore, logger } = this.config;
 
-    // Clean up invalid tokens before attempting to load
-    this.cleanupInvalidTokens(service, account, requiredScopes, logger, tokenStore);
+    // Only remove legacy rows whose key cannot be replaced by this sign-in.
+    this.cleanupLegacyTokens(service, account, logger, tokenStore);
 
     // Try to load existing token
-    const existingAuth = await this.loadExistingAuth(
+    const existingAuth = options.forceReauth ? null : await this.loadExistingAuth(
       service,
       account,
       requiredScopes,
@@ -128,30 +129,18 @@ export class AuthManager {
   }
 
   /**
-   * Cleans up invalid tokens (empty scopes, wrong scopes).
+   * Cleans up legacy orphan tokens under an empty account key.
    * 
    * @private
    */
-  private cleanupInvalidTokens(
+  private cleanupLegacyTokens(
     service: string,
     account: string,
-    _requiredScopes: string[],
     logger: Logger,
     tokenStore: TokenStore
   ): void {
     const serviceKey = service.toLowerCase();
     
-    // Clean up token with empty scopes for this service/account
-    const existingToken = tokenStore.getToken(serviceKey, account);
-    if (existingToken) {
-      const hasEmptyScopes = !existingToken.scopes ||
-                             (Array.isArray(existingToken.scopes) && existingToken.scopes.length === 0);
-      if (hasEmptyScopes) {
-        logger.info(`Removing token with empty scopes for ${service} (account: ${account})`);
-        tokenStore.deleteToken(serviceKey, account);
-      }
-    }
-
     // Clean up legacy tokens with empty account strings
     if (account === "default") {
       const emptyAccountToken = tokenStore.getToken(serviceKey, "");
@@ -188,7 +177,6 @@ export class AuthManager {
       // Validate scopes
       if (!token.scopes || token.scopes.length === 0) {
         logger.info(`Token has no scopes for ${service}. Re-authenticating...`);
-        tokenStore.deleteToken(serviceKey, account);
         return null;
       }
 
@@ -198,7 +186,6 @@ export class AuthManager {
         logger.info(
           `Token has incorrect scopes for ${service}. Missing: ${missingScopes.join(", ")}. Re-authenticating...`
         );
-        tokenStore.deleteToken(serviceKey, account);
         return null;
       }
 
@@ -241,8 +228,7 @@ export class AuthManager {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      // Only delete token for authentication-related errors
-      // Don't delete for network errors, file system errors, or other transient issues
+      // Keep the previous grant until a successful sign-in upserts its replacement.
       const isAuthError = 
         errorMessage.includes("invalid_grant") ||
         errorMessage.includes("invalid_token") ||
@@ -253,7 +239,6 @@ export class AuthManager {
       
       if (isAuthError) {
         logger.warn(`Saved ${service} token is invalid (${errorMessage}). Re-authenticating...`);
-        tokenStore.deleteToken(service.toLowerCase(), account);
       } else {
         // For non-auth errors, log but don't delete token - might be transient
         logger.warn(`Error loading ${service} token (${errorMessage}). Token not deleted - may be transient error.`);

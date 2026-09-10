@@ -255,7 +255,6 @@ export async function handleSheetsCommand(
   serviceFactory: (account: string) => SheetsService = (acc) => new SheetsService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "sheets",
     serviceName: "Sheets",
     account,
     subcommand,

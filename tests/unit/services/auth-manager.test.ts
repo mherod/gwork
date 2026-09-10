@@ -133,7 +133,7 @@ describe("AuthManager", () => {
   });
 
   describe("cleanupInvalidTokens", () => {
-    it("should delete token with empty scopes", async () => {
+    it("retains a token with empty scopes when sign-in fails", async () => {
       const invalidToken: TokenData = {
         service: "gmail",
         account: "default",
@@ -145,7 +145,7 @@ describe("AuthManager", () => {
         updated_at: Date.now(),
       };
 
-      (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValueOnce(invalidToken);
+      (mockTokenStore.getToken as ReturnType<typeof mock>).mockImplementation((_service, account) => account === "default" ? invalidToken : null);
 
       // Mock fs.readFile to fail so authenticate() throws (we only care about cleanup)
       spyOn(fs, "readFile").mockRejectedValue(new Error("Should not read file"));
@@ -157,14 +157,13 @@ describe("AuthManager", () => {
         credentialsPath,
       }).catch(() => {});
 
-      // Should delete invalid token during cleanup
-      expect(mockTokenStore.deleteToken).toHaveBeenCalledWith("gmail", "default");
+      expect(mockTokenStore.deleteToken).not.toHaveBeenCalledWith("gmail", "default");
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining("Removing token with empty scopes")
+        expect.stringContaining("Token has no scopes")
       );
     });
 
-    it("should delete token with wrong scopes", async () => {
+    it("retains a token with wrong scopes when sign-in fails", async () => {
       const wrongScopeToken: TokenData = {
         service: "gmail",
         account: "default",
@@ -177,7 +176,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call in cleanup
         .mockReturnValueOnce(null) // Second call in cleanup (empty account)
         .mockReturnValueOnce(wrongScopeToken); // Third call in loadExistingAuth
 
@@ -191,8 +189,7 @@ describe("AuthManager", () => {
         credentialsPath,
       }).catch(() => {});
 
-      // Should delete token with wrong scopes in loadExistingAuth
-      expect(mockTokenStore.deleteToken).toHaveBeenCalledWith("gmail", "default");
+      expect(mockTokenStore.deleteToken).not.toHaveBeenCalledWith("gmail", "default");
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining("Token has incorrect scopes")
       );
@@ -211,7 +208,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call in cleanup (service/account)
         .mockReturnValueOnce(null) // Second call in cleanup (empty account)
         .mockReturnValueOnce(validToken); // Third call in loadExistingAuth
 
@@ -245,6 +241,39 @@ describe("AuthManager", () => {
   });
 
   describe("getAuthClient", () => {
+    for (const { succeeds, forceReauth } of [
+      { succeeds: false, forceReauth: false }, { succeeds: true, forceReauth: false },
+      { succeeds: false, forceReauth: true }, { succeeds: true, forceReauth: true },
+    ]) {
+      it(`keeps the old grant until replacement ${succeeds ? "succeeds" : "fails"} (forced: ${forceReauth})`, async () => {
+        const original: TokenData = {
+          service: "gmail", account: "default", access_token: "old-access", refresh_token: "old-refresh",
+          expiry_date: Date.now() + 3600000, scopes: forceReauth ? ["mail"] : [], created_at: 1, updated_at: 1,
+        };
+        let stored: Partial<TokenData> | undefined = original;
+        (mockTokenStore.getToken as ReturnType<typeof mock>).mockImplementation((_svc, account) => account === "default" ? stored : null);
+        (mockTokenStore.deleteToken as ReturnType<typeof mock>).mockImplementation(() => { stored = undefined; });
+        (mockTokenStore.saveToken as ReturnType<typeof mock>).mockImplementation(token => { stored = token; });
+        const client = makeMockOAuth2Client({ access_token: "new-access", refresh_token: "new-refresh" });
+        google.auth.OAuth2 = function OAuth2Mock() { return client; } as unknown as typeof google.auth.OAuth2;
+        spyOn(fs, "readFile").mockResolvedValue(JSON.stringify({ installed: { client_id: "fixture", client_secret: "fixture", redirect_uris: ["http://localhost"] } }));
+        if (!succeeds) client.getToken.mockRejectedValue(new Error("Consent exchange failed"));
+        mockHttpServerSuccess();
+        const auth = authManager.getAuthClient({ service: "gmail", account: "default", requiredScopes: ["mail"], credentialsPath, forceReauth });
+        if (succeeds) {
+          await auth;
+          expect(stored?.access_token).toBe("new-access");
+          expect(stored?.refresh_token).toBe("new-refresh");
+        } else {
+          expect(auth).rejects.toThrow("Consent exchange failed");
+          await auth.catch(() => {});
+          expect(stored).toBe(original);
+          expect(mockTokenStore.saveToken).not.toHaveBeenCalled();
+        }
+        expect(mockTokenStore.deleteToken).not.toHaveBeenCalled();
+      });
+    }
+
     it("should call getToken during cleanup when no token exists", async () => {
       // Mock: No token in store
       (mockTokenStore.getToken as ReturnType<typeof mock>).mockReturnValue(null);
@@ -276,7 +305,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // cleanup - no token for service/account
         .mockReturnValueOnce(null) // cleanup - no token for empty account
         .mockReturnValueOnce(mockToken); // loadExistingAuth - token exists
 
@@ -368,7 +396,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // First call: service/account — no token
         .mockReturnValueOnce(legacyToken); // Second call: empty account — legacy token
 
       spyOn(fs, "readFile").mockRejectedValue(new Error("Stop after cleanup"));
@@ -410,7 +437,7 @@ describe("AuthManager", () => {
   });
 
   describe("loadExistingAuth error handling", () => {
-    it("should delete token on auth error (invalid_grant)", async () => {
+    it("retains a token after invalid_grant until sign-in succeeds", async () => {
       const validToken: TokenData = {
         service: "gmail",
         account: "default",
@@ -423,7 +450,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null) // cleanup
         .mockReturnValueOnce(null) // cleanup empty account
         .mockReturnValueOnce(validToken); // loadExistingAuth
 
@@ -450,7 +476,7 @@ describe("AuthManager", () => {
         credentialsPath,
       }).catch(() => {});
 
-      expect(mockTokenStore.deleteToken).toHaveBeenCalledWith("gmail", "default");
+      expect(mockTokenStore.deleteToken).not.toHaveBeenCalledWith("gmail", "default");
       expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining("invalid_grant")
       );
@@ -475,7 +501,6 @@ describe("AuthManager", () => {
       };
 
       (localStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(validToken);
 
@@ -530,7 +555,6 @@ describe("AuthManager", () => {
 
       (localStore.getToken as ReturnType<typeof mock>)
         .mockReturnValueOnce(null)
-        .mockReturnValueOnce(null)
         .mockReturnValueOnce(validToken);
 
       const mockAuthClient = makeMockOAuth2Client();
@@ -584,7 +608,6 @@ describe("AuthManager", () => {
       };
 
       (mockTokenStore.getToken as ReturnType<typeof mock>)
-        .mockReturnValueOnce(null)
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(validToken);
 

@@ -2,7 +2,7 @@
  * Unit tests for handleContactsCommand re-auth retry logic.
  *
  * When a Contacts API call fails with ScopeInsufficientError, handleContactsCommand
- * must: (1) delete the stale token, (2) create a fresh service via the factory,
+ * must: (1) preserve the stored token, (2) create a fresh service via the factory,
  * and (3) retry the command. All other errors must route through fatalExit (logServiceError
  * + process.exit(1)) rather than propagating as thrown exceptions.
  *
@@ -98,16 +98,17 @@ describe("handleContactsCommand re-auth retry", () => {
     expect(getCallCount()).toBe(2);
   });
 
-  it("calls deleteToken('contacts', account) before retrying", async () => {
+  it("retains the stored token before retrying", async () => {
     const { factory } = makeStatsFactory(true);
     await handleContactsCommand("stats", [], "work", factory);
-    expect(deleteTokenCalls).toEqual([["contacts", "work"]]);
+    expect(deleteTokenCalls).toEqual([]);
   });
 
-  it("uses the account from the call when deleting the token", async () => {
+  it("uses the requested account for the fresh service", async () => {
     const { factory } = makeStatsFactory(true);
-    await handleContactsCommand("stats", [], "personal", factory);
-    expect(deleteTokenCalls[0]?.[1]).toBe("personal");
+    const create = mock(factory);
+    await handleContactsCommand("stats", [], "personal", create);
+    expect(create.mock.calls).toEqual([["personal"], ["personal"]]);
   });
 
   it("succeeds after the retry when the second service call works", async () => {

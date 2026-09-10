@@ -39,8 +39,8 @@ export class SlidesService extends BaseService {
     );
   }
 
-  override async initialize(): Promise<void> {
-    await super.initialize();
+  override async initialize(forceReauth = false): Promise<void> {
+    await super.initialize(forceReauth);
     this.ensureInitialized();
     this.slides = google.slides({ version: "v1", auth: this.getAuth() });
     await this.verifyAccount();

@@ -113,7 +113,6 @@ export async function handleContactsCommand(
   serviceFactory: (account: string) => ContactsService = (acc) => new ContactsService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "contacts",
     serviceName: "Contacts",
     account,
     subcommand,

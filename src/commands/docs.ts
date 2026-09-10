@@ -113,7 +113,6 @@ export async function handleDocsCommand(
   serviceFactory: (account: string) => DocsService = (acc) => new DocsService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "docs",
     serviceName: "Docs",
     account,
     subcommand,

@@ -2,7 +2,7 @@
  * Unit tests for handleDriveCommand re-auth retry logic.
  *
  * When a Drive API call fails with ScopeInsufficientError, handleDriveCommand
- * must: (1) delete the stale token, (2) create a fresh service via the factory,
+ * must: (1) preserve the stored token, (2) create a fresh service via the factory,
  * and (3) retry the command. All other errors must route through fatalExit (logServiceError
  * + process.exit(1)) rather than propagating as thrown exceptions.
  */
@@ -101,16 +101,17 @@ describe("handleDriveCommand re-auth retry", () => {
     expect(getCallCount()).toBe(2);
   });
 
-  it("calls deleteToken('drive', account) before retrying", async () => {
+  it("retains the stored token before retrying", async () => {
     const { factory } = makeStatsFactory(true);
     await handleDriveCommand("stats", [], "work", factory);
-    expect(deleteTokenCalls).toEqual([["drive", "work"]]);
+    expect(deleteTokenCalls).toEqual([]);
   });
 
-  it("uses the account from the call when deleting the token", async () => {
+  it("uses the requested account for the fresh service", async () => {
     const { factory } = makeStatsFactory(true);
-    await handleDriveCommand("stats", [], "personal", factory);
-    expect(deleteTokenCalls[0]?.[1]).toBe("personal");
+    const create = mock(factory);
+    await handleDriveCommand("stats", [], "personal", create);
+    expect(create.mock.calls).toEqual([["personal"], ["personal"]]);
   });
 
   it("succeeds after the retry when the second service call works", async () => {

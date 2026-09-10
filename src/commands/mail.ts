@@ -262,7 +262,6 @@ export async function handleMailCommand(
   }
 
   await handleCommandWithRetry({
-    tokenKey: "gmail",
     serviceName: "mail",
     account,
     subcommand,

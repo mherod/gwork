@@ -318,7 +318,6 @@ export async function handleDriveCommand(
   serviceFactory: (account: string) => DriveService = (acc) => new DriveService(acc)
 ) {
   await handleCommandWithRetry({
-    tokenKey: "drive",
     serviceName: "Drive",
     account,
     subcommand,

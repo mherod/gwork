@@ -5,18 +5,15 @@
  */
 
 import { ScopeInsufficientError, AuthenticationRequiredError } from "../services/errors.ts";
-import { TokenStore } from "../services/token-store.ts";
 import { logServiceError } from "./command-error-handler.ts";
 import { retryWithBackoff } from "./retry-helper.ts";
 import { logger } from "./logger.ts";
 
 interface Initializable {
-  initialize(): Promise<void>;
+  initialize(forceReauth?: boolean): Promise<void>;
 }
 
 export interface CommandHandlerOptions<S extends Initializable> {
-  /** Token key used in TokenStore (e.g. "calendar", "gmail", "drive", "contacts") */
-  tokenKey: string;
   /** Human-readable service name for log messages (e.g. "Calendar", "Gmail") */
   serviceName: string;
   /** Account identifier (e.g. "default", "work") */
@@ -35,14 +32,14 @@ export interface CommandHandlerOptions<S extends Initializable> {
  *
  * Flow:
  * 1. Create service → initialize → execute (wrapped in retryWithBackoff)
- * 2. If ScopeInsufficientError or AuthenticationRequiredError: delete token,
- *    create a fresh service, and retry exactly once
+ * 2. If ScopeInsufficientError or AuthenticationRequiredError: force a fresh
+ *    sign-in without deleting the old grant, and retry exactly once
  * 3. Any other error (or retry failure): log and exit
  */
 export async function handleCommandWithRetry<S extends Initializable>(
   options: CommandHandlerOptions<S>
 ): Promise<void> {
-  const { tokenKey, serviceName, account, subcommand, serviceFactory, execute } = options;
+  const { serviceName, account, subcommand, serviceFactory, execute } = options;
 
   const executeOperation = async () => {
     const service = serviceFactory(account);
@@ -56,10 +53,9 @@ export async function handleCommandWithRetry<S extends Initializable>(
     if (error instanceof ScopeInsufficientError || error instanceof AuthenticationRequiredError) {
       const hint = (error as ScopeInsufficientError).hint ?? `Re-authenticating with ${serviceName}...`;
       logger.info(hint);
-      TokenStore.getInstance().deleteToken(tokenKey, account);
       const freshService = serviceFactory(account);
-      await freshService.initialize();
       try {
+        await freshService.initialize(true);
         await execute(freshService);
       } catch (retryError) {
         logServiceError(retryError);
