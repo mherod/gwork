@@ -300,6 +300,8 @@ Usage:
 Commands:
   get <fileId>                      Get document metadata
   read <fileId>                     Read and display document content as text
+  create <title>                    Create a new document
+  write <fileId> <text>              Append text to a document
 
 Options:
   -h, --help                        Show this help message
@@ -313,6 +315,8 @@ Examples:
   gwork docs read <fileId>
   gwork docs read <fileId> --headers
   gwork docs read <fileId> --format json
+  gwork docs create "Meeting notes"
+  gwork docs write <fileId> "Follow-up notes"
 `);
 }
 
