@@ -68,22 +68,24 @@ export async function handleAccountsCommand(args: string[]) {
         const expiryDate = new Date(token.expiry_date);
         const now = Date.now();
         const isExpired = expiryDate.getTime() < now;
-        const expiringSoon = expiryDate.getTime() - now < 24 * 60 * 60 * 1000 && !isExpired;
+        const hasRefreshToken = !!token.refresh_token?.trim();
+        const hasScopes = token.scopes.some(scope => scope.trim().length > 0);
 
         // Color based on status
         let statusColor = chalk.green;
         let statusText = "Active";
-        if (isExpired) {
+        if (!hasScopes) {
           statusColor = chalk.red;
-          statusText = "Expired";
-        } else if (expiringSoon) {
-          statusColor = chalk.yellow;
-          statusText = "Expiring soon";
+          statusText = "Invalid — re-auth required";
+        } else if (!hasRefreshToken && (isExpired || !token.access_token?.trim() || !Number.isFinite(token.expiry_date))) {
+          statusColor = chalk.red;
+          statusText = "Needs re-auth";
         }
 
         logger.info(`   ${chalk.gray("Service:")} ${token.service}`);
         logger.info(`   ${chalk.gray("Status:")}  ${statusColor(statusText)}`);
-        logger.info(`   ${chalk.gray("Expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
+        logger.info(`   ${chalk.gray("Access token expires:")} ${expiryDate.toLocaleString()} (${formatTimeRemaining(expiryDate)})`);
+        logger.info(`   ${chalk.gray("Refresh token:")} ${hasRefreshToken ? "Stored" : "Not stored"}`);
 
         // Show scopes in a condensed way if verbose flag is present.
         // `--verbose` is consumed as a global flag in main() and stripped from

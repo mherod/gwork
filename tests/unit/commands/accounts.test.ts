@@ -136,4 +136,25 @@ describe("handleAccountsCommand", () => {
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Scopes:"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("https://mail.google.com/"));
   });
+
+  for (const fixture of [
+    { refresh_token: "refresh", scopes: ["mail"], expiresIn: -3600000, status: "Active" },
+    { refresh_token: "", scopes: ["mail"], expiresIn: -3600000, status: "Needs re-auth" },
+    { refresh_token: "refresh", scopes: [], expiresIn: 3600000, status: "Invalid — re-auth required" },
+    { refresh_token: "", scopes: ["mail"], expiresIn: 3600000, status: "Active" },
+    { refresh_token: "refresh", scopes: [" "], expiresIn: -3600000, status: "Invalid — re-auth required" },
+  ]) {
+    test(`reports ${fixture.status} with refresh=${!!fixture.refresh_token} scopes=${fixture.scopes.length} expiry=${fixture.expiresIn}`, async () => {
+      TokenStore.getInstance = () => ({
+        listTokens: () => [{ service: "gmail", account: "fixture@example.com", access_token: "access",
+          ...fixture, expiry_date: Date.now() + fixture.expiresIn }], close: () => {},
+      }) as unknown as TokenStore;
+      await handleAccountsCommand([]);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining(`Status:`));
+      const statusLine = consoleLogSpy.mock.calls.map((args: unknown[]) => args.join(" ")).find((line: string) => line.includes("Status:"));
+      expect(statusLine).toContain(fixture.status);
+      expect(statusLine).not.toContain("Expiring soon");
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Access token expires:"));
+    });
+  }
 });
