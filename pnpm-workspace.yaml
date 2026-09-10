@@ -2,8 +2,12 @@ allowBuilds:
   better-sqlite3: true
 overrides:
   minimatch: '>=9.0.6'
-  qs: '>=6.14.1'
+  qs: '6.16.0'
   ajv: '>=6.14.0 <7'
   glob: '>=13.0.6'
   rimraf: '>=6.1.3'
   node-domexception: '>=1.0.0 <2'
+  '@humanfs/node': '0.16.8'
+  picomatch: '4.0.5'
+  js-yaml: '4.3.2'
+  'brace-expansion@^2': '2.1.4'

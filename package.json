@@ -17,6 +17,7 @@
     "dev": "bun src/cli.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
     "lockfiles:sync": "bun install --lockfile-only --ignore-scripts && pnpm install --lockfile-only --ignore-scripts",
     "lockfiles:check": "bun install --lockfile-only --frozen-lockfile --ignore-scripts && pnpm install --lockfile-only --frozen-lockfile --ignore-scripts",
     "postinstall": "node -e \"require('better-sqlite3')\" 2>/dev/null || pnpm rebuild better-sqlite3 2>/dev/null || node-gyp rebuild --directory \"$(node -e 'console.log(require.resolve(\\\"better-sqlite3/package.json\\\").replace(\\\"/package.json\\\",\\\"\\\"))')\" 2>/dev/null || true",
@@ -69,10 +70,13 @@
   },
   "overrides": {
     "minimatch": ">=9.0.6",
-    "qs": ">=6.14.1",
+    "qs": "6.16.0",
     "ajv": ">=6.14.0 <7",
     "glob": ">=13.0.6",
-    "rimraf": ">=6.1.3"
+    "rimraf": ">=6.1.3",
+    "@humanfs/node": "0.16.8",
+    "picomatch": "4.0.5",
+    "js-yaml": "4.3.2"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
@@ -82,7 +86,7 @@
     "google-auth-library": "^10.5.0",
     "googleapis": "^168.0.0",
     "html-to-text": "^9",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^9.1.1",
     "open": "^11.0.0",
     "ora": "^9.0.0",
     "rrule": "^2.8.1"
