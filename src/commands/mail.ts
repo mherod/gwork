@@ -53,6 +53,69 @@ function getHeader(headers: { name?: string | null; value?: string | null }[], n
   return header?.value || "";
 }
 
+function isAttached(part: MessagePart): boolean {
+  return !!part.filename || /^attachment\b/i.test(getHeader(part.headers ?? [], "Content-Disposition"));
+}
+
+function bodyTree(message: Message): MessagePart[] {
+  return flattenParts(message.payload ? [message.payload] : [], part =>
+    !isAttached(part) && !["message/rfc822", "message/delivery-status"].includes(part.mimeType ?? "")
+  ) as MessagePart[];
+}
+
+function parseMailHeaders(text: string): { name: string; value: string }[] {
+  return text.replace(/\r?\n[\t ]+/g, " ").split(/\r?\n/).flatMap(line => {
+    const colon = line.indexOf(":");
+    return colon > 0 ? [{ name: line.slice(0, colon), value: line.slice(colon + 1).trim() }] : [];
+  });
+}
+
+function deliveryDetails(parts: MessagePart[]): string {
+  const sections: string[] = [];
+  for (const part of parts) {
+    if (part.mimeType === "message/delivery-status") {
+      // Gmail sometimes parses the report as a child text/plain part whose
+      // headers describe the reporting server and body contains recipient fields.
+      const headers = (flattenParts([part]) as MessagePart[]).flatMap(node => [
+        ...(node.headers ?? []),
+        ...parseMailHeaders(node.body?.data ? decodeBase64(node.body.data) : ""),
+      ]);
+      const fields = headers.filter(header => /^(action|status|diagnostic-code|final-recipient)$/i.test(header.name ?? ""));
+      if (fields.length) sections.push(`Delivery status:\n${fields.map(field => `${field.name}: ${field.value}`).join("\n")}`);
+    } else if (part.mimeType === "message/rfc822" || part.mimeType === "text/rfc822-headers") {
+      const text = part.body?.data ? decodeBase64(part.body.data).split(/\r?\n\r?\n/)[0]! : "";
+      const headers = [...(part.headers ?? []), ...parseMailHeaders(text), ...(part.parts?.[0]?.headers ?? [])];
+      const fields = ["To", "Subject", "Date"].flatMap(name => {
+        const value = getHeader(headers, name);
+        return value ? [`${name}: ${value}`] : [];
+      });
+      if (part.body?.attachmentId) fields.push(`Attachment ID: ${part.body.attachmentId}`);
+      if (fields.length) sections.push(`Original message:\n${fields.join("\n")}`);
+    }
+  }
+  return sections.join("\n\n");
+}
+
+async function loadBodyData(service: MailService, message: Message): Promise<void> {
+  if (!message.id) return;
+  const parts = bodyTree(message).flatMap(part => part.mimeType === "message/delivery-status" ? flattenParts([part]) as MessagePart[] : [part]);
+  for (const part of parts) {
+    const readable = (!isAttached(part) && ["text/plain", "text/html"].includes(part.mimeType ?? "")) ||
+      part.mimeType === "message/delivery-status" || part.mimeType === "text/rfc822-headers";
+    if (readable && part.body?.attachmentId && !part.body.data) {
+      const attachment = await service.getAttachment(message.id, part.body.attachmentId);
+      part.body.data = attachment.data;
+    }
+  }
+}
+
+function attachmentParts(message: Message): MessagePart[] {
+  return (flattenParts(message.payload ? [message.payload] : []) as MessagePart[])
+    .filter(part => (part.filename || ["message/rfc822", "message/delivery-status", "text/rfc822-headers"].includes(part.mimeType ?? "")) &&
+      (part.body?.attachmentId || part.body?.data))
+    .map(part => ({ ...part, filename: part.filename || (part.mimeType === "message/rfc822" ? "original-message.eml" : part.mimeType === "text/rfc822-headers" ? "original-headers.txt" : "delivery-status.txt") }));
+}
+
 function formatMessage(message: Message, format: EmailBodyFormat = "auto", raw = false): string {
   const headers = message.payload?.headers || [];
   const from = getHeader(headers, "from");
@@ -60,8 +123,8 @@ function formatMessage(message: Message, format: EmailBodyFormat = "auto", raw =
   const subject = getHeader(headers, "subject");
   const date = getHeader(headers, "date");
 
-  const parts = flattenParts(message.payload ? [message.payload] : []) as MessagePart[];
-  const bodyParts = parts.filter(part => !part.filename && part.body?.data);
+  const parts = bodyTree(message);
+  const bodyParts = parts.filter(part => !isAttached(part) && part.body?.data);
   const plain = bodyParts.find(part => part.mimeType === "text/plain");
   const html = bodyParts.find(part => part.mimeType === "text/html");
   const selected = format === "plain" ? plain : format === "html" ? html : plain ?? html;
@@ -73,6 +136,9 @@ function formatMessage(message: Message, format: EmailBodyFormat = "auto", raw =
   // Add warning if requested format not available
   if (!body && format !== "auto") {
     body = `[No ${format} version available for this message]`;
+  }
+  if (format !== "html") {
+    body = [body, deliveryDetails(parts)].filter(Boolean).join("\n\n");
   }
 
   return `From: ${from}
@@ -411,12 +477,13 @@ async function getMessage(mailService: MailService, messageId: string, args: str
     }
 
     const message = await mailService.getMessage(messageId, "full");
+    await loadBodyData(mailService, message);
     spinner.succeed("Message fetched");
 
     printSectionHeader("\nMessage:");
     logger.info(formatMessage(message, format, args.includes("--raw")));
 
-    const parts = message.payload?.parts || [];
+    const parts = attachmentParts(message);
     if (parts.length > 0) {
       const attachments = parts.filter((p: any) => p.filename);
       if (attachments.length > 0) {
@@ -627,6 +694,9 @@ async function getThread(mailService: MailService, threadId: string, args: strin
     }
 
     const thread = await mailService.getThread(threadId);
+    if (showFullMessages) {
+      for (const message of thread.messages ?? []) await loadBodyData(mailService, message);
+    }
     spinner.succeed("Thread fetched");
 
     printSectionHeader("\nThread:");
@@ -680,12 +750,12 @@ async function listDrafts(mailService: MailService, args: string[]) {
 }
 
 /** Recursively collects all MIME parts from a nested multipart tree. */
-export function flattenParts(parts: any[]): any[] {
+export function flattenParts(parts: any[], descend: (part: MessagePart) => boolean = () => true): any[] {
   const result: any[] = [];
   for (const part of parts) {
     result.push(part);
-    if (part.parts && part.parts.length > 0) {
-      result.push(...flattenParts(part.parts));
+    if (part.parts && part.parts.length > 0 && descend(part)) {
+      result.push(...flattenParts(part.parts, descend));
     }
   }
   return result;
@@ -694,9 +764,7 @@ export function flattenParts(parts: any[]): any[] {
 async function listAttachments(mailService: MailService, messageId: string, args: string[] = []) {
   if (args.includes("--json")) {
     const message = await mailService.getMessage(messageId, "full");
-    const parts = flattenParts(message.payload ? [message.payload] : []) as MessagePart[];
-    console.log(JSON.stringify(parts
-      .filter(part => part.filename && (part.body?.attachmentId || part.body?.data))
+    console.log(JSON.stringify(attachmentParts(message)
       .map(part => ({
         filename: part.filename,
         mimeType: part.mimeType ?? null,
@@ -710,9 +778,7 @@ async function listAttachments(mailService: MailService, messageId: string, args
     const message = await mailService.getMessage(messageId, "full");
     spinner.succeed("Attachments fetched");
 
-    const allParts = flattenParts(message.payload?.parts || []);
-    // Include parts with a filename whether data is inline (body.data) or external (body.attachmentId)
-    const attachments = allParts.filter((p: any) => p.filename && (p.body?.attachmentId || p.body?.data));
+    const attachments = attachmentParts(message);
 
     if (attachments.length === 0) {
       logger.info(chalk.yellow("No attachments found"));
@@ -745,7 +811,7 @@ async function downloadAttachment(mailService: MailService, messageId: string, a
     // on such parts fails with "Invalid attachment token". Reading body.data avoids the
     // extra round-trip and handles that case.
     const message = await mailService.getMessage(messageId, "full");
-    const allParts = flattenParts(message.payload?.parts || []);
+    const allParts = flattenParts(message.payload ? [message.payload] : []) as MessagePart[];
     const matchingPart = allParts.find((p: any) => p.body?.attachmentId === attachmentId);
 
     let data: Buffer;
@@ -762,6 +828,9 @@ async function downloadAttachment(mailService: MailService, messageId: string, a
     if (!outputFile && matchingPart?.filename && matchingPart.filename.length > 0) {
       outputFile = matchingPart.filename;
     }
+    if (!outputFile && matchingPart?.mimeType === "message/rfc822") outputFile = "original-message.eml";
+    if (!outputFile && matchingPart?.mimeType === "message/delivery-status") outputFile = "delivery-status.txt";
+    if (!outputFile && matchingPart?.mimeType === "text/rfc822-headers") outputFile = "original-headers.txt";
     if (!outputFile) {
       // Fall back to a short, safe hash of the attachment ID
       outputFile = `attachment-${attachmentId.slice(0, 16).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
