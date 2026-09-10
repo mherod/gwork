@@ -15,6 +15,22 @@ import type { Message } from "../types/google-apis.ts";
 import { validateMaxResults } from "../services/validators.ts";
 
 type EmailBodyFormat = "plain" | "html" | "auto";
+type MessagePart = NonNullable<Message["payload"]>;
+
+function structuredPart(part: MessagePart): object {
+  return {
+    partId: part.partId ?? null,
+    mimeType: part.mimeType ?? null,
+    filename: part.filename ?? "",
+    headers: part.headers ?? [],
+    sizeBytes: part.body?.size ?? 0,
+    attachmentId: part.body?.attachmentId ?? null,
+    // Preserve exact base64url data for binary or otherwise undecoded parts.
+    data: part.body?.data ?? null,
+    text: part.body?.data && part.mimeType?.startsWith("text/") ? decodeBase64(part.body.data) : null,
+    parts: (part.parts ?? []).map(structuredPart),
+  };
+}
 
 function decodeBase64(data: string): string {
   return Buffer.from(data, "base64").toString("utf-8");
@@ -140,7 +156,7 @@ function buildMailRegistry(account: string): CommandRegistry<MailService> {
       if (args.length === 0) {
         throw new ArgumentError("Error: messageId is required", "gwork mail attachments <messageId>");
       }
-      return listAttachments(svc, args[0]!);
+      return listAttachments(svc, args[0]!, args.slice(1));
     })
     .register("download", (svc, args) => {
       if (args.length < 2) {
@@ -261,13 +277,21 @@ export async function handleMailCommand(
     process.exit(0);
   }
 
-  await handleCommandWithRetry({
-    serviceName: "mail",
-    account,
-    subcommand,
-    serviceFactory,
-    execute: (svc) => buildMailRegistry(account).execute(subcommand, svc, args),
-  });
+  const previousConfig = logger.getConfig();
+  if (["get", "attachments"].includes(subcommand) && args.includes("--json")) {
+    logger.configure({ outputToStderr: true });
+  }
+  try {
+    await handleCommandWithRetry({
+      serviceName: "mail",
+      account,
+      subcommand,
+      serviceFactory,
+      execute: (svc) => buildMailRegistry(account).execute(subcommand, svc, args),
+    });
+  } finally {
+    logger.configure(previousConfig);
+  }
 }
 
 async function listLabels(mailService: MailService, _args: string[]) {
@@ -367,6 +391,17 @@ async function listMessages(mailService: MailService, args: string[]) {
 }
 
 async function getMessage(mailService: MailService, messageId: string, args: string[] = []) {
+  if (args.includes("--json")) {
+    const message = await mailService.getMessage(messageId, "full");
+    console.log(JSON.stringify({
+      id: message.id ?? null,
+      threadId: message.threadId ?? null,
+      labelIds: message.labelIds ?? [],
+      headers: message.payload?.headers ?? [],
+      bodyParts: message.payload ? [structuredPart(message.payload)] : [],
+    }, null, 2));
+    return;
+  }
   const spinner = ora("Fetching message...").start();
   try {
     let format: EmailBodyFormat = "auto";
@@ -667,7 +702,20 @@ export function flattenParts(parts: any[]): any[] {
   return result;
 }
 
-async function listAttachments(mailService: MailService, messageId: string) {
+async function listAttachments(mailService: MailService, messageId: string, args: string[] = []) {
+  if (args.includes("--json")) {
+    const message = await mailService.getMessage(messageId, "full");
+    const parts = flattenParts(message.payload ? [message.payload] : []) as MessagePart[];
+    console.log(JSON.stringify(parts
+      .filter(part => part.filename && (part.body?.attachmentId || part.body?.data))
+      .map(part => ({
+        filename: part.filename,
+        mimeType: part.mimeType ?? null,
+        sizeBytes: part.body?.size ?? 0,
+        attachmentId: part.body?.attachmentId ?? null,
+      })), null, 2));
+    return;
+  }
   const spinner = ora("Fetching attachments...").start();
   try {
     const message = await mailService.getMessage(messageId, "full");

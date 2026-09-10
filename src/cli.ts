@@ -87,6 +87,7 @@ Commands:
 Options:
   -h, --help                              Show this help message
   --max-results <number>                  Maximum number of results to return (default: 10)
+  --json                                  Structured output for get and attachments
 
 Send options:
   --to <address>                          Recipient (repeatable)

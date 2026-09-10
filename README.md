@@ -173,6 +173,8 @@ gwork mail archive-many <id1> <id2> <id3>     # Archive multiple
 **Attachments:**
 ```bash
 gwork mail attachments <messageId>                    # List attachments
+gwork mail attachments <messageId> --json             # JSON attachment metadata
+gwork mail get <messageId> --json                     # Headers and recursive MIME body parts
 gwork mail download <messageId> <attachmentId> output.pdf  # Download
 ```
 

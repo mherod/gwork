@@ -21,6 +21,7 @@ interface LoggerConfig {
   level: LogLevel;
   quiet: boolean;
   verbose: boolean;
+  outputToStderr: boolean;
 }
 
 class LoggerImpl implements Logger {
@@ -28,6 +29,7 @@ class LoggerImpl implements Logger {
     level: 'info',
     quiet: false,
     verbose: false,
+    outputToStderr: false,
   };
 
   /**
@@ -72,7 +74,8 @@ class LoggerImpl implements Logger {
    */
   info(...args: unknown[]): void {
     if (this.config.level !== 'error' && !this.config.quiet) {
-      console.log(...args);
+      if (this.config.outputToStderr) console.error(...args);
+      else console.log(...args);
     }
   }
 
@@ -81,7 +84,8 @@ class LoggerImpl implements Logger {
    */
   debug(...args: unknown[]): void {
     if (this.config.verbose) {
-      console.log('[DEBUG]', ...args);
+      if (this.config.outputToStderr) console.error('[DEBUG]', ...args);
+      else console.log('[DEBUG]', ...args);
     }
   }
 
