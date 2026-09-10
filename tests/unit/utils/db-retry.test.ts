@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { withDbRetry, withDbRetrySync } from "../../../src/utils/db-retry.ts";
+import { logger } from "../../../src/utils/logger.ts";
 import { Database } from "../../../src/utils/sqlite-wrapper.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -8,8 +9,14 @@ import * as os from "node:os";
 describe("Database Retry Utility", () => {
   let testDbPath: string;
   let db: Database;
+  let infoSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
+    // Capture deliberately simulated lock errors here, leaving real contention
+    // warnings visible in the rest of the suite.
+    infoSpy = spyOn(logger, "info").mockImplementation(() => {});
+    warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
     // Create a unique test database for each test
     testDbPath = path.join(os.tmpdir(), `test-db-${Date.now()}-${Math.random()}.db`);
     db = new Database(testDbPath, { create: true });
@@ -22,6 +29,8 @@ describe("Database Retry Utility", () => {
   });
 
   afterEach(() => {
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
     if (db) {
       db.close();
     }
@@ -69,6 +78,10 @@ describe("Database Retry Utility", () => {
 
       expect(result).toEqual({ value: 1 });
       expect(attempts).toBe(2); // First attempt fails, second succeeds
+      expect(infoSpy).toHaveBeenCalledWith(
+        "Database locked, retrying in 10ms (attempt 1/3)..."
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
     });
 
     test("throws non-lock errors immediately", async () => {
@@ -101,6 +114,9 @@ describe("Database Retry Utility", () => {
       }
       expect(caught).toBeDefined();
       expect(caught?.message).toBe("database is locked");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Database operation failed after 2 retries: database is locked"
+      );
     });
 
     test("does not retry when maxRetries is zero", async () => {
