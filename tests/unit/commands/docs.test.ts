@@ -1,5 +1,5 @@
 /**
- * Unit tests for handleDocsCommand — covers create and write subcommands.
+ * Unit tests for every handleDocsCommand subcommand.
  *
  * Tests verify:
  * - "create" calls createDocument and prints ID/link
@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from "bun:test";
-import { ScopeInsufficientError } from "../../../src/services/errors.ts";
+import { ArgumentError, ScopeInsufficientError } from "../../../src/services/errors.ts";
 import { TokenStore } from "../../../src/services/token-store.ts";
 import type { DocsService } from "../../../src/services/docs-service.ts";
 
@@ -126,6 +126,89 @@ describe("handleDocsCommand — create", () => {
 
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
+});
+
+describe("handleDocsCommand — get and read", () => {
+  let consoleLogSpy: ReturnType<typeof spyOn>;
+  let processExitSpy: ReturnType<typeof spyOn>;
+  const getDocument = mock(async () => ({ documentId: "doc-1", title: "Notes", revisionId: "rev-2", suggestionsViewMode: "PREVIEW" }));
+  const readContent = mock(async () => ({ documentId: "doc-1", title: "Notes", bodyText: "Heading\nBody text", wordCount: 3, headers: ["Heading"] }));
+  const factory = mock((_account: string) => ({
+    initialize: async () => {}, getDocument, readContent,
+  }) as unknown as DocsService);
+  const output = () => consoleLogSpy.mock.calls.map((call: unknown[]) => call[0]).join("\n");
+
+  beforeEach(() => {
+    logServiceErrorCalls.length = 0;
+    getDocument.mockReset().mockResolvedValue({ documentId: "doc-1", title: "Notes", revisionId: "rev-2", suggestionsViewMode: "PREVIEW" });
+    readContent.mockReset().mockResolvedValue({ documentId: "doc-1", title: "Notes", bodyText: "Heading\nBody text", wordCount: 3, headers: ["Heading"] });
+    factory.mockClear();
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    processExitSpy = spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+    processExitSpy.mockRestore();
+  });
+
+  it("gets document metadata using the selected account and prints its link", async () => {
+    await handleDocsCommand("get", ["doc-1"], "work@example.com", factory);
+    expect(factory).toHaveBeenCalledWith("work@example.com");
+    expect(getDocument).toHaveBeenCalledWith("doc-1");
+    expect(output()).toContain("Notes");
+    expect(output()).toContain("rev-2");
+    expect(output()).toContain("https://docs.google.com/document/d/doc-1/edit");
+    expect(processExitSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads body text and reports the word count", async () => {
+    await handleDocsCommand("read", ["doc-1"], "default", factory);
+    expect(readContent).toHaveBeenCalledWith("doc-1");
+    expect(output()).toContain("3 words");
+    expect(output()).toContain("Heading\nBody text");
+  });
+
+  it("prints only headings when --headers is requested", async () => {
+    await handleDocsCommand("read", ["doc-1", "--headers"], "default", factory);
+    expect(output()).toContain("Heading");
+    expect(output()).not.toContain("Body text");
+  });
+
+  it("explains when the document contains no headings", async () => {
+    readContent.mockResolvedValue({ documentId: "doc-1", title: "Notes", bodyText: "Body", wordCount: 1, headers: [] });
+    await handleDocsCommand("read", ["doc-1", "--headers"], "default", factory);
+    expect(output()).toContain("No headings found.");
+  });
+
+  it("emits structured content for --format json", async () => {
+    await handleDocsCommand("read", ["doc-1", "--format", "json"], "default", factory);
+    expect(JSON.parse(output())).toEqual({ documentId: "doc-1", title: "Notes", wordCount: 3, headers: ["Heading"], body: "Heading\nBody text" });
+  });
+
+  it("omits body content from headers-only JSON", async () => {
+    await handleDocsCommand("read", ["doc-1", "--headers", "--format", "json"], "default", factory);
+    expect(JSON.parse(output())).toEqual({ documentId: "doc-1", title: "Notes", wordCount: 3, headers: ["Heading"] });
+  });
+
+  for (const command of ["get", "read"]) {
+    it(`rejects ${command} without a document ID`, async () => {
+      await handleDocsCommand(command, [], "default", factory);
+      expect(logServiceErrorCalls[0]).toBeInstanceOf(ArgumentError);
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(getDocument).not.toHaveBeenCalled();
+      expect(readContent).not.toHaveBeenCalled();
+    });
+
+    it(`reports ${command} service errors and exits without retrying`, async () => {
+      const error = new Error("Document unavailable");
+      (command === "get" ? getDocument : readContent).mockRejectedValue(error);
+      await handleDocsCommand(command, ["doc-1"], "default", factory);
+      expect(logServiceErrorCalls).toEqual([error]);
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+  }
 });
 
 describe("handleDocsCommand — write", () => {
