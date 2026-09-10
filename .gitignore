@@ -53,3 +53,5 @@ credentials.json
 
 # Downloaded documents
 *.docx
+/.swiz/config.json
+/.swiz/config.json.bak
